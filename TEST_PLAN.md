@@ -62,11 +62,14 @@ cargo clippy --all-targets
       datagrams (`lagging_subscriber_never_blocks_socket`).
 
 ### M2 — CCSDS parsing
-- [ ] **Unit:** parse a golden primary header → correct version/type/APID/seq/length.
-- [ ] **Round-trip:** build → serialize → parse equals original fields.
-- [ ] **Robustness:** truncated header, length-mismatch, zero-length, and oversized inputs return
-      structured errors (no panic).
-- [ ] **Routing:** TM vs TC discrimination; unexpected type rejected.
+- [x] **Unit:** parse a golden primary header → correct type/APID/seq/length
+      (`parses_valid_tm_packet`, `parses_known_golden_bytes`).
+- [x] **Round-trip:** canonical bytes → parse equals original fields, incl. min/max APID & seq
+      (`round_trip_preserves_fields`).
+- [x] **Robustness:** short header, truncated payload, and all-`0xFF` garbage return structured
+      errors, never a panic (`short_datagram_is_rejected`, `truncated_payload_is_rejected`,
+      `garbage_does_not_panic`).
+- [x] **Routing:** TM accepted; TC rejected with `NotTelemetry` (`telecommand_is_rejected`).
 
 ### M3 — Propagator integration
 - [ ] **Unit:** config parsing (valid + invalid lat/lon/freq) with clear errors.
@@ -112,7 +115,7 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 ## Status / counts (keep current)
 | Layer | Count | Notes |
 |-------|-------|-------|
-| Unit tests | 2 | `propagator` (finite tracking state, invalid TLE rejected). |
+| Unit tests | 9 | `propagator` (2) + `ccsds` (7: golden, round-trip, short, truncated, garbage, TM/TC). |
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 

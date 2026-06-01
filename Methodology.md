@@ -103,13 +103,23 @@ any `impl Future<Output=()>`.
   tests, `ctrl_c` in `main`) without a `tokio-util` `CancellationToken` dependency.
 **Tested by:** `tests/ingest.rs` (order, shutdown, oversized, backpressure).
 
+### D-010 — CCSDS parsing crate: `spacepackets` (resolves OD-A)
+**Decision:** Use **`spacepackets` 0.17** (us-irs) for CCSDS Space Packet parsing, wrapped behind
+the `ccsds` module so the rest of the gateway depends on our `TelemetryFrame`, not on the crate.
+**Why:** It supports the full primary header plus secondary-header/PUS handling we will need for
+real telemetry, is actively maintained, and parses with a clean `from_be_bytes` returning the
+header and remaining slice. `space-packet` is Kani-verified but primary-header-only; an in-house
+parser would duplicate well-tested work and own the correctness burden (against AGENTS security
+posture). Keeping it behind the module boundary preserves the option to swap later.
+**Frame representation:** `TelemetryFrame` retains the original `Arc<[u8]>` datagram and exposes
+the packet data field via a zero-copy `payload()` borrow (no `bytes` crate needed — extends D-009).
+**Validation:** length → decode → declared-vs-available → TM/TC; recoverable `CcsdsError` per case,
+no panics or unbounded allocation on untrusted input.
+**Tested by:** inline unit tests in `ccsds.rs` (golden bytes, round-trip, truncation, garbage, routing).
+
 ---
 
 ## Open decisions (to resolve as milestones land)
-
-- **OD-A — CCSDS parsing crate.** `space-packet` (Kani-verified, `no_std`, **primary header
-  only**) vs `spacepackets` (us-irs, secondary headers / PUS) vs a thin in-house parser.
-  Likely need secondary-header support for real telemetry. Decide at Milestone 1.
 - **OD-B — Web/distribution stack.** Axum (mirrors Rusty_Server) for the WebSocket + HTTP API to
   Open MCT. Confirm the Open MCT telemetry dictionary + JSON format contract.
 - **OD-C — Doppler/RSSI tolerance budget.** Validate the ±150 Hz Doppler and link-budget margins
@@ -126,6 +136,7 @@ External works this project builds on or is inspired by (keep current per `AGENT
 |------|-----------|------------------|
 | **Ephemerust** (owner) | SGP4 propagation, look-angles, range-rate | local sibling crate, MIT |
 | `sgp4` crate | Underlying SGP4/SDP4 numerics (via Ephemerust) | crates.io |
+| `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
 | Tokio, Axum, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates | crates.io, MIT/Apache-2.0 |
 | CCSDS standards | TMTC framing/packet specifications | open international standards |

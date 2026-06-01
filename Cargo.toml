@@ -26,6 +26,9 @@ chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# CCSDS / ECSS packet standards (Space Packet primary header parsing). See Methodology D-010.
+spacepackets = "0.17"
+
 # Astrodynamics backend — sibling checkout (SGP4 look-angles + range-rate for the
 # Physics-Telemetry Co-Validation engine). Path is relative to this workspace root.
 ephemerust = { path = "../Ephemerust" }

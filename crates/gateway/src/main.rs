@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
+use chronus_gateway::ccsds;
 use chronus_gateway::config::IngestConfig;
 use chronus_gateway::ingest::{self, IngestStats, RawFrame};
 use tokio::sync::broadcast;
@@ -29,16 +30,25 @@ async fn main() -> anyhow::Result<()> {
     let (tx, mut rx) = broadcast::channel::<RawFrame>(config.channel_capacity);
     let stats = Arc::new(IngestStats::default());
 
-    // Demonstration consumer: log a one-line summary of each received frame. Real downstream
-    // stages (CCSDS parse → validate → distribute) replace this in later milestones.
+    // Demonstration consumer: parse each datagram as a CCSDS telemetry packet and log a summary.
+    // Later milestones extend this with physics co-validation and Open MCT distribution.
     let logger = tokio::spawn(async move {
         loop {
             match rx.recv().await {
-                Ok(frame) => tracing::info!(
-                    bytes = frame.bytes.len(),
-                    source = %frame.source,
-                    "frame received"
-                ),
+                Ok(frame) => match ccsds::parse_telemetry(&frame) {
+                    Ok(tm) => tracing::info!(
+                        apid = tm.apid,
+                        seq = tm.seq_count,
+                        payload = tm.payload_len(),
+                        source = %tm.source,
+                        "telemetry frame parsed"
+                    ),
+                    Err(e) => tracing::warn!(
+                        error = %e,
+                        bytes = frame.bytes.len(),
+                        "dropping invalid/non-telemetry datagram"
+                    ),
+                },
                 Err(broadcast::error::RecvError::Lagged(n)) => {
                     tracing::warn!(skipped = n, "consumer lagged; dropped frames")
                 }

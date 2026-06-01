@@ -56,26 +56,25 @@ doctest.)
 
 ---
 
-## Milestone 2 — CCSDS framing & zero-copy parsing
+## Milestone 2 — CCSDS framing & zero-copy parsing ✅ **Complete (2026-05-31)**
 
 **Objective:** Turn raw datagrams into validated, structured telemetry frames.
 
-**Open decision (resolve first):** **OD-A** in `Methodology.md` — crate choice. Default lean:
-`spacepackets` (us-irs) for primary **and** secondary headers; revisit `space-packet`
-(Kani-verified, primary-only) if a formally-verified hot path is desired.
+**Resolved decision:** **OD-A** → **`spacepackets` 0.17** (us-irs), primary **and** secondary
+header support. Recorded in `Methodology.md` D-010.
 
 **Deliverables**
-- [ ] `ccsds` module: parse the CCSDS Space Packet primary header (version, type, APID,
-      sequence flags/count, data length) with zero-copy slicing where practical.
-- [ ] `TelemetryFrame { apid, seq_count, timestamp, payload, physics_flags }` (payload borrowed or
-      `bytes::Bytes` to avoid copies; decide and document).
-- [ ] Strict validation: length consistency, truncation, APID/type routing; reject TC where TM is
-      expected. Educational, structured errors (Ephemerust style).
+- [x] `ccsds` module: parses the CCSDS Space Packet primary header (version, type, APID, sequence
+      count, data length, secondary-header flag) via `SpacePacketHeader::from_be_bytes`.
+- [x] `TelemetryFrame { apid, seq_count, has_secondary_header, received_at, source,
+      physics_flags }` with a **zero-copy** `payload()` borrow into the retained `Arc<[u8]>`.
+- [x] Strict validation: header length → header decode → declared-vs-available length → TM/TC
+      routing; structured, educational `CcsdsError` (Ephemerust style). `main` now parses frames.
 
-**Test gate:** [TEST_PLAN.md → M2](TEST_PLAN.md#m2--ccsds-parsing) — golden-frame round-trips,
-truncated/oversized/garbage inputs fail gracefully (no panic).
+**Test gate:** [TEST_PLAN.md → M2](TEST_PLAN.md#m2--ccsds-parsing) — **all green**: golden bytes,
+round-trip, short/truncated/garbage rejected without panic, TM/TC routing. (7 unit tests.)
 
-**Gate 2:** [ ] Parser + crate choice approved; tests green; proceed to M3.
+**Gate 2:** [x] Parser + `spacepackets` choice implemented; tests + clippy green. Ready for M3.
 
 ---
 
