@@ -196,7 +196,7 @@ mod tests {
         let b = prop.tracking_state(epoch()).expect("state again");
         assert_eq!(a.range_km, b.range_km, "propagation must be deterministic");
 
-        // Baseline locked from the foundation smoke run (same TLE/station/epoch).
+        // Baseline locked from the foundation baseline run (same TLE/station/epoch).
         assert!((a.range_km - 9134.98).abs() < 1.0, "range_km = {}", a.range_km);
         assert!((a.elevation_deg - (-42.07)).abs() < 0.5, "elevation = {}", a.elevation_deg);
         assert!((a.azimuth_deg - 141.70).abs() < 0.5, "azimuth = {}", a.azimuth_deg);

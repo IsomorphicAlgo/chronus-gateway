@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **Milestone 3 complete**. The workspace, propagator seam, UDP ingestion loop, CCSDS
+> telemetry parser, station configuration, and throttled tracking provider are implemented and
+> tested. The co-validation engine and Open MCT WebSocket fan-out remain gated milestones.
 
 ---
 
@@ -68,7 +69,7 @@ later if/when CI reproducibility demands it.
 ### D-007 — Async runtime: Tokio (multi-threaded)
 **Decision:** Use Tokio (`features = ["full"]`) as the async runtime.
 **Why:** It's the de-facto standard for high-throughput async networking in Rust and underpins
-the planned UDP ingestion loop, broadcast channel fan-out, and Axum WebSocket distribution.
+the UDP ingestion loop, broadcast channel fan-out, and planned Axum WebSocket distribution.
 Propagators are `Send + Sync` so a single instance can be shared (`Arc`) across worker threads.
 
 ### D-008 — Linker: bundled `rust-lld` instead of MSVC `link.exe` (Windows)
@@ -131,7 +132,7 @@ recomputation to the configured look-angle rate.
 - `from_station` keeps TLE-source resolution (inline now, file load; CelesTrak deferred) in config,
   not in the network path.
 **Determinism:** locked by a baseline regression test (range/az/el within tolerance of the
-foundation smoke run) so propagation changes are caught.
+foundation baseline run) so propagation changes are caught.
 **Tested by:** `config` unit tests (validation, file errors) and `propagator` tests (deterministic
 state, counting-mock trait-swap + throttle).
 
@@ -154,12 +155,16 @@ External works this project builds on or is inspired by (keep current per `AGENT
 |------|-----------|------------------|
 | **Ephemerust** (owner) | SGP4 propagation, look-angles, range-rate | local sibling crate, MIT |
 | `sgp4` crate | Underlying SGP4/SDP4 numerics (via Ephemerust) | crates.io |
-| `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
+| CCSDS 133.0-B-2 Space Packet Protocol | Wire-format standard for telemetry packet framing | CCSDS public standard |
+| `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2), isolated behind `ccsds` | crates.io, Apache-2.0/MIT |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
-| Tokio, Axum, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates | crates.io, MIT/Apache-2.0 |
-| CCSDS standards | TMTC framing/packet specifications | open international standards |
+| Tokio, Tracing, `tracing-subscriber` | Async runtime and structured logging | crates.io, MIT/Apache-2.0 |
+| Serde, `serde_json`, Chrono | Serialization/time support for tracking state and future distribution payloads | crates.io, MIT/Apache-2.0 |
+| Anyhow, Thiserror | Error propagation and typed validation/parsing errors | crates.io, MIT/Apache-2.0 |
+| Broader CCSDS standards | Future TMTC framing/protocol constraints beyond the current parser | open international standards |
 | NASA Open MCT | Target mission-control dashboard | open source (NASA) |
+| NeXosim | Planned HIL simulation option (stretch milestone) | open source |
 
 ---
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-01.*

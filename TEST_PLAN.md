@@ -11,7 +11,7 @@ offline, enforced at every stage gate.
 1. **Layered coverage**
    - **Unit** — inline `#[cfg(test)] mod tests` in each module (happy path + edge/error cases).
    - **Integration** — `tests/*.rs`, async via `#[tokio::test]`; exercise the real pipeline over
-     **loopback UDP** and **in-process Axum/WebSocket** (no live hardware).
+     **loopback UDP** now and **in-process Axum/WebSocket** when M5 lands (no live hardware).
    - **Doctests** — runnable, asserting examples on public API items.
    - **Physics co-validation** — computed results checked against references or numerical
      cross-checks, with **every tolerance written down and justified**.
@@ -37,7 +37,9 @@ cargo clippy --all-targets
 ## Shared fixtures
 - **Reference TLE:** public ISS (ZARYA) 3-line set (same family Ephemerust tests use).
 - **Synthetic CCSDS frames:** helper builders producing valid + deliberately-malformed packets
-  (truncated header, bad length, wrong packet type, oversized payload).
+  (truncated header, bad length, wrong packet type, oversized payload). Today these builders live
+  inside `ccsds.rs` unit tests; promote them to shared fixtures when an ingest→parse integration
+  suite is added.
 - **Fixed instants:** evaluate near the TLE epoch so SGP4 stays in its accurate window.
 - **Mock propagator:** a deterministic `OrbitalPropagator` returning scripted `TrackingState`s
   for validation-engine tests (decouples M4 from astrodynamics).
@@ -76,7 +78,8 @@ cargo clippy --all-targets
       missing TLE file) with specific errors (`default_station_is_valid`, `rejects_out_of_range_fields`,
       `resolves_inline_tle_and_rejects_empty`, `missing_tle_file_is_reported`).
 - [x] **Deterministic:** fixed TLE + fixed instant → stable `TrackingState`, baseline-locked within
-      tolerance (`from_station_is_deterministic_and_in_tolerance`).
+      tolerance (`from_station_is_deterministic_and_in_tolerance`: range ≈ 9134.98 km,
+      elevation ≈ -42.07°, azimuth ≈ 141.70°).
 - [x] **Trait swap + throttle:** a counting mock propagator proves the seam and the
       recompute-throttle cache (`provider_uses_mock_and_throttles_recompute`).
 
@@ -123,4 +126,4 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-01.*
