@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **M4 complete**. UDP ingestion, CCSDS primary-header parsing, station tracking, and the
+> Physics-Telemetry Co-Validation engine are implemented and tested. Open MCT WebSocket fan-out is
+> the next unresolved distribution milestone (OD-B).
 
 ---
 
@@ -108,9 +109,11 @@ any `impl Future<Output=()>`.
 the `ccsds` module so the rest of the gateway depends on our `TelemetryFrame`, not on the crate.
 **Why:** It supports the full primary header plus secondary-header/PUS handling we will need for
 real telemetry, is actively maintained, and parses with a clean `from_be_bytes` returning the
-header and remaining slice. `space-packet` is Kani-verified but primary-header-only; an in-house
-parser would duplicate well-tested work and own the correctness burden (against AGENTS security
-posture). Keeping it behind the module boundary preserves the option to swap later.
+header and remaining slice. The current gateway decodes the primary header and records the
+secondary-header flag; deeper secondary/PUS parsing is deferred until a mission data contract
+needs it. `space-packet` is Kani-verified but primary-header-only; an in-house parser would
+duplicate well-tested work and own the correctness burden (against AGENTS security posture).
+Keeping it behind the module boundary preserves the option to swap later.
 **Frame representation:** `TelemetryFrame` retains the original `Arc<[u8]>` datagram and exposes
 the packet data field via a zero-copy `payload()` borrow (no `bytes` crate needed — extends D-009).
 **Validation:** length → decode → declared-vs-available → TM/TC; recoverable `CcsdsError` per case,

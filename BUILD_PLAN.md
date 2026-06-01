@@ -60,8 +60,9 @@ doctest.)
 
 **Objective:** Turn raw datagrams into validated, structured telemetry frames.
 
-**Resolved decision:** **OD-A** → **`spacepackets` 0.17** (us-irs), primary **and** secondary
-header support. Recorded in `Methodology.md` D-010.
+**Resolved decision:** **OD-A** → **`spacepackets` 0.17** (us-irs). The gateway currently parses
+the primary header and records the secondary-header flag; the chosen crate also supports
+secondary/PUS handling for future mission contracts. Recorded in `Methodology.md` D-010.
 
 **Deliverables**
 - [x] `ccsds` module: parses the CCSDS Space Packet primary header (version, type, APID, sequence
@@ -181,4 +182,4 @@ sustained-rate soak run.
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
 - Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-01.*

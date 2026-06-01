@@ -10,8 +10,9 @@ offline, enforced at every stage gate.
 
 1. **Layered coverage**
    - **Unit** — inline `#[cfg(test)] mod tests` in each module (happy path + edge/error cases).
-   - **Integration** — `tests/*.rs`, async via `#[tokio::test]`; exercise the real pipeline over
-     **loopback UDP** and **in-process Axum/WebSocket** (no live hardware).
+   - **Integration** — `tests/*.rs`, async via `#[tokio::test]`; exercise implemented runtime
+     paths over **loopback UDP** now and planned **in-process Axum/WebSocket** paths at M5 (no live
+     hardware).
    - **Doctests** — runnable, asserting examples on public API items.
    - **Physics co-validation** — computed results checked against references or numerical
      cross-checks, with **every tolerance written down and justified**.
@@ -37,7 +38,8 @@ cargo clippy --all-targets
 ## Shared fixtures
 - **Reference TLE:** public ISS (ZARYA) 3-line set (same family Ephemerust tests use).
 - **Synthetic CCSDS frames:** helper builders producing valid + deliberately-malformed packets
-  (truncated header, bad length, wrong packet type, oversized payload).
+  (truncated header, bad length, wrong packet type, oversized payload). Current builders live in
+  the relevant unit/integration test modules rather than a shared exported fixture crate.
 - **Fixed instants:** evaluate near the TLE epoch so SGP4 stays in its accurate window.
 - **Mock propagator:** a deterministic `OrbitalPropagator` returning scripted `TrackingState`s
   for validation-engine tests (decouples M4 from astrodynamics).
@@ -92,6 +94,8 @@ cargo clippy --all-targets
 - [x] **Formula:** non-relativistic Doppler identity locked by unit test (`expected_carrier_matches_non_relativistic_formula`).
 
 ### M5 — Distribution
+- [ ] **Pipeline integration:** cover `ingest -> parse -> validate` across task boundaries before
+      asserting the WebSocket contract.
 - [ ] **End-to-end:** in-process `ingest → parse → validate → WebSocket`; a connected client
       receives well-formed Open MCT JSON including `physics_flags`.
 - [ ] **Health:** `GET /health` returns `200`.
