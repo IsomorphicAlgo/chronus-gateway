@@ -1,0 +1,15 @@
+# Rust build artifacts
+/target
+**/*.rs.bk
+
+# Local environment / secrets (see AGENTS.md → Security)
+.env
+.env.*
+*.local.toml
+credentials.txt
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

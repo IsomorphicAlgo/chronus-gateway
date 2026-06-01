@@ -1,0 +1,14 @@
+# Local build configuration.
+#
+# WHY THIS EXISTS (see Methodology.md → D-008): on this machine the MSVC `link.exe` is blocked
+# from writing freshly-linked executables (build-script binaries fail with LNK1104 / "Access is
+# denied"), even with Windows Defender stopped — consistent with an EDR/admin policy on link.exe.
+# Windows Defender exclusions would also work but require admin. The Rust toolchain ships its own
+# linker (`rust-lld`), which is not subject to that policy, so we point the MSVC target at it.
+#
+# This only affects the x86_64-pc-windows-msvc target; other targets/CI are unaffected.
+# If the host toolchain changes (we intentionally do not pin one, see D-006), update the path.
+
+[target.x86_64-pc-windows-msvc]
+linker = "C:\\Users\\micha\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\bin\\rust-lld.exe"
+rustflags = ["-C", "linker-flavor=lld-link"]

@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = ["crates/gateway"]
+
+# Shared metadata + dependency versions. Member crates opt in with `field.workspace = true`
+# (see Methodology.md → "Workspace + centralized dependency versions").
+[workspace.package]
+edition = "2021"
+rust-version = "1.88"
+license = "MIT"
+authors = ["MichaelHansen"]
+repository = "https://github.com/IsomorphicAlgo/chronus-gateway"
+
+[workspace.dependencies]
+# Async runtime + observability
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Time + serialization
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Astrodynamics backend — sibling checkout (SGP4 look-angles + range-rate for the
+# Physics-Telemetry Co-Validation engine). Path is relative to this workspace root.
+ephemerust = { path = "../Ephemerust" }

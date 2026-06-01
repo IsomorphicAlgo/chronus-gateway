@@ -1,0 +1,116 @@
+# ChronusGateway-RS — Iterative Test Plan
+
+The testing companion to `BUILD_PLAN.md`. It encodes the **Ephemerust testing standard**
+required by `AGENTS.md` rule 4: layered tests, documented physics tolerances, deterministic and
+offline, enforced at every stage gate.
+
+---
+
+## Testing philosophy (mirrors Ephemerust)
+
+1. **Layered coverage**
+   - **Unit** — inline `#[cfg(test)] mod tests` in each module (happy path + edge/error cases).
+   - **Integration** — `tests/*.rs`, async via `#[tokio::test]`; exercise the real pipeline over
+     **loopback UDP** and **in-process Axum/WebSocket** (no live hardware).
+   - **Doctests** — runnable, asserting examples on public API items.
+   - **Physics co-validation** — computed results checked against references or numerical
+     cross-checks, with **every tolerance written down and justified**.
+   - **Robustness/security** — malformed/truncated/oversized inputs fail gracefully (no panic, no
+     unbounded allocation).
+2. **Deterministic & offline** — no live SDR/network, no wall-clock dependence. Use synthetic
+   CCSDS frames, **fixed timestamps**, and public reference TLEs (ISS).
+3. **Green before gate** — `cargo test` (lib + integration + doctests) must pass before a
+   milestone advances. Keep the **status/counts table** below current.
+4. **Tolerances are documented** — see the Tolerance Register; mirror Ephemerust's style
+   (e.g. its 0.25 km/s central-difference and 0.05 km WGS84-vs-WGS72 bounds).
+
+**Commands**
+```
+cargo test               # unit + integration + doctests
+cargo test --lib         # fast unit-only loop
+cargo test --test <name> # a specific integration suite
+cargo clippy --all-targets
+```
+
+---
+
+## Shared fixtures
+- **Reference TLE:** public ISS (ZARYA) 3-line set (same family Ephemerust tests use).
+- **Synthetic CCSDS frames:** helper builders producing valid + deliberately-malformed packets
+  (truncated header, bad length, wrong packet type, oversized payload).
+- **Fixed instants:** evaluate near the TLE epoch so SGP4 stays in its accurate window.
+- **Mock propagator:** a deterministic `OrbitalPropagator` returning scripted `TrackingState`s
+  for validation-engine tests (decouples M4 from astrodynamics).
+
+---
+
+## Per-milestone test gates
+
+### M0 — Foundation
+- [x] Binary smoke run produces a finite `TrackingState` (az/el/range/range-rate) from the ISS TLE.
+- [ ] (Add) doctest on `EphemerustPropagator::new` showing construction + a bounded assertion.
+
+### M1 — Ingestion
+- [ ] **Integration:** bind to an ephemeral loopback port, send `N` datagrams, assert `N` frames
+      observed on the channel in order (seq preserved).
+- [ ] **Shutdown:** cancellation stops the loop promptly with no leaked task/panic.
+- [ ] **Security:** datagram larger than `max_datagram_size` is rejected/truncated safely; no
+      allocation driven by attacker-controlled length.
+- [ ] **Backpressure:** a slow subscriber increments the drop counter; the socket never blocks.
+
+### M2 — CCSDS parsing
+- [ ] **Unit:** parse a golden primary header → correct version/type/APID/seq/length.
+- [ ] **Round-trip:** build → serialize → parse equals original fields.
+- [ ] **Robustness:** truncated header, length-mismatch, zero-length, and oversized inputs return
+      structured errors (no panic).
+- [ ] **Routing:** TM vs TC discrimination; unexpected type rejected.
+
+### M3 — Propagator integration
+- [ ] **Unit:** config parsing (valid + invalid lat/lon/freq) with clear errors.
+- [ ] **Deterministic:** fixed TLE + fixed instant → stable `TrackingState` within tolerance.
+- [ ] **Trait swap:** the pipeline runs against the **mock propagator** (proves the seam).
+
+### M4 — Co-validation
+- [ ] **Doppler in-band:** SDR metadata within bound of expected Δf(range-rate) → no flag.
+- [ ] **Doppler out-of-band:** deviation beyond bound → `physics_flags` bit 0 set.
+- [ ] **Look-angle:** below-horizon / impossible geometry → bit 1 set.
+- [ ] **Bitfield:** independent anomalies set independent bits; clean frame = `0`.
+- [ ] Each assertion cites its tolerance from the Register below.
+
+### M5 — Distribution
+- [ ] **End-to-end:** in-process `ingest → parse → validate → WebSocket`; a connected client
+      receives well-formed Open MCT JSON including `physics_flags`.
+- [ ] **Health:** `GET /health` returns `200`.
+- [ ] **Lifecycle:** client disconnect is handled without affecting other clients or the loop.
+
+### M6 — Hardening
+- [ ] **Benchmarks:** `criterion` parse + validate hot paths produce reported latency numbers.
+- [ ] **Fuzz/property:** randomized byte streams never panic the parser.
+- [ ] **Supply chain:** `cargo audit` / `cargo deny` clean.
+
+### M7 — HIL simulation
+- [ ] **Smoke:** NeXosim sim → gateway delivers validated frames to a client.
+- [ ] **Soak:** sustained-rate run for a fixed duration with bounded drops and no leaks.
+
+---
+
+## Tolerance Register (justify every number)
+Populate as engines land; keep rationale next to the value (Ephemerust style).
+
+| ID | Quantity | Tolerance | Rationale / source |
+|----|----------|-----------|--------------------|
+| T-DOPPLER | Carrier Δf deviation | ±150 Hz (provisional) | PDF atmospheric-drift bound; **re-validate vs Ephemerust arcminute/no-nutation posture (OD-C)** before locking. |
+| T-LOOKANGLE | Pointing angular error | TBD (≈0.25° target) | PDF servo spec; confirm achievable given SGP4 + no precession/nutation. |
+| T-RANGERATE | Range-rate vs numerical | 0.25 km/s | Matches Ephemerust's central-difference check (reused convention). |
+| T-RSSI | Received power | ±3 dB (provisional) | PDF link-budget margin; revisit when/if implemented. |
+
+---
+
+## Status / counts (keep current)
+| Layer | Count | Notes |
+|-------|-------|-------|
+| Unit tests | 0 | M0 ships behavior via smoke binary; unit tests begin at M1. |
+| Integration tests | 0 | First suite at M1 (loopback UDP). |
+| Doctests | 0 | Add `propagator` doctest as first (M0 follow-up). |
+
+*Last updated: 2026-05-31.*
