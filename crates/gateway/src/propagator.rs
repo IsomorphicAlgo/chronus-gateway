@@ -10,9 +10,13 @@
 //! high-fidelity backend (e.g. `nyx-space`) drop in without a rewrite. See `Methodology.md`
 //! → "Trait-based astrodynamics (Ephemerust now, nyx-space later)".
 
+use std::sync::{Arc, Mutex};
+
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use ephemerust::{look_angles, ObserverLocation, Tle};
+
+use crate::config::StationConfig;
 
 /// Topocentric tracking state of a spacecraft relative to a fixed ground station.
 ///
@@ -72,6 +76,59 @@ impl EphemerustPropagator {
         let tle = Tle::parse(tle_text)?;
         Ok(Self { tle, latitude_deg, longitude_deg, altitude_m })
     }
+
+    /// Builds a propagator from a validated [`StationConfig`], resolving its TLE source.
+    pub fn from_station(config: &StationConfig) -> Result<Self> {
+        config.validate()?;
+        let tle_text = config.resolve_tle_text()?;
+        Self::new(
+            &tle_text,
+            config.latitude_deg,
+            config.longitude_deg,
+            config.altitude_m,
+        )
+    }
+}
+
+/// A shareable, throttled front-end over an [`OrbitalPropagator`].
+///
+/// Caches the most recent `(time, state)` and reuses it for any request within
+/// `min_interval_ms` of the cached instant, so a burst of frames does not trigger redundant SGP4
+/// propagations (the look-angle recompute throttle, e.g. 100 Hz). Safe to share across the Tokio
+/// worker threads that service concurrent clients.
+pub struct TrackingProvider {
+    propagator: Arc<dyn OrbitalPropagator>,
+    min_interval_ms: i64,
+    last: Mutex<Option<(DateTime<Utc>, TrackingState)>>,
+}
+
+impl TrackingProvider {
+    /// Wraps `propagator`, reusing a cached state for requests within `min_interval_ms`
+    /// (`0` disables caching).
+    pub fn new(propagator: Arc<dyn OrbitalPropagator>, min_interval_ms: u64) -> Self {
+        Self {
+            propagator,
+            min_interval_ms: min_interval_ms as i64,
+            last: Mutex::new(None),
+        }
+    }
+
+    /// Returns the tracking state at `time`, served from cache when within the throttle window.
+    pub fn tracking_state(&self, time: DateTime<Utc>) -> Result<TrackingState> {
+        {
+            let cache = self.last.lock().expect("tracking cache mutex poisoned");
+            if let Some((cached_at, state)) = cache.as_ref() {
+                if (time - *cached_at).num_milliseconds().abs() < self.min_interval_ms {
+                    return Ok(*state);
+                }
+            }
+        }
+        // Compute outside the lock so SGP4 work never serializes other callers.
+        let state = self.propagator.tracking_state(time)?;
+        let mut cache = self.last.lock().expect("tracking cache mutex poisoned");
+        *cache = Some((time, state));
+        Ok(state)
+    }
 }
 
 impl OrbitalPropagator for EphemerustPropagator {
@@ -119,5 +176,68 @@ mod tests {
     fn invalid_tle_is_rejected() {
         let result = EphemerustPropagator::new("definitely not a TLE", 0.0, 0.0, 0.0);
         assert!(result.is_err(), "garbage TLE text must not parse");
+    }
+
+    #[test]
+    fn from_station_is_deterministic_and_in_tolerance() {
+        use crate::config::{StationConfig, TleSource};
+
+        let station = StationConfig {
+            latitude_deg: 35.0,
+            longitude_deg: -116.0,
+            altitude_m: 1000.0,
+            nominal_carrier_hz: 437_500_000.0,
+            tle: TleSource::Inline(ISS_TLE.to_string()),
+            min_recompute_interval_ms: 0,
+        };
+        let prop = EphemerustPropagator::from_station(&station).expect("build from station");
+
+        let a = prop.tracking_state(epoch()).expect("state");
+        let b = prop.tracking_state(epoch()).expect("state again");
+        assert_eq!(a.range_km, b.range_km, "propagation must be deterministic");
+
+        // Baseline locked from the foundation smoke run (same TLE/station/epoch).
+        assert!((a.range_km - 9134.98).abs() < 1.0, "range_km = {}", a.range_km);
+        assert!((a.elevation_deg - (-42.07)).abs() < 0.5, "elevation = {}", a.elevation_deg);
+        assert!((a.azimuth_deg - 141.70).abs() < 0.5, "azimuth = {}", a.azimuth_deg);
+    }
+
+    #[test]
+    fn provider_uses_mock_and_throttles_recompute() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::Arc;
+
+        // A scripted, counting propagator proves the trait seam and lets us observe caching.
+        struct CountingPropagator {
+            calls: AtomicU64,
+            state: TrackingState,
+        }
+        impl OrbitalPropagator for CountingPropagator {
+            fn tracking_state(&self, _time: chrono::DateTime<Utc>) -> Result<TrackingState> {
+                self.calls.fetch_add(1, Ordering::Relaxed);
+                Ok(self.state)
+            }
+        }
+
+        let scripted = TrackingState {
+            azimuth_deg: 10.0,
+            elevation_deg: 20.0,
+            range_km: 30.0,
+            range_rate_km_s: 0.5,
+        };
+        let counting = Arc::new(CountingPropagator { calls: AtomicU64::new(0), state: scripted });
+        let provider = TrackingProvider::new(counting.clone(), 100); // 100 ms throttle
+
+        let t0 = epoch();
+        let first = provider.tracking_state(t0).expect("first");
+        assert_eq!(first.range_km, scripted.range_km, "provider returns the backend's state");
+
+        // Within the throttle window → served from cache, no extra propagation.
+        provider.tracking_state(t0 + chrono::Duration::milliseconds(50)).expect("cached");
+        assert_eq!(counting.calls.load(Ordering::Relaxed), 1);
+
+        // Beyond the window → recompute.
+        provider.tracking_state(t0 + chrono::Duration::milliseconds(200)).expect("recompute");
+        assert_eq!(counting.calls.load(Ordering::Relaxed), 2);
     }
 }

@@ -12,9 +12,9 @@ expected Doppler shift, look-angles, and link geometry for the spacecraft, and f
 measured RF and signal parameters disagree with the physics.
 
 > **Status:** Early development. The astrodynamics seam, the asynchronous UDP ingestion loop
-> (Milestone 1), and CCSDS Space Packet parsing (Milestone 2) are implemented and tested; the
-> co-validation engine and the Open MCT distribution layer are tracked as gated milestones in
-> [`BUILD_PLAN.md`](BUILD_PLAN.md).
+> (Milestone 1), CCSDS Space Packet parsing (Milestone 2), and station-configured orbital tracking
+> (Milestone 3) are implemented and tested; the co-validation engine and the Open MCT distribution
+> layer are tracked as gated milestones in [`BUILD_PLAN.md`](BUILD_PLAN.md).
 
 ---
 

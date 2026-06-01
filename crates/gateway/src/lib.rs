@@ -20,5 +20,8 @@ pub mod ingest;
 pub mod propagator;
 
 pub use ccsds::{CcsdsError, TelemetryFrame};
-pub use config::IngestConfig;
+pub use config::{ConfigError, IngestConfig, StationConfig, TleSource};
 pub use ingest::{IngestStats, RawFrame};
+pub use propagator::{
+    EphemerustPropagator, OrbitalPropagator, TrackingProvider, TrackingState,
+};

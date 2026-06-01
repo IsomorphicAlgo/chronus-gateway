@@ -72,9 +72,13 @@ cargo clippy --all-targets
 - [x] **Routing:** TM accepted; TC rejected with `NotTelemetry` (`telecommand_is_rejected`).
 
 ### M3 — Propagator integration
-- [ ] **Unit:** config parsing (valid + invalid lat/lon/freq) with clear errors.
-- [ ] **Deterministic:** fixed TLE + fixed instant → stable `TrackingState` within tolerance.
-- [ ] **Trait swap:** the pipeline runs against the **mock propagator** (proves the seam).
+- [x] **Unit:** config validation (valid default; invalid lat/lon/freq/altitude; empty inline TLE;
+      missing TLE file) with specific errors (`default_station_is_valid`, `rejects_out_of_range_fields`,
+      `resolves_inline_tle_and_rejects_empty`, `missing_tle_file_is_reported`).
+- [x] **Deterministic:** fixed TLE + fixed instant → stable `TrackingState`, baseline-locked within
+      tolerance (`from_station_is_deterministic_and_in_tolerance`).
+- [x] **Trait swap + throttle:** a counting mock propagator proves the seam and the
+      recompute-throttle cache (`provider_uses_mock_and_throttles_recompute`).
 
 ### M4 — Co-validation
 - [ ] **Doppler in-band:** SDR metadata within bound of expected Δf(range-rate) → no flag.
@@ -115,7 +119,7 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 ## Status / counts (keep current)
 | Layer | Count | Notes |
 |-------|-------|-------|
-| Unit tests | 9 | `propagator` (2) + `ccsds` (7: golden, round-trip, short, truncated, garbage, TM/TC). |
+| Unit tests | 15 | `ccsds` (7) + `config` (4: validation, TLE resolve/file) + `propagator` (4: finite, invalid TLE, deterministic, mock throttle). |
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 

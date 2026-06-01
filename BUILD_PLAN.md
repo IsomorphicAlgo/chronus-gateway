@@ -78,20 +78,23 @@ round-trip, short/truncated/garbage rejected without panic, TM/TC routing. (7 un
 
 ---
 
-## Milestone 3 — Propagator integration & station configuration
+## Milestone 3 — Propagator integration & station configuration ✅ **Complete (2026-05-31)**
 
 **Objective:** Make the live astrodynamics state available to the pipeline.
 
 **Deliverables**
-- [ ] Station config: observer lat/lon/alt, nominal carrier frequency, TLE source (inline/file).
-- [ ] Shared `Arc<dyn OrbitalPropagator>` in app state; compute `TrackingState` for a frame's
-      timestamp (with caching/throttling to the documented look-angle rate).
-- [ ] TLE refresh strategy stub (manual load now; CelesTrak fetch deferred — see backlog).
+- [x] `StationConfig`: observer lat/lon/alt, nominal carrier frequency, `TleSource` (inline/file),
+      recompute-throttle interval; with `validate()` and `resolve_tle_text()` (`ConfigError`).
+- [x] `EphemerustPropagator::from_station` + shareable `TrackingProvider` (`Arc<dyn
+      OrbitalPropagator>`) that caches/throttles recomputation to the configured look-angle rate.
+      `main` now computes a `TrackingState` per parsed frame.
+- [x] TLE source supports inline now and file load; CelesTrak fetch deferred (backlog).
 
-**Test gate:** [TEST_PLAN.md → M3](TEST_PLAN.md#m3--propagator-integration) — config parsing,
-deterministic tracking-state for fixed TLE+time, trait swap (mock propagator) works.
+**Test gate:** [TEST_PLAN.md → M3](TEST_PLAN.md#m3--propagator-integration) — **all green**: config
+validation (valid/invalid/missing-file), deterministic tracking-state (baseline-locked), mock
+trait-swap + throttle. (4 unit tests added.)
 
-**Gate 3:** [ ] Integration approved; tests green; proceed to M4.
+**Gate 3:** [x] Integration implemented; tests + clippy green. Ready for M4.
 
 ---
 

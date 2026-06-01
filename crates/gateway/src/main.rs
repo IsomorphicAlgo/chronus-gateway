@@ -8,8 +8,9 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use chronus_gateway::ccsds;
-use chronus_gateway::config::IngestConfig;
+use chronus_gateway::config::{IngestConfig, StationConfig};
 use chronus_gateway::ingest::{self, IngestStats, RawFrame};
+use chronus_gateway::propagator::{EphemerustPropagator, TrackingProvider};
 use tokio::sync::broadcast;
 
 #[tokio::main]
@@ -30,19 +31,57 @@ async fn main() -> anyhow::Result<()> {
     let (tx, mut rx) = broadcast::channel::<RawFrame>(config.channel_capacity);
     let stats = Arc::new(IngestStats::default());
 
-    // Demonstration consumer: parse each datagram as a CCSDS telemetry packet and log a summary.
-    // Later milestones extend this with physics co-validation and Open MCT distribution.
+    // Build the orbital tracking provider from the station configuration. If it cannot be built
+    // (e.g. a bad TLE), the gateway still ingests and parses — it just runs without physics state.
+    let station = StationConfig::default();
+    let tracking = match EphemerustPropagator::from_station(&station) {
+        Ok(prop) => {
+            tracing::info!(
+                lat = station.latitude_deg,
+                lon = station.longitude_deg,
+                carrier_hz = station.nominal_carrier_hz,
+                "orbital tracking provider ready"
+            );
+            Some(Arc::new(TrackingProvider::new(
+                Arc::new(prop),
+                station.min_recompute_interval_ms,
+            )))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "no orbital propagator; running without physics state");
+            None
+        }
+    };
+
+    // Demonstration consumer: parse each datagram, then compute the spacecraft's tracking state
+    // at the frame's timestamp. Milestone 4 adds physics co-validation; M5 adds Open MCT fan-out.
     let logger = tokio::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(frame) => match ccsds::parse_telemetry(&frame) {
-                    Ok(tm) => tracing::info!(
-                        apid = tm.apid,
-                        seq = tm.seq_count,
-                        payload = tm.payload_len(),
-                        source = %tm.source,
-                        "telemetry frame parsed"
-                    ),
+                    Ok(tm) => {
+                        let physics = tracking
+                            .as_ref()
+                            .and_then(|t| t.tracking_state(tm.received_at).ok());
+                        match physics {
+                            Some(s) => tracing::info!(
+                                apid = tm.apid,
+                                seq = tm.seq_count,
+                                payload = tm.payload_len(),
+                                az_deg = s.azimuth_deg,
+                                el_deg = s.elevation_deg,
+                                range_km = s.range_km,
+                                range_rate_km_s = s.range_rate_km_s,
+                                "telemetry frame parsed"
+                            ),
+                            None => tracing::info!(
+                                apid = tm.apid,
+                                seq = tm.seq_count,
+                                payload = tm.payload_len(),
+                                "telemetry frame parsed (no physics state)"
+                            ),
+                        }
+                    }
                     Err(e) => tracing::warn!(
                         error = %e,
                         bytes = frame.bytes.len(),

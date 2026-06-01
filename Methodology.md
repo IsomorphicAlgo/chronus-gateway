@@ -117,6 +117,24 @@ the packet data field via a zero-copy `payload()` borrow (no `bytes` crate neede
 no panics or unbounded allocation on untrusted input.
 **Tested by:** inline unit tests in `ccsds.rs` (golden bytes, round-trip, truncation, garbage, routing).
 
+### D-011 — Station config + throttled tracking provider (Milestone 3)
+**Decision:** A `StationConfig` (observer lat/lon/alt, nominal carrier frequency, `TleSource`,
+recompute interval) with `validate()`/`resolve_tle_text()`; `EphemerustPropagator::from_station`;
+and a `TrackingProvider` that wraps an `Arc<dyn OrbitalPropagator>` and **caches/throttles**
+recomputation to the configured look-angle rate.
+**Why:**
+- Validation up front (range-checked lat/lon/altitude/frequency, non-empty TLE) turns bad config
+  into clear errors rather than downstream `NaN`s — and keeps untrusted file input bounded.
+- A throttle (default 10 ms ≈ 100 Hz) avoids redundant SGP4 propagation when many frames share a
+  timestamp window; the cache is read under a short `Mutex` and the propagation runs **outside**
+  the lock so concurrent clients never serialize on SGP4 work.
+- `from_station` keeps TLE-source resolution (inline now, file load; CelesTrak deferred) in config,
+  not in the network path.
+**Determinism:** locked by a baseline regression test (range/az/el within tolerance of the
+foundation smoke run) so propagation changes are caught.
+**Tested by:** `config` unit tests (validation, file errors) and `propagator` tests (deterministic
+state, counting-mock trait-swap + throttle).
+
 ---
 
 ## Open decisions (to resolve as milestones land)
