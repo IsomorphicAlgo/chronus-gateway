@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **Milestone 4 complete**. Ingestion, CCSDS parsing, station-configured tracking, and
+> Physics-Telemetry Co-Validation are implemented and tested; Open MCT WebSocket fan-out is the
+> next milestone.
 
 ---
 
@@ -147,9 +148,9 @@ state, counting-mock trait-swap + throttle).
 - **`RfMetadata::measured_carrier_hz == None`:** Doppler check skipped (no bit 0); production SDR
   wiring comes with M5 or a side channel.
 **Why OD-C is closed:** Ephemerust documents `range_rate_km_s` to ~0.25 km/s vs a 1 s central
-difference; at L-band (~437 MHz) that maps to sub-kHz frequency uncertainty from propagation math
-alone. The ±150 Hz band is therefore dominated by atmosphere, receiver chain, and clock effects,
-not SGP4 truncation at the teaching-grade arcminute level (D-004).
+difference; at the UHF demo frequency (~437 MHz) that maps to sub-kHz frequency uncertainty from
+propagation math alone. The ±150 Hz band is therefore dominated by atmosphere, receiver chain, and
+clock effects, not SGP4 truncation at the teaching-grade arcminute level (D-004).
 **`TelemetryFrame`:** `raw` and `payload_len` are `pub(crate)` so `validate` unit tests can build
 minimal frames without exposing internals on the public API.
 **Tested by:** nine `validate` unit tests (in/out-of-band Doppler, horizon, combined flags, NaN-safe
