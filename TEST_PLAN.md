@@ -90,6 +90,9 @@ cargo clippy --all-targets
       (`combined_anomalies_set_both_bits`, `independent_bits_doppler_only`, `no_measured_carrier_skips_doppler_even_if_would_be_bad`).
 - [x] **Non-finite RF:** NaN measured carrier skips Doppler without panic (`nan_measured_skips_doppler_no_panic`).
 - [x] **Formula:** non-relativistic Doppler identity locked by unit test (`expected_carrier_matches_non_relativistic_formula`).
+**Known gap (M5-owned):** the live binary now runs ingest → parse → track → validate for local
+logging, but there is not yet an automated end-to-end test covering the M2–M4 chain. M5 closes this
+with the in-process WebSocket pipeline test below.
 
 ### M5 — Distribution
 - [ ] **End-to-end:** in-process `ingest → parse → validate → WebSocket`; a connected client

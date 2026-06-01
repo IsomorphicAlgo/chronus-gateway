@@ -5,8 +5,8 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **Core validation pipeline implemented through M4** (ingestion, CCSDS parsing, station
+> tracking, and Physics-Telemetry Co-Validation). Open MCT WebSocket fan-out is the next milestone.
 
 ---
 
@@ -152,6 +152,11 @@ alone. The ±150 Hz band is therefore dominated by atmosphere, receiver chain, a
 not SGP4 truncation at the teaching-grade arcminute level (D-004).
 **`TelemetryFrame`:** `raw` and `payload_len` are `pub(crate)` so `validate` unit tests can build
 minimal frames without exposing internals on the public API.
+**Current runtime:** `main.rs` wires the M1–M4 path for local development
+(`ingest → parse_telemetry → TrackingProvider → apply_physics_validation`). It still uses
+`StationConfig::default()` and `RfMetadata::default()` directly; therefore elevation validation
+runs when tracking is available, while Doppler validation waits for measured carrier metadata from
+the M5 distribution/SDR side-channel work.
 **Tested by:** nine `validate` unit tests (in/out-of-band Doppler, horizon, combined flags, NaN-safe
 skip, formula identity).
 

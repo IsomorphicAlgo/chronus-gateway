@@ -8,6 +8,20 @@
 //! the [`validate`] Physics–Telemetry Co-Validation engine (Milestone 4). WebSocket / Open MCT
 //! distribution is Milestone 5 (see `BUILD_PLAN.md`).
 //!
+//! ## Current library pipeline
+//!
+//! Library consumers compose the implemented stages explicitly:
+//!
+//! 1. configure [`IngestConfig`] and [`StationConfig`];
+//! 2. bind/run [`ingest::run`] to receive [`RawFrame`] datagrams;
+//! 3. parse each frame with [`ccsds::parse_telemetry`];
+//! 4. obtain a [`TrackingState`] from [`TrackingProvider`]; and
+//! 5. call [`apply_physics_validation`] to populate [`TelemetryFrame::physics_flags`].
+//!
+//! The most common types are re-exported at the crate root. Stage entrypoints such as
+//! [`ccsds::parse_telemetry`], [`ingest::bind`], and [`ingest::run`] remain in their modules so the
+//! crate-level namespace stays focused on shared data types and validation primitives.
+//!
 //! ## Standards & compliance
 //!
 //! Built strictly on open, international standards (CCSDS). See `AGENTS.md` for the project's
