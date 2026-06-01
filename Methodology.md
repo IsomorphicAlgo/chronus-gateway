@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **Milestone 3 complete** — asynchronous UDP ingestion, CCSDS Space Packet parsing, and
+> station-configured orbital tracking are implemented and tested. The co-validation engine and
+> Open MCT WebSocket fan-out are upcoming milestones.
 
 ---
 
@@ -162,4 +163,21 @@ External works this project builds on or is inspired by (keep current per `AGENT
 
 ---
 
-*Last updated: 2026-05-31.*
+## References
+
+Sources used to shape or verify the current implementation and documentation:
+
+- CCSDS 133.0-B-2, *Space Packet Protocol* — primary-header layout, packet data-length definition,
+  APID, sequence count, and TM/TC packet type used in `ccsds::parse_telemetry`.
+- `spacepackets` crate documentation — `SpacePacketHeader::from_be_bytes`, `CcsdsPacket`, and
+  packet-type accessors used behind the local `ccsds` module boundary.
+- Ephemerust project documentation and tests — SGP4 look angles, range rate, public ISS TLE
+  fixtures, and tolerance posture mirrored by `propagator` tests.
+- Tokio documentation — UDP sockets, `broadcast` channel behavior, `select!`, and signal handling
+  patterns used by the ingestion loop.
+- Rust API Guidelines / standard library documentation — error trait composition, `Arc<[u8]>`, and
+  `Mutex` usage for the public Rust interfaces.
+
+---
+
+*Last updated: 2026-06-01.*

@@ -4,9 +4,10 @@
 //! spacecraft downlinks and web-based mission control (e.g. NASA Open MCT).
 //!
 //! Implemented so far: the [`propagator`] seam (keystone of the Physics-Telemetry Co-Validation
-//! engine), the asynchronous UDP [`ingest`] loop (Milestone 1), and [`ccsds`] Space Packet
-//! parsing (Milestone 2). The validation engine and the WebSocket fan-out land in subsequent
-//! milestones (see `BUILD_PLAN.md`).
+//! engine), the asynchronous UDP [`ingest`] loop (Milestone 1), [`ccsds`] Space Packet parsing
+//! (Milestone 2), and station-configured orbital tracking with a throttled
+//! [`propagator::TrackingProvider`] (Milestone 3). The validation engine and the WebSocket fan-out
+//! land in subsequent milestones (see `BUILD_PLAN.md`).
 //!
 //! ## Standards & compliance
 //!
