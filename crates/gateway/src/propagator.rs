@@ -189,6 +189,7 @@ mod tests {
             nominal_carrier_hz: 437_500_000.0,
             tle: TleSource::Inline(ISS_TLE.to_string()),
             min_recompute_interval_ms: 0,
+            ..Default::default()
         };
         let prop = EphemerustPropagator::from_station(&station).expect("build from station");
 

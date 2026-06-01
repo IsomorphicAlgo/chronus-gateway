@@ -11,10 +11,9 @@ telemetry only against static limits, the gateway uses a live orbital propagator
 expected Doppler shift, look-angles, and link geometry for the spacecraft, and flags frames whose
 measured RF and signal parameters disagree with the physics.
 
-> **Status:** Early development. The astrodynamics seam, the asynchronous UDP ingestion loop
-> (Milestone 1), CCSDS Space Packet parsing (Milestone 2), and station-configured orbital tracking
-> (Milestone 3) are implemented and tested; the co-validation engine and the Open MCT distribution
-> layer are tracked as gated milestones in [`BUILD_PLAN.md`](BUILD_PLAN.md).
+> **Status:** Early development. Ingestion (M1), CCSDS parsing (M2), station tracking (M3), and the
+> Physics–Telemetry Co-Validation engine (M4) are implemented and tested. Open MCT WebSocket
+> distribution is Milestone 5 (see [`BUILD_PLAN.md`](BUILD_PLAN.md)).
 
 ---
 
@@ -54,6 +53,7 @@ chronus-gateway/
 │   │   ├── config.rs       Ingestion configuration
 │   │   ├── ingest.rs       Asynchronous UDP ingestion loop (RawFrame, stats, shutdown)
 │   │   ├── ccsds.rs        CCSDS Space Packet parsing (TelemetryFrame, validation)
+│   │   ├── validate.rs     Physics–Telemetry Co-Validation (Doppler, elevation, physics_flags)
 │   │   ├── propagator.rs   OrbitalPropagator trait + Ephemerust-backed implementation
 │   │   └── main.rs         Entrypoint (runs the ingestion server)
 │   └── tests/

@@ -3,10 +3,10 @@
 //! An asynchronous, physics-validated Telemetry & Command (TMTC) gateway that bridges raw
 //! spacecraft downlinks and web-based mission control (e.g. NASA Open MCT).
 //!
-//! Implemented so far: the [`propagator`] seam (keystone of the Physics-Telemetry Co-Validation
-//! engine), the asynchronous UDP [`ingest`] loop (Milestone 1), and [`ccsds`] Space Packet
-//! parsing (Milestone 2). The validation engine and the WebSocket fan-out land in subsequent
-//! milestones (see `BUILD_PLAN.md`).
+//! Implemented so far: the [`propagator`] seam, the asynchronous UDP [`ingest`] loop (Milestone 1),
+//! [`ccsds`] Space Packet parsing (Milestone 2), station-configured tracking (Milestone 3), and
+//! the [`validate`] Physics–Telemetry Co-Validation engine (Milestone 4). WebSocket / Open MCT
+//! distribution is Milestone 5 (see `BUILD_PLAN.md`).
 //!
 //! ## Standards & compliance
 //!
@@ -18,10 +18,15 @@ pub mod ccsds;
 pub mod config;
 pub mod ingest;
 pub mod propagator;
+pub mod validate;
 
 pub use ccsds::{CcsdsError, TelemetryFrame};
 pub use config::{ConfigError, IngestConfig, StationConfig, TleSource};
 pub use ingest::{IngestStats, RawFrame};
 pub use propagator::{
     EphemerustPropagator, OrbitalPropagator, TrackingProvider, TrackingState,
+};
+pub use validate::{
+    apply_physics_validation, expected_carrier_hz, RfMetadata, FLAG_BELOW_HORIZON,
+    FLAG_DOPPLER_ANOMALY, FLAG_RSSI_RESERVED, SPEED_OF_LIGHT_M_S,
 };

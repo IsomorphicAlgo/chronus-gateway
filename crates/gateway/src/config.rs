@@ -71,6 +71,15 @@ pub struct StationConfig {
     /// Minimum interval between propagator recomputations, in milliseconds. Frames arriving within
     /// this window reuse the last tracking state (throttle; `0` disables caching). 10 ms ≈ 100 Hz.
     pub min_recompute_interval_ms: u64,
+
+    /// Maximum allowed |measured − expected| carrier deviation for the Doppler check (Hz).
+    /// Default **150 Hz** — see `TEST_PLAN.md` (T-DOPPLER) and `Methodology.md` (D-012).
+    pub doppler_tolerance_hz: f64,
+    /// Minimum elevation (degrees) for accepting telemetry as geometrically plausible at the
+    /// ground station. Frames with predicted elevation **strictly below** this value set
+    /// [`FLAG_BELOW_HORIZON`](crate::validate::FLAG_BELOW_HORIZON). Default `0` = at or above the
+    /// mathematical horizon is OK; negative values allow a refraction / mask margin.
+    pub minimum_elevation_deg: f64,
 }
 
 impl Default for StationConfig {
@@ -82,6 +91,8 @@ impl Default for StationConfig {
             nominal_carrier_hz: 437_500_000.0,
             tle: TleSource::Inline(DEFAULT_ISS_TLE.to_string()),
             min_recompute_interval_ms: 10,
+            doppler_tolerance_hz: 150.0,
+            minimum_elevation_deg: 0.0,
         }
     }
 }
@@ -104,6 +115,12 @@ pub enum ConfigError {
     /// The inline TLE text was empty.
     #[error("TLE source is empty")]
     EmptyTle,
+    /// Doppler tolerance is not a finite positive value.
+    #[error("doppler tolerance {0} Hz is invalid (expected a finite value > 0)")]
+    InvalidDopplerTolerance(f64),
+    /// Minimum elevation threshold is non-finite or outside `[-90, 90]`.
+    #[error("minimum elevation {0}° is invalid (expected a finite value in [-90, 90])")]
+    InvalidMinimumElevation(f64),
     /// A TLE file could not be read.
     #[error("failed to read TLE file {path}: {source}")]
     TleRead {
@@ -131,6 +148,14 @@ impl StationConfig {
         }
         if !self.nominal_carrier_hz.is_finite() || self.nominal_carrier_hz <= 0.0 {
             return Err(ConfigError::InvalidFrequency(self.nominal_carrier_hz));
+        }
+        if !self.doppler_tolerance_hz.is_finite() || self.doppler_tolerance_hz <= 0.0 {
+            return Err(ConfigError::InvalidDopplerTolerance(self.doppler_tolerance_hz));
+        }
+        if !self.minimum_elevation_deg.is_finite()
+            || !(-90.0..=90.0).contains(&self.minimum_elevation_deg)
+        {
+            return Err(ConfigError::InvalidMinimumElevation(self.minimum_elevation_deg));
         }
         if let TleSource::Inline(text) = &self.tle {
             if text.trim().is_empty() {
@@ -177,6 +202,24 @@ mod tests {
 
         let nan_alt = StationConfig { altitude_m: f64::NAN, ..Default::default() };
         assert!(matches!(nan_alt.validate(), Err(ConfigError::InvalidAltitude(_))));
+
+        let bad_doppler = StationConfig {
+            doppler_tolerance_hz: 0.0,
+            ..Default::default()
+        };
+        assert!(matches!(
+            bad_doppler.validate(),
+            Err(ConfigError::InvalidDopplerTolerance(_))
+        ));
+
+        let bad_el_thresh = StationConfig {
+            minimum_elevation_deg: 91.0,
+            ..Default::default()
+        };
+        assert!(matches!(
+            bad_el_thresh.validate(),
+            Err(ConfigError::InvalidMinimumElevation(_))
+        ));
     }
 
     #[test]

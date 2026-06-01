@@ -11,6 +11,7 @@ use chronus_gateway::ccsds;
 use chronus_gateway::config::{IngestConfig, StationConfig};
 use chronus_gateway::ingest::{self, IngestStats, RawFrame};
 use chronus_gateway::propagator::{EphemerustPropagator, TrackingProvider};
+use chronus_gateway::validate::{apply_physics_validation, RfMetadata};
 use tokio::sync::broadcast;
 
 #[tokio::main]
@@ -53,27 +54,42 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    // Demonstration consumer: parse each datagram, then compute the spacecraft's tracking state
-    // at the frame's timestamp. Milestone 4 adds physics co-validation; M5 adds Open MCT fan-out.
+    let doppler_tol = station.doppler_tolerance_hz;
+    let min_el = station.minimum_elevation_deg;
+    let nominal_hz = station.nominal_carrier_hz;
+
+    // Demonstration consumer: parse → tracking state → physics co-validation (Doppler skipped
+    // until SDR metadata is wired; elevation gate always runs when physics is available).
     let logger = tokio::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(frame) => match ccsds::parse_telemetry(&frame) {
-                    Ok(tm) => {
+                    Ok(mut tm) => {
                         let physics = tracking
                             .as_ref()
                             .and_then(|t| t.tracking_state(tm.received_at).ok());
                         match physics {
-                            Some(s) => tracing::info!(
-                                apid = tm.apid,
-                                seq = tm.seq_count,
-                                payload = tm.payload_len(),
-                                az_deg = s.azimuth_deg,
-                                el_deg = s.elevation_deg,
-                                range_km = s.range_km,
-                                range_rate_km_s = s.range_rate_km_s,
-                                "telemetry frame parsed"
-                            ),
+                            Some(s) => {
+                                apply_physics_validation(
+                                    &mut tm,
+                                    &s,
+                                    nominal_hz,
+                                    RfMetadata::default(),
+                                    doppler_tol,
+                                    min_el,
+                                );
+                                tracing::info!(
+                                    apid = tm.apid,
+                                    seq = tm.seq_count,
+                                    payload = tm.payload_len(),
+                                    az_deg = s.azimuth_deg,
+                                    el_deg = s.elevation_deg,
+                                    range_km = s.range_km,
+                                    range_rate_km_s = s.range_rate_km_s,
+                                    physics_flags = tm.physics_flags,
+                                    "telemetry frame parsed"
+                                );
+                            }
                             None => tracing::info!(
                                 apid = tm.apid,
                                 seq = tm.seq_count,

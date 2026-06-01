@@ -61,9 +61,9 @@ pub enum CcsdsError {
 #[derive(Debug, Clone)]
 pub struct TelemetryFrame {
     /// The full original datagram (header + data field), reference-counted.
-    raw: Arc<[u8]>,
+    pub(crate) raw: Arc<[u8]>,
     /// Length of the packet data field (`data_len + 1`), in bytes.
-    payload_len: usize,
+    pub(crate) payload_len: usize,
     /// Application Process ID (11-bit).
     pub apid: u16,
     /// Packet sequence count (14-bit).

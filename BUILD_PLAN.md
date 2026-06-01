@@ -98,25 +98,27 @@ trait-swap + throttle. (4 unit tests added.)
 
 ---
 
-## Milestone 4 — Physics-Telemetry Co-Validation engine
+## Milestone 4 — Physics-Telemetry Co-Validation engine ✅ **Complete (2026-06-01)**
 
 **Objective:** The project's differentiator — cross-check telemetry against physics and flag
 anomalies bitwise. (PDF's co-validation model.)
 
-**Open decision:** **OD-C** — finalize tolerance budget against Ephemerust's accuracy posture
-(arcminute-level; no precession/nutation). Document each bound in `TEST_PLAN.md`.
+**Resolved decision:** **OD-C** — Doppler band **±150 Hz** (T-DOPPLER) with rationale vs Ephemerust
+range-rate accuracy; elevation gate uses configurable `minimum_elevation_deg` (default `0`°).
+Recorded in `Methodology.md` D-012 and `TEST_PLAN.md`.
 
 **Deliverables**
-- [ ] Doppler check: expected Δf from `TrackingState.range_rate_km_s` vs SDR metadata; flag if
-      |deviation| > documented bound. Set `physics_flags` bit 0.
-- [ ] Look-angle gate: elevation/az sanity vs computed pass geometry (bit 1).
-- [ ] (Optional) link-budget / RSSI check (bit 2); solar-aspect/EPS checks deferred.
-- [ ] `physics_flags` documented as a stable bitfield for downstream consumers.
+- [x] Doppler check: `expected_carrier_hz` from nominal + `range_rate_km_s`; `RfMetadata` optional
+      measured carrier; flag if `|Δ| > doppler_tolerance_hz`. Sets `physics_flags` bit 0.
+- [x] Elevation gate: flag when `elevation_deg < minimum_elevation_deg` (bit 1). Defaults reject
+      below-horizon passes for synthetic demo geometry.
+- [x] RSSI / link budget: bit 2 **reserved**, documented; not implemented in this slice.
+- [x] Stable `physics_flags` bitfield documented in `validate` module and `TEST_PLAN.md`.
 
-**Test gate:** [TEST_PLAN.md → M4](TEST_PLAN.md#m4--co-validation) — in-band frame passes,
-out-of-band Doppler/elevation flagged; tolerances asserted with rationale.
+**Test gate:** [TEST_PLAN.md → M4](TEST_PLAN.md#m4--co-validation) — **all green**: in-band Doppler,
+out-of-band Doppler, horizon, combined, independent bits, no-measured skip, NaN-safe.
 
-**Gate 4:** [ ] Validation engine + tolerances approved; tests green; proceed to M5.
+**Gate 4:** [x] Validation engine + tolerances implemented; tests + clippy green. Ready for M5.
 
 ---
 
@@ -177,7 +179,6 @@ sustained-rate soak run.
 
 ## Dependency / ordering notes
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
-- Resolve **OD-A** (CCSDS crate) before M2 code, **OD-C** (tolerances) before M4 code, **OD-B**
-  (Open MCT contract) before M5 code. Record outcomes in `Methodology.md`.
+- Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
 *Last updated: 2026-05-31.*

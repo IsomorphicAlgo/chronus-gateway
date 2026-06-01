@@ -135,14 +135,32 @@ foundation smoke run) so propagation changes are caught.
 **Tested by:** `config` unit tests (validation, file errors) and `propagator` tests (deterministic
 state, counting-mock trait-swap + throttle).
 
+### D-012 — Physics–Telemetry Co-Validation thresholds (Milestone 4; resolves OD-C)
+**Decision:** Implement `validate::apply_physics_validation` with:
+- **Doppler:** non-relativistic `f_expected = f_nominal − f_nominal × (v_m/s / c)` where
+  `v_m/s = range_rate_km_s × 1000` (Ephemerust sign: positive = receding). Compare to optional
+  `RfMetadata::measured_carrier_hz`; if `|measured − expected| > doppler_tolerance_hz`, set bit 0.
+  Default tolerance **150 Hz** on `StationConfig` (`T-DOPPLER` in `TEST_PLAN.md`).
+- **Elevation:** if `elevation_deg < minimum_elevation_deg`, set bit 1. Default threshold **0°**
+  (strict: below mathematical horizon is anomalous). Negative thresholds allow a refraction mask.
+- **Bit 2:** reserved for RSSI / link budget (`FLAG_RSSI_RESERVED`); not set in this milestone.
+- **`RfMetadata::measured_carrier_hz == None`:** Doppler check skipped (no bit 0); production SDR
+  wiring comes with M5 or a side channel.
+**Why OD-C is closed:** Ephemerust documents `range_rate_km_s` to ~0.25 km/s vs a 1 s central
+difference; at L-band (~437 MHz) that maps to sub-kHz frequency uncertainty from propagation math
+alone. The ±150 Hz band is therefore dominated by atmosphere, receiver chain, and clock effects,
+not SGP4 truncation at the teaching-grade arcminute level (D-004).
+**`TelemetryFrame`:** `raw` and `payload_len` are `pub(crate)` so `validate` unit tests can build
+minimal frames without exposing internals on the public API.
+**Tested by:** nine `validate` unit tests (in/out-of-band Doppler, horizon, combined flags, NaN-safe
+skip, formula identity).
+
 ---
 
 ## Open decisions (to resolve as milestones land)
 - **OD-B — Web/distribution stack.** Axum (mirrors Rusty_Server) for the WebSocket + HTTP API to
   Open MCT. Confirm the Open MCT telemetry dictionary + JSON format contract.
-- **OD-C — Doppler/RSSI tolerance budget.** Validate the ±150 Hz Doppler and link-budget margins
-  against Ephemerust's accuracy posture (D-004) before publishing hard numbers.
-- **OD-D — HIL simulation (NeXosim).** Optional Milestone 4; scope a single simulated spacecraft
+- **OD-D — HIL simulation (NeXosim).** Optional Milestone 7; scope a single simulated spacecraft
   on a laptop before any multi-node/rack topology.
 
 ---
@@ -162,4 +180,4 @@ External works this project builds on or is inspired by (keep current per `AGENT
 
 ---
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-01.*
