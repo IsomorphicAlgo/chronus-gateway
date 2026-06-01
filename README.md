@@ -60,13 +60,14 @@ chronus-gateway/
 │       └── ingest.rs       Milestone 1 integration tests
 ├── AGENTS.md               Project constitution (compliance, attribution, security, testing)
 ├── Methodology.md          Decision log: the reasoning behind major choices
+├── RUNBOOK.md              Runtime guide: public interfaces, workflow, troubleshooting
 ├── BUILD_PLAN.md           Iterative, stage-gated implementation roadmap
 └── TEST_PLAN.md            Companion test plan and tolerance register
 ```
 
 ---
 
-## Building and running
+## Setup
 
 The project targets Rust 1.88 or newer and consumes the Ephemerust library as a sibling
 checkout. The expected on-disk layout places both repositories next to each other:
@@ -77,15 +78,56 @@ checkout. The expected on-disk layout places both repositories next to each othe
 └── Ephemerust/
 ```
 
+If Cargo reports that `../Ephemerust` is missing, clone the public Ephemerust repository next to
+this checkout (not inside it) and rerun the command. Keep any local credentials, station-specific
+settings, or private mission data outside the repository; `.env`, `*.local.toml`, and
+`credentials.txt` are ignored on purpose.
+
 ```bash
-cargo build      # compile the workspace
-cargo run        # run the foundation smoke test
-cargo test       # unit + integration + doctests
+cargo build                 # compile the workspace
+cargo test                  # unit + integration + doctests
+cargo clippy --all-targets  # lint all targets
 ```
 
 > **Windows note:** on the maintainer's machine the MSVC `link.exe` is blocked from writing
 > freshly linked executables. The repository is therefore configured (`.cargo/config.toml`) to
 > link with the toolchain's bundled `rust-lld`. See `Methodology.md` (D-008) for details.
+
+---
+
+## Running the current gateway
+
+The current binary runs the implemented M1-M3 path:
+
+1. bind a UDP downlink socket from `IngestConfig` (default `127.0.0.1:7301`);
+2. broadcast each datagram as a `RawFrame`;
+3. parse CCSDS telemetry packets into `TelemetryFrame`;
+4. compute a throttled `TrackingState` from `StationConfig` and the Ephemerust backend;
+5. log accepted telemetry or recoverable parse/drop reasons.
+
+```bash
+RUST_LOG=info cargo run -p chronus-gateway
+```
+
+In another terminal, send a synthetic CCSDS telemetry packet over loopback:
+
+```bash
+python3 - <<'PY'
+import socket
+
+# TM packet, APID 0x02A, sequence 7, 5-byte packet data field "hello".
+packet = bytes([0x00, 0x2A, 0xC0, 0x07, 0x00, 0x04]) + b"hello"
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.sendto(packet, ("127.0.0.1", 7301))
+PY
+```
+
+You should see a `telemetry frame parsed` log with APID, sequence count, payload length, and (when
+the default public ISS TLE resolves) azimuth/elevation/range/range-rate. Stop the process with
+Ctrl-C. The co-validation flags are reserved for Milestone 4, and the Open MCT WebSocket/API layer
+is reserved for Milestone 5.
+
+For operational details, public interfaces, and troubleshooting, see [`RUNBOOK.md`](RUNBOOK.md).
 
 ---
 
@@ -95,6 +137,30 @@ Testing is a first-class deliverable. The project follows a layered strategy —
 integration tests over loopback UDP and in-process WebSockets, doctests, and physics
 co-validation tests with explicitly documented tolerances — enforced at every milestone's stage
 gate. The full strategy and per-milestone test matrix are defined in [`TEST_PLAN.md`](TEST_PLAN.md).
+
+---
+
+## References
+
+- [`AGENTS.md`](AGENTS.md) — project constitution: compliance, attribution, security, and testing
+  requirements.
+- [`BUILD_PLAN.md`](BUILD_PLAN.md) and [`TEST_PLAN.md`](TEST_PLAN.md) — stage-gated roadmap,
+  milestone status, test gates, and tolerance register.
+- [`Methodology.md`](Methodology.md) — decision log for language, workspace layout, async runtime,
+  CCSDS parser choice, Ephemerust integration, and station/tracking configuration.
+- [`RUNBOOK.md`](RUNBOOK.md) — source-backed operational guide for the implemented UDP ingestion,
+  CCSDS parser, and tracking provider path.
+- [`crates/gateway/src/ingest.rs`](crates/gateway/src/ingest.rs),
+  [`crates/gateway/src/ccsds.rs`](crates/gateway/src/ccsds.rs),
+  [`crates/gateway/src/config.rs`](crates/gateway/src/config.rs), and
+  [`crates/gateway/src/propagator.rs`](crates/gateway/src/propagator.rs) — current public
+  interfaces and constraints.
+- [CCSDS](https://public.ccsds.org/) — open space packet and TMTC standards used for the wire
+  format boundary.
+- [`spacepackets`](https://crates.io/crates/spacepackets) — Rust CCSDS/ECSS packet parsing crate
+  used behind the local `ccsds` module.
+- [Ephemerust](https://github.com/IsomorphicAlgo/ephemerust) — sibling SGP4/look-angle backend.
+- [Tokio](https://tokio.rs/) — asynchronous runtime used for UDP ingestion and planned fan-out.
 
 ---
 
