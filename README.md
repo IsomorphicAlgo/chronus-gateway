@@ -11,9 +11,9 @@ telemetry only against static limits, the gateway uses a live orbital propagator
 expected Doppler shift, look-angles, and link geometry for the spacecraft, and flags frames whose
 measured RF and signal parameters disagree with the physics.
 
-> **Status:** Foundation stage. The astrodynamics seam is implemented and verified end to end;
-> ingestion, CCSDS parsing, the co-validation engine, and the Open MCT distribution layer are
-> tracked as gated milestones in [`BUILD_PLAN.md`](BUILD_PLAN.md).
+> **Status:** Early development. The astrodynamics seam and the asynchronous UDP ingestion loop
+> (Milestone 1) are implemented and tested; CCSDS parsing, the co-validation engine, and the Open
+> MCT distribution layer are tracked as gated milestones in [`BUILD_PLAN.md`](BUILD_PLAN.md).
 
 ---
 
@@ -48,10 +48,14 @@ The reasoning behind these and other choices is recorded in [`Methodology.md`](M
 chronus-gateway/
 ├── Cargo.toml              Workspace manifest (centralized dependency versions, MSRV 1.88)
 ├── crates/gateway/         The gateway binary + library
-│   └── src/
-│       ├── lib.rs          Crate documentation and module wiring
-│       ├── propagator.rs   OrbitalPropagator trait + Ephemerust-backed implementation
-│       └── main.rs         Entrypoint (foundation smoke test)
+│   ├── src/
+│   │   ├── lib.rs          Crate documentation and module wiring
+│   │   ├── config.rs       Ingestion configuration
+│   │   ├── ingest.rs       Asynchronous UDP ingestion loop (RawFrame, stats, shutdown)
+│   │   ├── propagator.rs   OrbitalPropagator trait + Ephemerust-backed implementation
+│   │   └── main.rs         Entrypoint (runs the ingestion server)
+│   └── tests/
+│       └── ingest.rs       Milestone 1 integration tests
 ├── AGENTS.md               Project constitution (compliance, attribution, security, testing)
 ├── Methodology.md          Decision log: the reasoning behind major choices
 ├── BUILD_PLAN.md           Iterative, stage-gated implementation roadmap

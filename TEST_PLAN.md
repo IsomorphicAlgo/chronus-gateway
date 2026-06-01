@@ -48,15 +48,18 @@ cargo clippy --all-targets
 
 ### M0 — Foundation
 - [x] Binary smoke run produces a finite `TrackingState` (az/el/range/range-rate) from the ISS TLE.
-- [ ] (Add) doctest on `EphemerustPropagator::new` showing construction + a bounded assertion.
+- [x] Doctest on `EphemerustPropagator::new` showing construction + a bounded assertion.
+- [x] Unit tests: finite tracking state near epoch; invalid TLE rejected.
 
 ### M1 — Ingestion
-- [ ] **Integration:** bind to an ephemeral loopback port, send `N` datagrams, assert `N` frames
-      observed on the channel in order (seq preserved).
-- [ ] **Shutdown:** cancellation stops the loop promptly with no leaked task/panic.
-- [ ] **Security:** datagram larger than `max_datagram_size` is rejected/truncated safely; no
-      allocation driven by attacker-controlled length.
-- [ ] **Backpressure:** a slow subscriber increments the drop counter; the socket never blocks.
+- [x] **Integration:** bind to an ephemeral loopback port, send `N` datagrams, assert `N` frames
+      observed on the channel in order (`receives_all_datagrams_in_order`).
+- [x] **Shutdown:** cancellation stops the loop promptly with no leaked task/panic
+      (`shutdown_stops_loop_promptly`).
+- [x] **Security:** oversized datagram handled safely; loop keeps delivering valid frames; buffer
+      fixed at `max_datagram_size` (`oversized_datagram_does_not_break_loop`).
+- [x] **Backpressure:** a slow subscriber observes `Lagged` while the socket loop receives all
+      datagrams (`lagging_subscriber_never_blocks_socket`).
 
 ### M2 — CCSDS parsing
 - [ ] **Unit:** parse a golden primary header → correct version/type/APID/seq/length.
@@ -109,8 +112,8 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 ## Status / counts (keep current)
 | Layer | Count | Notes |
 |-------|-------|-------|
-| Unit tests | 0 | M0 ships behavior via smoke binary; unit tests begin at M1. |
-| Integration tests | 0 | First suite at M1 (loopback UDP). |
-| Doctests | 0 | Add `propagator` doctest as first (M0 follow-up). |
+| Unit tests | 2 | `propagator` (finite tracking state, invalid TLE rejected). |
+| Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
+| Doctests | 1 | `EphemerustPropagator::new`. |
 
 *Last updated: 2026-05-31.*

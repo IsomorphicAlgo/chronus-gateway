@@ -86,6 +86,23 @@ requires admin. **Scope:** affects only the Windows MSVC target; non-Windows bui
 `rustup update` (only changes if a specific toolchain version is pinned — see D-006). Update the
 path if that changes.
 
+### D-009 — Ingestion frame type and backpressure (Milestone 1)
+**Decision:** `RawFrame.bytes` is an `Arc<[u8]>`; datagrams are fanned out on a **lossy**
+`tokio::sync::broadcast` channel; the receive buffer is fixed at `max_datagram_size`; shutdown is
+any `impl Future<Output=()>`.
+**Why:**
+- `Arc<[u8]>` makes the per-subscriber broadcast clone a refcount bump, not a payload copy, while
+  avoiding a new `bytes` dependency (revisit `bytes::Bytes` at M2 if the parser benefits).
+- A lossy broadcast satisfies the hard requirement that a slow consumer never stalls the socket:
+  the oldest frames are dropped and laggards see `RecvError::Lagged`. Telemetry favors freshest
+  data over guaranteed delivery of stale frames.
+- A fixed buffer means no allocation is driven by attacker-controlled length (security rule 3).
+  Oversized datagrams error on Windows (`WSAEMSGSIZE`, counted) and truncate on Unix; the loop
+  stays in sync either way.
+- A generic `Future` shutdown keeps the lib runtime-agnostic and trivially testable (oneshot in
+  tests, `ctrl_c` in `main`) without a `tokio-util` `CancellationToken` dependency.
+**Tested by:** `tests/ingest.rs` (order, shutdown, oversized, backpressure).
+
 ---
 
 ## Open decisions (to resolve as milestones land)

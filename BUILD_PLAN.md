@@ -29,27 +29,30 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner approval required to adv
 
 ---
 
-## Milestone 1 — Asynchronous ingestion loop
+## Milestone 1 — Asynchronous ingestion loop ✅ **Complete (2026-05-31)**
 
 **Objective:** Bind a UDP socket and stream raw datagrams onto an internal channel under load,
 with clean startup/shutdown. (Derived from the PDF's Milestone 1 / Rusty_Server async patterns.)
 
 **Deliverables**
-- [ ] `ingest` module: `tokio::net::UdpSocket` bound to a configurable addr; receive loop into a
-      reusable buffer; forward `RawFrame { bytes, received_at, source }` on a
-      `tokio::sync::broadcast` channel.
-- [ ] Bounded, backpressure-aware channel; lagging-receiver behavior defined (count drops, never
-      block the socket).
-- [ ] Minimal config (`config` module): bind address, channel capacity, max datagram size.
-- [ ] Graceful shutdown (Ctrl-C / cancellation token); structured `tracing` spans + counters
-      (frames received, bytes, drops).
+- [x] `ingest` module: `tokio::net::UdpSocket` bound to a configurable addr; receive loop into a
+      reusable buffer; forward `RawFrame { bytes, received_at, source }` (cheap-clone `Arc<[u8]>`)
+      on a `tokio::sync::broadcast` channel.
+- [x] Bounded, lossy broadcast channel; a lagging subscriber observes `Lagged` and never blocks
+      the socket loop.
+- [x] Minimal config (`config` module): bind address, channel capacity, max datagram size.
+- [x] Graceful shutdown (Ctrl-C in `main`, any `Future` in the lib); `#[tracing::instrument]`
+      span + atomic counters (`frames_received`, `bytes_received`, `oversized_dropped`,
+      `recv_errors`).
 
-**Security:** cap datagram size; never allocate based on attacker-controlled length.
+**Security:** receive buffer fixed at `max_datagram_size`; no allocation from attacker-controlled
+length; oversized datagrams dropped (Windows `WSAEMSGSIZE`) / truncated (Unix) without desync.
 
-**Test gate:** [TEST_PLAN.md → M1](TEST_PLAN.md#m1--ingestion) — loopback UDP integration test
-(send N datagrams → receive N frames), shutdown test, oversized-datagram test.
+**Test gate:** [TEST_PLAN.md → M1](TEST_PLAN.md#m1--ingestion) — **all green**: ordered delivery,
+prompt shutdown, oversized-datagram resilience, backpressure/lag. (4 integration + 2 unit + 1
+doctest.)
 
-**Gate 1:** [ ] Ingestion loop reviewed; tests green; proceed to M2.
+**Gate 1:** [x] Ingestion loop implemented; tests + clippy green. Ready for M2 on approval.
 
 ---
 

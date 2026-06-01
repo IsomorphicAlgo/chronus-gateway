@@ -3,10 +3,9 @@
 //! An asynchronous, physics-validated Telemetry & Command (TMTC) gateway that bridges raw
 //! spacecraft downlinks and web-based mission control (e.g. NASA Open MCT).
 //!
-//! This crate is in **foundation** state: it currently exposes the [`propagator`] seam
-//! (the keystone of the Physics-Telemetry Co-Validation engine). The async ingestion loop,
-//! CCSDS parsing, validation engine, and WebSocket fan-out land in subsequent milestones
-//! (see `Methodology.md` and the build plan).
+//! Implemented so far: the [`propagator`] seam (keystone of the Physics-Telemetry Co-Validation
+//! engine) and the asynchronous UDP [`ingest`] loop (Milestone 1). CCSDS parsing, the validation
+//! engine, and the WebSocket fan-out land in subsequent milestones (see `BUILD_PLAN.md`).
 //!
 //! ## Standards & compliance
 //!
@@ -14,4 +13,9 @@
 //! ITAR/EAR posture, attribution policy, and security priorities — all contributors and agents
 //! must follow it.
 
+pub mod config;
+pub mod ingest;
 pub mod propagator;
+
+pub use config::IngestConfig;
+pub use ingest::{IngestStats, RawFrame};
