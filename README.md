@@ -42,6 +42,31 @@ The reasoning behind these and other choices is recorded in [`Methodology.md`](M
 
 ---
 
+## Implemented workflow (Milestones 1-4)
+
+The checked-in gateway currently runs the first half of the telemetry pipeline:
+
+1. **UDP ingest** (`ingest::run`) binds `127.0.0.1:7301` by default, receives datagrams into a fixed
+   buffer, and broadcasts `RawFrame` values on a lossy `tokio::sync::broadcast` channel.
+2. **CCSDS parse** (`ccsds::parse_telemetry`) validates the Space Packet primary header, rejects TC
+   packets on the telemetry path, and exposes the packet data field through a zero-copy
+   `TelemetryFrame::payload()` borrow.
+3. **Tracking state** (`TrackingProvider`) computes or reuses an Ephemerust-backed
+   `TrackingState` for the frame timestamp, throttled by `StationConfig::min_recompute_interval_ms`.
+4. **Physics validation** (`validate::apply_physics_validation`) clears and sets
+   `TelemetryFrame::physics_flags`:
+
+   | Bit | Mask | Meaning |
+   |-----|------|---------|
+   | 0 | `0x01` | Doppler anomaly: measured carrier differs from expected by more than the configured tolerance. |
+   | 1 | `0x02` | Below configured minimum elevation. |
+   | 2 | `0x04` | Reserved for future RSSI / link-budget validation; not set today. |
+
+The binary is still a development runner: it logs parsed frames and validation flags, but does not
+yet expose WebSocket/Open MCT distribution (Milestone 5).
+
+---
+
 ## Repository layout
 
 ```
@@ -66,6 +91,23 @@ chronus-gateway/
 
 ---
 
+## Public Rust interfaces
+
+The crate re-exports the current public API from `chronus_gateway`:
+
+- `IngestConfig`, `RawFrame`, `IngestStats`, and `ingest::bind` / `ingest::run` for UDP capture.
+- `TelemetryFrame`, `CcsdsError`, and `ccsds::parse_telemetry` for CCSDS telemetry parsing.
+- `StationConfig`, `TleSource`, `EphemerustPropagator`, `OrbitalPropagator`, `TrackingProvider`,
+  and `TrackingState` for station-aware orbit geometry.
+- `RfMetadata`, `expected_carrier_hz`, `apply_physics_validation`, and the `FLAG_*` constants for
+  Physics-Telemetry Co-Validation.
+
+All network-facing inputs are bounded and recoverable by design: malformed/truncated CCSDS packets
+return structured errors, oversized UDP datagrams do not drive unbounded allocation, and slow
+consumers lag instead of blocking the socket loop.
+
+---
+
 ## Building and running
 
 The project targets Rust 1.88 or newer and consumes the Ephemerust library as a sibling
@@ -79,13 +121,51 @@ checkout. The expected on-disk layout places both repositories next to each othe
 
 ```bash
 cargo build      # compile the workspace
-cargo run        # run the foundation smoke test
+cargo run        # run the development ingestion/validation gateway
 cargo test       # unit + integration + doctests
 ```
+
+To exercise the implemented UDP path locally, run the gateway in one terminal:
+
+```bash
+cargo run -p chronus-gateway
+```
+
+Then send a synthetic CCSDS telemetry packet from another terminal:
+
+```bash
+python3 - <<'PY'
+import socket
+
+# TM packet, APID 0x02a, sequence 1, 5-byte packet data field "hello".
+packet = bytes([0x00, 0x2A, 0xC0, 0x01, 0x00, 0x04]) + b"hello"
+socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(packet, ("127.0.0.1", 7301))
+PY
+```
+
+Expected result: the gateway logs `telemetry frame parsed` with `apid=42`, `seq=1`, and a
+`physics_flags` value when an Ephemerust tracking state is available for the frame timestamp.
+Without SDR metadata, Doppler bit 0 is skipped; the elevation gate can still set bit 1.
 
 > **Windows note:** on the maintainer's machine the MSVC `link.exe` is blocked from writing
 > freshly linked executables. The repository is therefore configured (`.cargo/config.toml`) to
 > link with the toolchain's bundled `rust-lld`. See `Methodology.md` (D-008) for details.
+
+---
+
+## Developer runbook and pitfalls
+
+- **Sibling dependency:** keep `Ephemerust/` next to this repo (`../Ephemerust` from the workspace
+  root). A missing checkout fails dependency resolution before compilation starts.
+- **Toolchain:** use Rust 1.88 or newer. If the local default is older, run commands with a newer
+  toolchain, for example `cargo +stable test`.
+- **Bind address:** development defaults to loopback (`127.0.0.1:7301`). Change `IngestConfig` in
+  code for a different interface until external configuration lands.
+- **TLE freshness:** the default ISS TLE is public reference data for deterministic development.
+  If propagation fails at a far-future timestamp, ingestion and parsing still continue and the
+  binary logs the frame without physics state.
+- **Backpressure:** the broadcast channel is intentionally lossy. Treat `Lagged` as a signal to
+  increase capacity, reduce consumer work, or prefer a different delivery contract for archival use.
 
 ---
 
@@ -95,6 +175,24 @@ Testing is a first-class deliverable. The project follows a layered strategy —
 integration tests over loopback UDP and in-process WebSockets, doctests, and physics
 co-validation tests with explicitly documented tolerances — enforced at every milestone's stage
 gate. The full strategy and per-milestone test matrix are defined in [`TEST_PLAN.md`](TEST_PLAN.md).
+
+---
+
+## References
+
+- Consultative Committee for Space Data Systems (CCSDS), **Space Packet Protocol**, public
+  recommended standards: <https://public.ccsds.org/>.
+- `spacepackets` crate documentation and source for CCSDS/ECSS packet handling:
+  <https://crates.io/crates/spacepackets>.
+- Ephemerust, the project's sibling astrodynamics crate:
+  <https://github.com/IsomorphicAlgo/ephemerust>.
+- `sgp4` crate documentation for the SGP4/SDP4 propagation backend used by Ephemerust:
+  <https://crates.io/crates/sgp4>.
+- Tokio asynchronous runtime documentation: <https://tokio.rs/>.
+- Axum web framework documentation, planned for Milestone 5 distribution:
+  <https://github.com/tokio-rs/axum>.
+- NASA Open MCT documentation for the planned dashboard integration:
+  <https://nasa.github.io/openmct/>.
 
 ---
 
