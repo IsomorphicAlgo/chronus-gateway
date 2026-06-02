@@ -20,7 +20,8 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner approval required to adv
 **Deliverables**
 - [x] Cargo workspace (`crates/gateway`), centralized `[workspace.dependencies]`, MSRV 1.88.
 - [x] `OrbitalPropagator` trait + `EphemerustPropagator` backend (`src/propagator.rs`).
-- [x] `main.rs` smoke test producing a real `TrackingState` from a reference ISS TLE.
+- [x] Initial `main.rs` smoke test producing a real `TrackingState` from a reference ISS TLE
+      (the entrypoint now runs the full M1-M4 ingest → parse → track → validate logging pipeline).
 - [x] Governance: `AGENTS.md`, `Methodology.md`; build unblocked via `rust-lld` (D-008).
 
 **Test gate:** [TEST_PLAN.md → M0](TEST_PLAN.md#m0--foundation) — smoke run succeeds.
@@ -181,4 +182,4 @@ sustained-rate soak run.
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
 - Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-02.*

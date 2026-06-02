@@ -5,8 +5,8 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **Milestone 4 complete**. The implemented binary performs UDP ingestion → CCSDS parsing
+> → station tracking → physics co-validation logging. Open MCT WebSocket fan-out remains Milestone 5.
 
 ---
 
@@ -68,8 +68,9 @@ later if/when CI reproducibility demands it.
 ### D-007 — Async runtime: Tokio (multi-threaded)
 **Decision:** Use Tokio (`features = ["full"]`) as the async runtime.
 **Why:** It's the de-facto standard for high-throughput async networking in Rust and underpins
-the planned UDP ingestion loop, broadcast channel fan-out, and Axum WebSocket distribution.
-Propagators are `Send + Sync` so a single instance can be shared (`Arc`) across worker threads.
+the UDP ingestion loop, broadcast channel fan-out, and planned Axum WebSocket distribution.
+Propagators are `Send + Sync` so a single instance can be shared (`Arc`) across worker threads and
+future WebSocket clients.
 
 ### D-008 — Linker: bundled `rust-lld` instead of MSVC `link.exe` (Windows)
 **Decision:** `.cargo/config.toml` points the `x86_64-pc-windows-msvc` target at the toolchain's
@@ -165,6 +166,23 @@ skip, formula identity).
 
 ---
 
+## References
+Sources used for architecture and implementation decisions; keep alongside the attribution table.
+
+- **Project plans:** `BUILD_PLAN.md` for milestone scope, `TEST_PLAN.md` for gates/tolerances, and
+  `AGENTS.md` for compliance/security/testing requirements.
+- **Runtime source of truth:** `crates/gateway/src/main.rs` (current pipeline),
+  `config.rs` (defaults), `ingest.rs` (UDP/backpressure), `ccsds.rs` (packet validation),
+  `propagator.rs` (tracking seam), and `validate.rs` (`physics_flags`).
+- **Protocol references:** CCSDS public Space Packet standards; parsed through the `spacepackets`
+  crate behind the local `ccsds` module boundary.
+- **Astrodynamics references:** Ephemerust documentation/tests for look-angle and range-rate
+  behavior; Ephemerust delegates SGP4/SDP4 propagation to the `sgp4` crate.
+- **Planned distribution/HIL references:** NASA Open MCT for the operator UI contract, Axum for
+  WebSocket/HTTP serving, and NeXosim for optional simulation work.
+
+---
+
 ## Attribution
 External works this project builds on or is inspired by (keep current per `AGENTS.md` rule 2):
 
@@ -174,10 +192,12 @@ External works this project builds on or is inspired by (keep current per `AGENT
 | `sgp4` crate | Underlying SGP4/SDP4 numerics (via Ephemerust) | crates.io |
 | `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
-| Tokio, Axum, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates | crates.io, MIT/Apache-2.0 |
+| Tokio, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates used today | crates.io, MIT/Apache-2.0 |
+| Axum | Planned WebSocket/HTTP distribution layer (M5), inspired by Rusty_Server patterns | crates.io, MIT |
 | CCSDS standards | TMTC framing/packet specifications | open international standards |
 | NASA Open MCT | Target mission-control dashboard | open source (NASA) |
+| NeXosim | Planned optional HIL simulation framework (M7 stretch) | open source |
 
 ---
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*
