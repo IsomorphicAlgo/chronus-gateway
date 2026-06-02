@@ -13,6 +13,19 @@
 //! Built strictly on open, international standards (CCSDS). See `AGENTS.md` for the project's
 //! ITAR/EAR posture, attribution policy, and security priorities — all contributors and agents
 //! must follow it.
+//!
+//! ## Current pipeline
+//!
+//! The live binary and library users compose the implemented stages in this order:
+//!
+//! 1. [`ingest::bind`] and [`ingest::run`] capture UDP datagrams as [`RawFrame`] values.
+//! 2. [`ccsds::parse_telemetry`] validates each datagram as a CCSDS Space Packet and returns a
+//!    zero-copy [`TelemetryFrame`].
+//! 3. [`TrackingProvider`] supplies an Ephemerust-backed [`TrackingState`] for the frame timestamp.
+//! 4. [`apply_physics_validation`] sets [`TelemetryFrame::physics_flags`] from Doppler/elevation
+//!    checks using optional [`RfMetadata`].
+//!
+//! WebSocket/Open MCT distribution is planned for Milestone 5.
 
 pub mod ccsds;
 pub mod config;

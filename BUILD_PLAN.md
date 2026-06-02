@@ -49,8 +49,7 @@ with clean startup/shutdown. (Derived from the PDF's Milestone 1 / Rusty_Server 
 length; oversized datagrams dropped (Windows `WSAEMSGSIZE`) / truncated (Unix) without desync.
 
 **Test gate:** [TEST_PLAN.md → M1](TEST_PLAN.md#m1--ingestion) — **all green**: ordered delivery,
-prompt shutdown, oversized-datagram resilience, backpressure/lag. (4 integration + 2 unit + 1
-doctest.)
+prompt shutdown, oversized-datagram resilience, backpressure/lag. (4 integration tests.)
 
 **Gate 1:** [x] Ingestion loop implemented; tests + clippy green. Ready for M2 on approval.
 
@@ -113,7 +112,8 @@ Recorded in `Methodology.md` D-012 and `TEST_PLAN.md`.
 - [x] Elevation gate: flag when `elevation_deg < minimum_elevation_deg` (bit 1). Defaults reject
       below-horizon passes for synthetic demo geometry.
 - [x] RSSI / link budget: bit 2 **reserved**, documented; not implemented in this slice.
-- [x] Stable `physics_flags` bitfield documented in `validate` module and `TEST_PLAN.md`.
+- [x] Stable `physics_flags` bitfield documented in `validate` module, `README.md`, and
+      `TEST_PLAN.md`.
 
 **Test gate:** [TEST_PLAN.md → M4](TEST_PLAN.md#m4--co-validation) — **all green**: in-band Doppler,
 out-of-band Doppler, horizon, combined, independent bits, no-measured skip, NaN-safe.
@@ -181,4 +181,4 @@ sustained-rate soak run.
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
 - Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-02.*
