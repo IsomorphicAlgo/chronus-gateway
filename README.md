@@ -125,7 +125,7 @@ To exercise the current binary with a synthetic, public CCSDS telemetry packet:
 RUST_LOG=info cargo run
 
 # terminal 2: TM packet, APID 0x02a, sequence 7, payload "hello"
-python - <<'PY'
+python3 - <<'PY'
 import socket
 packet = bytes([0x00, 0x2A, 0xC0, 0x07, 0x00, 0x04]) + b"hello"
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
