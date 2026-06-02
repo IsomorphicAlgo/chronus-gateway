@@ -1,8 +1,8 @@
 //! ChronusGateway-RS entrypoint.
 //!
-//! Milestone 1: binds the UDP downlink socket and runs the asynchronous ingestion loop,
-//! logging received frames and final statistics. Later milestones extend this into the full
-//! pipeline: CCSDS parse → physics co-validation → Open MCT WebSocket fan-out.
+//! Current M1-M4 demonstration pipeline: bind the UDP downlink socket, broadcast raw frames,
+//! parse CCSDS telemetry, compute station tracking state, apply Physics-Telemetry
+//! Co-Validation, and emit structured logs. WebSocket/Open MCT fan-out is Milestone 5.
 
 use std::sync::Arc;
 

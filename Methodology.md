@@ -5,8 +5,10 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **Milestones 1-4 complete.** UDP ingestion, CCSDS telemetry parsing,
+> station-configured tracking, and Physics-Telemetry Co-Validation are implemented and tested.
+> Open MCT WebSocket fan-out remains the next major milestone; the binary still uses in-code
+> default config rather than an external runtime config file.
 
 ---
 

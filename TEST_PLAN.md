@@ -91,6 +91,11 @@ cargo clippy --all-targets
 - [x] **Non-finite RF:** NaN measured carrier skips Doppler without panic (`nan_measured_skips_doppler_no_panic`).
 - [x] **Formula:** non-relativistic Doppler identity locked by unit test (`expected_carrier_matches_non_relativistic_formula`).
 
+**Current integration scope:** M2-M4 are covered by focused unit tests and are exercised by the
+binary's demonstration loop, but there is not yet a `tests/*.rs` end-to-end suite for
+ingest → parse → track → validate. That cross-stage integration test is the first M5 gate below,
+where the WebSocket distribution boundary gives the pipeline a stable observable output.
+
 ### M5 — Distribution
 - [ ] **End-to-end:** in-process `ingest → parse → validate → WebSocket`; a connected client
       receives well-formed Open MCT JSON including `physics_flags`.
@@ -124,7 +129,7 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Layer | Count | Notes |
 |-------|-------|-------|
 | Unit tests | 24 | `ccsds` (7) + `config` (4) + `propagator` (4) + `validate` (9). |
-| Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
+| Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure); full parse/validate E2E planned for M5. |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*
