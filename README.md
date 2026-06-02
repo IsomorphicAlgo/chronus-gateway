@@ -101,7 +101,7 @@ cargo run
 In another terminal, send a synthetic CCSDS telemetry packet over loopback:
 
 ```bash
-python - <<'PY'
+python3 - <<'PY'
 import socket
 
 # TM packet, APID 0x02A, unsegmented seq 7, five-byte data field b"hello".
