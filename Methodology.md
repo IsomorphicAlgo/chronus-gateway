@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **Milestone 4 complete.** The local binary now ingests UDP datagrams, parses CCSDS Space
+> Packet primary headers, computes throttled station-relative tracking state, and applies
+> physics_flags co-validation. Open MCT WebSocket fan-out remains Milestone 5.
 
 ---
 
@@ -106,11 +107,15 @@ any `impl Future<Output=()>`.
 ### D-010 — CCSDS parsing crate: `spacepackets` (resolves OD-A)
 **Decision:** Use **`spacepackets` 0.17** (us-irs) for CCSDS Space Packet parsing, wrapped behind
 the `ccsds` module so the rest of the gateway depends on our `TelemetryFrame`, not on the crate.
-**Why:** It supports the full primary header plus secondary-header/PUS handling we will need for
-real telemetry, is actively maintained, and parses with a clean `from_be_bytes` returning the
-header and remaining slice. `space-packet` is Kani-verified but primary-header-only; an in-house
-parser would duplicate well-tested work and own the correctness burden (against AGENTS security
-posture). Keeping it behind the module boundary preserves the option to swap later.
+**Implemented scope:** M2 decodes the 6-byte Space Packet primary header, records the
+secondary-header flag, validates declared packet length, and borrows the data field zero-copy.
+Secondary-header/PUS decoding is intentionally deferred until downstream payload contracts exist.
+**Why:** `spacepackets` supports the primary-header path needed now and the secondary/PUS handling
+we will need for real telemetry later; it is actively maintained and parses with a clean
+`from_be_bytes` returning the header and remaining slice. `space-packet` is Kani-verified but
+primary-header-only; an in-house parser would duplicate well-tested work and own the correctness
+burden (against AGENTS security posture). Keeping it behind the module boundary preserves the
+option to swap later.
 **Frame representation:** `TelemetryFrame` retains the original `Arc<[u8]>` datagram and exposes
 the packet data field via a zero-copy `payload()` borrow (no `bytes` crate needed — extends D-009).
 **Validation:** length → decode → declared-vs-available → TM/TC; recoverable `CcsdsError` per case,
@@ -155,6 +160,20 @@ minimal frames without exposing internals on the public API.
 **Tested by:** nine `validate` unit tests (in/out-of-band Doppler, horizon, combined flags, NaN-safe
 skip, formula identity).
 
+### D-013 — Local runtime boundary before WebSocket distribution
+**Decision:** Until M5 lands, `main.rs` is a local UDP demonstration pipeline using
+`IngestConfig::default()` and `StationConfig::default()`: ingest raw datagrams, parse CCSDS
+telemetry, request throttled tracking state, apply physics co-validation, and log the resulting
+frame fields.
+**Why:** This keeps M1-M4 executable end to end without prematurely committing to the Open MCT JSON
+contract or Axum route shape. It also preserves deterministic, synthetic/public defaults for
+development: loopback UDP, a public ISS TLE, and generic station geometry.
+**Current limit:** `RfMetadata::default()` means `measured_carrier_hz` is absent in the binary, so
+Doppler validation is skipped at runtime; the elevation gate still runs when tracking state is
+available. SDR/front-end RF metadata wiring is part of M5 or a dedicated ingest side-channel.
+**Tested by:** existing M1 integration tests plus M2-M4 unit tests; full ingest -> parse -> validate
+integration remains M5's gate.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -174,10 +193,12 @@ External works this project builds on or is inspired by (keep current per `AGENT
 | `sgp4` crate | Underlying SGP4/SDP4 numerics (via Ephemerust) | crates.io |
 | `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
-| Tokio, Axum, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates | crates.io, MIT/Apache-2.0 |
+| Tokio, Tracing, Serde, Serde JSON, Chrono, Anyhow, Thiserror | Runtime/infra crates | crates.io, MIT/Apache-2.0 |
+| Axum | Planned WebSocket/HTTP framework for M5 | crates.io, MIT |
 | CCSDS standards | TMTC framing/packet specifications | open international standards |
 | NASA Open MCT | Target mission-control dashboard | open source (NASA) |
+| NeXosim | Planned HIL simulation framework (stretch M7) | GitHub, open source |
 
 ---
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*

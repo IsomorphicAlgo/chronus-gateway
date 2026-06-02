@@ -20,7 +20,8 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner approval required to adv
 **Deliverables**
 - [x] Cargo workspace (`crates/gateway`), centralized `[workspace.dependencies]`, MSRV 1.88.
 - [x] `OrbitalPropagator` trait + `EphemerustPropagator` backend (`src/propagator.rs`).
-- [x] `main.rs` smoke test producing a real `TrackingState` from a reference ISS TLE.
+- [x] Initial `main.rs` smoke test producing a real `TrackingState` from a reference ISS TLE
+      (the binary has since evolved into the M1-M4 local UDP pipeline).
 - [x] Governance: `AGENTS.md`, `Methodology.md`; build unblocked via `rust-lld` (D-008).
 
 **Test gate:** [TEST_PLAN.md → M0](TEST_PLAN.md#m0--foundation) — smoke run succeeds.
@@ -60,8 +61,9 @@ doctest.)
 
 **Objective:** Turn raw datagrams into validated, structured telemetry frames.
 
-**Resolved decision:** **OD-A** → **`spacepackets` 0.17** (us-irs), primary **and** secondary
-header support. Recorded in `Methodology.md` D-010.
+**Resolved decision:** **OD-A** → **`spacepackets` 0.17** (us-irs). M2 implements primary-header
+parsing now and keeps secondary/PUS support available behind the module boundary for later payload
+contracts. Recorded in `Methodology.md` D-010.
 
 **Deliverables**
 - [x] `ccsds` module: parses the CCSDS Space Packet primary header (version, type, APID, sequence
@@ -90,6 +92,9 @@ round-trip, short/truncated/garbage rejected without panic, TM/TC routing. (7 un
       `main` now computes a `TrackingState` per parsed frame.
 - [x] TLE source supports inline now and file load; CelesTrak fetch deferred (backlog).
 
+**Runtime note:** `main.rs` currently uses `StationConfig::default()` and does not load external
+station config files or environment variables; deployment configuration is a later slice.
+
 **Test gate:** [TEST_PLAN.md → M3](TEST_PLAN.md#m3--propagator-integration) — **all green**: config
 validation (valid/invalid/missing-file), deterministic tracking-state (baseline-locked), mock
 trait-swap + throttle. (4 unit tests added.)
@@ -114,6 +119,9 @@ Recorded in `Methodology.md` D-012 and `TEST_PLAN.md`.
       below-horizon passes for synthetic demo geometry.
 - [x] RSSI / link budget: bit 2 **reserved**, documented; not implemented in this slice.
 - [x] Stable `physics_flags` bitfield documented in `validate` module and `TEST_PLAN.md`.
+
+**Runtime note:** the local binary passes `RfMetadata::default()`, so Doppler bit 0 is skipped until
+SDR/front-end metadata is wired; elevation bit 1 still runs when tracking state is available.
 
 **Test gate:** [TEST_PLAN.md → M4](TEST_PLAN.md#m4--co-validation) — **all green**: in-band Doppler,
 out-of-band Doppler, horizon, combined, independent bits, no-measured skip, NaN-safe.
@@ -181,4 +189,4 @@ sustained-rate soak run.
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
 - Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-02.*

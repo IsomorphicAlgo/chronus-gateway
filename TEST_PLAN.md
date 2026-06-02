@@ -91,6 +91,18 @@ cargo clippy --all-targets
 - [x] **Non-finite RF:** NaN measured carrier skips Doppler without panic (`nan_measured_skips_doppler_no_panic`).
 - [x] **Formula:** non-relativistic Doppler identity locked by unit test (`expected_carrier_matches_non_relativistic_formula`).
 
+Current M4 coverage is unit-level by design: validation is tested against deterministic mock
+tracking states and synthetic telemetry frames. The first full pipeline integration test
+(`ingest -> parse -> validate -> WebSocket`) is M5's gate.
+
+**`physics_flags` bitfield contract**
+
+| Bit | Mask | Meaning | M4 behavior |
+|-----|------|---------|-------------|
+| 0 | `0x01` | Doppler anomaly | Set when measured carrier is finite and differs from expected by more than `T-DOPPLER`; skipped when RF metadata has no measured carrier. |
+| 1 | `0x02` | Horizon / elevation anomaly | Set when predicted `elevation_deg` is strictly below `minimum_elevation_deg`. |
+| 2 | `0x04` | RSSI / link-budget anomaly | Reserved; never set by M4 code. |
+
 ### M5 — Distribution
 - [ ] **End-to-end:** in-process `ingest → parse → validate → WebSocket`; a connected client
       receives well-formed Open MCT JSON including `physics_flags`.
@@ -127,4 +139,4 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*

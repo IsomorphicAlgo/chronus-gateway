@@ -8,6 +8,13 @@
 //! the [`validate`] Physics–Telemetry Co-Validation engine (Milestone 4). WebSocket / Open MCT
 //! distribution is Milestone 5 (see `BUILD_PLAN.md`).
 //!
+//! ## Current pipeline
+//!
+//! `RawFrame` -> [`ccsds::parse_telemetry`] -> [`TrackingProvider::tracking_state`] ->
+//! [`apply_physics_validation`]. The crate re-exports the public frame, config, propagator, and
+//! validation types used by that path so integration tests and future distribution adapters do not
+//! depend on private module internals.
+//!
 //! ## Standards & compliance
 //!
 //! Built strictly on open, international standards (CCSDS). See `AGENTS.md` for the project's
