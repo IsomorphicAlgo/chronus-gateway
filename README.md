@@ -79,13 +79,99 @@ checkout. The expected on-disk layout places both repositories next to each othe
 
 ```bash
 cargo build      # compile the workspace
-cargo run        # run the foundation smoke test
+cargo run        # run the developer/demo gateway
 cargo test       # unit + integration + doctests
+```
+
+If the default toolchain is older than the workspace MSRV, install/use a newer stable toolchain:
+
+```bash
+rustup toolchain install stable
+cargo +stable test
 ```
 
 > **Windows note:** on the maintainer's machine the MSVC `link.exe` is blocked from writing
 > freshly linked executables. The repository is therefore configured (`.cargo/config.toml`) to
 > link with the toolchain's bundled `rust-lld`. See `Methodology.md` (D-008) for details.
+
+---
+
+## Current runtime workflow (M1-M4)
+
+The binary is intentionally still a developer/demo gateway; external configuration files and the
+Open MCT distribution API arrive in later milestones. Today `cargo run` executes this path:
+
+1. Bind the UDP ingest socket to `127.0.0.1:7301` (`IngestConfig::default`).
+2. Forward each datagram as a cheap-clone `RawFrame` over a lossy broadcast channel.
+3. Parse telemetry datagrams as CCSDS Space Packets with `ccsds::parse_telemetry`.
+4. Compute a station-relative `TrackingState` through the throttled `TrackingProvider` when
+   Ephemerust can propagate the configured TLE at the frame timestamp.
+5. Apply `validate::apply_physics_validation`, setting `TelemetryFrame::physics_flags`, then log
+   the parsed frame. The current binary passes `RfMetadata::default()`, so Doppler validation is
+   skipped until measured carrier metadata is wired; elevation validation runs when physics state
+   is available.
+
+Send one synthetic CCSDS telemetry packet to the default listener:
+
+```bash
+# Terminal 1
+RUST_LOG=chronus_gateway=info cargo run -p chronus-gateway
+
+# Terminal 2
+python3 - <<'PY'
+import socket
+
+# TM packet: APID 0x02a, sequence 7, unsegmented, 5-byte payload "hello".
+packet = bytes([0x00, 0x2A, 0xC0, 0x07, 0x00, 0x04]) + b"hello"
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.sendto(packet, ("127.0.0.1", 7301))
+PY
+```
+
+Expected result: the first terminal logs a parsed telemetry frame with `apid=42`, `seq=7`, and
+`payload=5`. If physics state is available, the log also includes azimuth/elevation/range,
+range-rate, and `physics_flags`.
+
+---
+
+## Public interfaces and current defaults
+
+| Interface | Purpose | Current defaults / contract |
+|-----------|---------|-----------------------------|
+| `IngestConfig` | UDP bind, channel capacity, datagram ceiling | `127.0.0.1:7301`, capacity `1024`, max datagram `65_542` bytes. |
+| `RawFrame` | Raw downlink datagram passed between stages | `Arc<[u8]>` payload, UTC receive timestamp, source address. |
+| `TelemetryFrame` | Validated CCSDS TM packet | APID, sequence count, secondary-header flag, zero-copy `payload()`, source/timestamp, `physics_flags`. |
+| `StationConfig` | Ground station + tracked object setup | Synthetic/public ISS TLE fixture, lat `35.0`, lon `-116.0`, altitude `1000 m`, nominal carrier `437.5 MHz`, recompute throttle `10 ms`. |
+| `TrackingProvider` | Shared propagator front-end | Reuses cached state for frames inside `min_recompute_interval_ms`; `0` disables caching. |
+| `apply_physics_validation` | Sets anomaly bits from physics checks | Doppler bit 0 if measured carrier exceeds tolerance; elevation bit 1 if below `minimum_elevation_deg`; RSSI bit 2 reserved. |
+
+`physics_flags` is a stable bitfield for downstream consumers:
+
+| Bit | Mask | Meaning |
+|-----|------|---------|
+| 0 | `0x01` | Doppler anomaly: measured carrier is outside `doppler_tolerance_hz` from expected. |
+| 1 | `0x02` | Horizon/elevation anomaly: predicted elevation is below `minimum_elevation_deg`. |
+| 2 | `0x04` | Reserved for future RSSI/link-budget validation; not set by current code. |
+
+---
+
+## Operational notes and common pitfalls
+
+- **No runtime config file yet.** Defaults are constructed in code (`IngestConfig::default` and
+  `StationConfig::default`). Library users can build their own configs; the demo binary does not
+  yet load CLI flags or TOML.
+- **Use only synthetic or public reference data.** The default ISS TLE is a public fixture for
+  deterministic development. Use a current public TLE for meaningful physics validation; do not
+  commit real mission keys, frequencies, or controlled operational parameters.
+- **Backpressure is lossy by design.** Slow broadcast subscribers receive `Lagged`; they must
+  resynchronize to the latest telemetry rather than expecting gap-free replay.
+- **Oversized UDP datagrams are bounded.** The receive buffer is fixed. Windows reports an
+  oversized datagram as `WSAEMSGSIZE`; Unix may truncate it, after which CCSDS length checks reject
+  malformed packets.
+- **The ingest path accepts telemetry, not telecommands.** CCSDS TC packets are rejected with
+  `CcsdsError::NotTelemetry` and dropped by the demo consumer.
+- **Doppler needs measured RF metadata.** The library supports `RfMetadata::measured_carrier_hz`;
+  the current binary passes `None`, so only the elevation flag can be set during the demo path.
 
 ---
 
@@ -95,6 +181,32 @@ Testing is a first-class deliverable. The project follows a layered strategy —
 integration tests over loopback UDP and in-process WebSockets, doctests, and physics
 co-validation tests with explicitly documented tolerances — enforced at every milestone's stage
 gate. The full strategy and per-milestone test matrix are defined in [`TEST_PLAN.md`](TEST_PLAN.md).
+
+---
+
+## References
+
+- [`crates/gateway/src/ingest.rs`](crates/gateway/src/ingest.rs) and
+  [`crates/gateway/tests/ingest.rs`](crates/gateway/tests/ingest.rs) — source and loopback tests
+  for UDP ingestion, shutdown, oversized datagrams, and lossy backpressure.
+- [`crates/gateway/src/ccsds.rs`](crates/gateway/src/ccsds.rs) — CCSDS Space Packet parsing and
+  `TelemetryFrame` contract.
+- [`crates/gateway/src/propagator.rs`](crates/gateway/src/propagator.rs) and
+  [`crates/gateway/src/config.rs`](crates/gateway/src/config.rs) — station configuration,
+  Ephemerust adapter, and throttled tracking provider.
+- [`crates/gateway/src/validate.rs`](crates/gateway/src/validate.rs) — Doppler/elevation
+  validation model and `physics_flags` bit definitions.
+- [`Methodology.md`](Methodology.md) — decision log, dependency rationale, and attribution record.
+- [`TEST_PLAN.md`](TEST_PLAN.md) — test gates, fixture policy, and tolerance register.
+- [CCSDS Space Packet Protocol](https://public.ccsds.org/) — open packet standard used for
+  telemetry framing.
+- [`spacepackets`](https://crates.io/crates/spacepackets) — Rust CCSDS/ECSS packet parsing crate
+  used behind the local `ccsds` module.
+- [Ephemerust](https://github.com/IsomorphicAlgo/ephemerust) and
+  [`sgp4`](https://crates.io/crates/sgp4) — SGP4/look-angle/range-rate sources behind the
+  `OrbitalPropagator` implementation.
+- [Tokio](https://tokio.rs/) — asynchronous UDP, tasks, signals, and broadcast channels.
+- [NASA Open MCT](https://nasa.github.io/openmct/) — planned dashboard target for Milestone 5.
 
 ---
 
@@ -109,6 +221,8 @@ ChronusGateway-RS builds directly on prior work, and credit is given accordingly
   whose Tokio/Axum architecture and integration patterns informed this gateway's design.
 - **[`sgp4`](https://crates.io/crates/sgp4)** — the validated SGP4/SDP4 propagator that
   Ephemerust delegates to for numerical orbit propagation.
+- **[`spacepackets`](https://crates.io/crates/spacepackets)** — the Rust CCSDS/ECSS packet
+  library used behind the gateway's local `ccsds` parsing boundary.
 - **[Tokio](https://tokio.rs/)** and **[Axum](https://github.com/tokio-rs/axum)** — the
   asynchronous runtime and web framework that form the network core.
 - **[CCSDS](https://public.ccsds.org/)** — the open international standards for space packet
