@@ -8,6 +8,14 @@
 //! the [`validate`] Physics–Telemetry Co-Validation engine (Milestone 4). WebSocket / Open MCT
 //! distribution is Milestone 5 (see `BUILD_PLAN.md`).
 //!
+//! ## Current pipeline contract
+//!
+//! `RawFrame` datagrams are broadcast lossily so slow consumers never stall ingestion, parsed into
+//! zero-copy [`TelemetryFrame`] values, enriched with throttled [`TrackingState`] from the
+//! [`OrbitalPropagator`] seam, then tagged by [`apply_physics_validation`]. The stable
+//! `physics_flags` contract is re-exported here: bit 0 (`FLAG_DOPPLER_ANOMALY`), bit 1
+//! (`FLAG_BELOW_HORIZON`), and bit 2 (`FLAG_RSSI_RESERVED`).
+//!
 //! ## Standards & compliance
 //!
 //! Built strictly on open, international standards (CCSDS). See `AGENTS.md` for the project's

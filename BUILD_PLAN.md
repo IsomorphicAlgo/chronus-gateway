@@ -60,8 +60,9 @@ doctest.)
 
 **Objective:** Turn raw datagrams into validated, structured telemetry frames.
 
-**Resolved decision:** **OD-A** → **`spacepackets` 0.17** (us-irs), primary **and** secondary
-header support. Recorded in `Methodology.md` D-010.
+**Resolved decision:** **OD-A** → **`spacepackets` 0.17** (us-irs) for primary-header parsing now,
+with secondary-header/PUS interpretation available for a later telemetry contract. Recorded in
+`Methodology.md` D-010.
 
 **Deliverables**
 - [x] `ccsds` module: parses the CCSDS Space Packet primary header (version, type, APID, sequence
@@ -134,6 +135,9 @@ telemetry dictionary + JSON contract.
       and stream JSON frames (including `physics_flags`).
 - [ ] Open MCT-shaped payloads (telemetry dictionary + historical query endpoint stub).
 - [ ] HTTP `GET /health`; per-client lifecycle, backpressure, and disconnect handling.
+- [ ] Preserve the current M1-M4 contract in the distribution path: lossy fan-out must not block
+      ingestion, `physics_flags` bits 0/1/2 retain their documented meanings, and Doppler remains
+      skipped unless measured RF metadata is provided.
 
 **Test gate:** [TEST_PLAN.md → M5](TEST_PLAN.md#m5--distribution) — in-process WS test
 (ingest → parse → validate → receive JSON), health endpoint, client-drop handling.
@@ -179,6 +183,7 @@ sustained-rate soak run.
 
 ## Dependency / ordering notes
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
-- Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
+- Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved;
+  record any future changes in `Methodology.md`.
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-02.*

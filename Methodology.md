@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **Milestones 1-4 complete.** The current binary ingests UDP telemetry, parses CCSDS
+> Space Packet primary headers, computes throttled station-relative tracking state, and applies
+> Physics-Telemetry Co-Validation. Open MCT WebSocket fan-out remains Milestone 5.
 
 ---
 
@@ -106,11 +107,15 @@ any `impl Future<Output=()>`.
 ### D-010 — CCSDS parsing crate: `spacepackets` (resolves OD-A)
 **Decision:** Use **`spacepackets` 0.17** (us-irs) for CCSDS Space Packet parsing, wrapped behind
 the `ccsds` module so the rest of the gateway depends on our `TelemetryFrame`, not on the crate.
-**Why:** It supports the full primary header plus secondary-header/PUS handling we will need for
-real telemetry, is actively maintained, and parses with a clean `from_be_bytes` returning the
-header and remaining slice. `space-packet` is Kani-verified but primary-header-only; an in-house
-parser would duplicate well-tested work and own the correctness burden (against AGENTS security
-posture). Keeping it behind the module boundary preserves the option to swap later.
+**Why:** The M2 implementation needs robust primary-header decoding today, and `spacepackets`
+also leaves a path to secondary-header/PUS handling when the distribution contract requires it.
+It is actively maintained and parses with a clean `from_be_bytes` returning the header and
+remaining slice. `space-packet` is Kani-verified but primary-header-only; an in-house parser would
+duplicate well-tested work and own the correctness burden (against AGENTS security posture).
+Keeping it behind the module boundary preserves the option to swap later.
+**Current scope:** `parse_telemetry` decodes and validates the 6-byte CCSDS primary header,
+captures the secondary-header-present flag, and exposes the packet data field zero-copy. It does
+not yet interpret secondary headers or PUS fields.
 **Frame representation:** `TelemetryFrame` retains the original `Arc<[u8]>` datagram and exposes
 the packet data field via a zero-copy `payload()` borrow (no `bytes` crate needed — extends D-009).
 **Validation:** length → decode → declared-vs-available → TM/TC; recoverable `CcsdsError` per case,
@@ -177,7 +182,8 @@ External works this project builds on or is inspired by (keep current per `AGENT
 | Tokio, Axum, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates | crates.io, MIT/Apache-2.0 |
 | CCSDS standards | TMTC framing/packet specifications | open international standards |
 | NASA Open MCT | Target mission-control dashboard | open source (NASA) |
+| NeXosim | Planned hardware-in-the-loop simulation reference for M7 | GitHub, open source |
 
 ---
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*
