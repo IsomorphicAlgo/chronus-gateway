@@ -11,7 +11,7 @@ offline, enforced at every stage gate.
 1. **Layered coverage**
    - **Unit** — inline `#[cfg(test)] mod tests` in each module (happy path + edge/error cases).
    - **Integration** — `tests/*.rs`, async via `#[tokio::test]`; exercise the real pipeline over
-     **loopback UDP** and **in-process Axum/WebSocket** (no live hardware).
+     **loopback UDP** today and **in-process Axum/WebSocket** once M5 lands (no live hardware).
    - **Doctests** — runnable, asserting examples on public API items.
    - **Physics co-validation** — computed results checked against references or numerical
      cross-checks, with **every tolerance written down and justified**.
@@ -37,7 +37,9 @@ cargo clippy --all-targets
 ## Shared fixtures
 - **Reference TLE:** public ISS (ZARYA) 3-line set (same family Ephemerust tests use).
 - **Synthetic CCSDS frames:** helper builders producing valid + deliberately-malformed packets
-  (truncated header, bad length, wrong packet type, oversized payload).
+  (truncated header, bad length, wrong packet type, oversized payload). These builders are
+  module-local in `ccsds.rs` today; extract shared helpers when M5 end-to-end WebSocket tests need
+  to synthesize full pipeline traffic.
 - **Fixed instants:** evaluate near the TLE epoch so SGP4 stays in its accurate window.
 - **Mock propagator:** a deterministic `OrbitalPropagator` returning scripted `TrackingState`s
   for validation-engine tests (decouples M4 from astrodynamics).
@@ -120,6 +122,21 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 
 ---
 
+## `physics_flags` contract
+
+Downstream adapters must treat `TelemetryFrame::physics_flags` as a stable bitfield:
+
+| Bit | Mask | Meaning | Set today? |
+|-----|------|---------|------------|
+| 0 | `0x01` | Doppler anomaly: measured carrier differs from expected beyond T-DOPPLER. | Yes, when `RfMetadata::measured_carrier_hz` is finite. |
+| 1 | `0x02` | Horizon/elevation: predicted elevation is strictly below `minimum_elevation_deg`. | Yes. |
+| 2 | `0x04` | RSSI/link-budget anomaly. | Reserved; not set by M4. |
+
+Bits not listed here are reserved and must remain unset unless a future milestone updates this
+table, the `validate` module docs, and the Open MCT JSON contract together.
+
+---
+
 ## Status / counts (keep current)
 | Layer | Count | Notes |
 |-------|-------|-------|
@@ -127,4 +144,4 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*
