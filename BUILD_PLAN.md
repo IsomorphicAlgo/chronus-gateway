@@ -20,10 +20,13 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner approval required to adv
 **Deliverables**
 - [x] Cargo workspace (`crates/gateway`), centralized `[workspace.dependencies]`, MSRV 1.88.
 - [x] `OrbitalPropagator` trait + `EphemerustPropagator` backend (`src/propagator.rs`).
-- [x] `main.rs` smoke test producing a real `TrackingState` from a reference ISS TLE.
+- [x] Foundation smoke coverage producing a real `TrackingState` from a reference ISS TLE
+      (now preserved by `propagator` unit tests + doctest; `main.rs` has advanced to the live
+      M1–M4 pipeline).
 - [x] Governance: `AGENTS.md`, `Methodology.md`; build unblocked via `rust-lld` (D-008).
 
-**Test gate:** [TEST_PLAN.md → M0](TEST_PLAN.md#m0--foundation) — smoke run succeeds.
+**Test gate:** [TEST_PLAN.md → M0](TEST_PLAN.md#m0--foundation) — tracking-state smoke coverage
+passes via unit tests + doctest.
 
 **Gate 0:** [x] Foundation approved; proceed to M1.
 
@@ -49,8 +52,7 @@ with clean startup/shutdown. (Derived from the PDF's Milestone 1 / Rusty_Server 
 length; oversized datagrams dropped (Windows `WSAEMSGSIZE`) / truncated (Unix) without desync.
 
 **Test gate:** [TEST_PLAN.md → M1](TEST_PLAN.md#m1--ingestion) — **all green**: ordered delivery,
-prompt shutdown, oversized-datagram resilience, backpressure/lag. (4 integration + 2 unit + 1
-doctest.)
+prompt shutdown, oversized-datagram resilience, backpressure/lag. (4 integration tests.)
 
 **Gate 1:** [x] Ingestion loop implemented; tests + clippy green. Ready for M2 on approval.
 
@@ -60,12 +62,13 @@ doctest.)
 
 **Objective:** Turn raw datagrams into validated, structured telemetry frames.
 
-**Resolved decision:** **OD-A** → **`spacepackets` 0.17** (us-irs), primary **and** secondary
-header support. Recorded in `Methodology.md` D-010.
+**Resolved decision:** **OD-A** → **`spacepackets` 0.17** (us-irs), primary-header parsing now;
+secondary-header/PUS decoding remains behind the `TelemetryFrame` boundary for a later slice.
+Recorded in `Methodology.md` D-010.
 
 **Deliverables**
 - [x] `ccsds` module: parses the CCSDS Space Packet primary header (version, type, APID, sequence
-      count, data length, secondary-header flag) via `SpacePacketHeader::from_be_bytes`.
+      count, data length, secondary-header **flag**) via `SpacePacketHeader::from_be_bytes`.
 - [x] `TelemetryFrame { apid, seq_count, has_secondary_header, received_at, source,
       physics_flags }` with a **zero-copy** `payload()` borrow into the retained `Arc<[u8]>`.
 - [x] Strict validation: header length → header decode → declared-vs-available length → TM/TC
@@ -181,4 +184,4 @@ sustained-rate soak run.
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
 - Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-02.*

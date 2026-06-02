@@ -11,7 +11,7 @@ offline, enforced at every stage gate.
 1. **Layered coverage**
    - **Unit** — inline `#[cfg(test)] mod tests` in each module (happy path + edge/error cases).
    - **Integration** — `tests/*.rs`, async via `#[tokio::test]`; exercise the real pipeline over
-     **loopback UDP** and **in-process Axum/WebSocket** (no live hardware).
+     **loopback UDP** now and **in-process Axum/WebSocket** once M5 lands (no live hardware).
    - **Doctests** — runnable, asserting examples on public API items.
    - **Physics co-validation** — computed results checked against references or numerical
      cross-checks, with **every tolerance written down and justified**.
@@ -47,7 +47,9 @@ cargo clippy --all-targets
 ## Per-milestone test gates
 
 ### M0 — Foundation
-- [x] Binary smoke run produces a finite `TrackingState` (az/el/range/range-rate) from the ISS TLE.
+- [x] Foundation smoke coverage produces a finite `TrackingState` (az/el/range/range-rate) from
+      the ISS TLE via `propagator` unit tests + doctest. The binary now runs the M1–M4 local UDP
+      pipeline instead of the original one-shot M0 smoke.
 - [x] Doctest on `EphemerustPropagator::new` showing construction + a bounded assertion.
 - [x] Unit tests: finite tracking state near epoch; invalid TLE rejected.
 
@@ -127,4 +129,4 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*
