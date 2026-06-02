@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **M0-M4 complete.** The workspace, UDP ingestion, CCSDS parsing, station-configured
+> tracking, and Physics-Telemetry Co-Validation engine are implemented and tested. Open MCT
+> WebSocket fan-out remains the next major milestone (M5).
 
 ---
 
@@ -170,14 +171,17 @@ External works this project builds on or is inspired by (keep current per `AGENT
 
 | Work | Role here | Source / License |
 |------|-----------|------------------|
-| **Ephemerust** (owner) | SGP4 propagation, look-angles, range-rate | local sibling crate, MIT |
+| **Ephemerust** (owner) | SGP4 propagation, look-angles, range-rate; tolerance style | local sibling crate, MIT |
 | `sgp4` crate | Underlying SGP4/SDP4 numerics (via Ephemerust) | crates.io |
 | `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
-| Tokio, Axum, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates | crates.io, MIT/Apache-2.0 |
-| CCSDS standards | TMTC framing/packet specifications | open international standards |
-| NASA Open MCT | Target mission-control dashboard | open source (NASA) |
+| Tokio, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/observability/serialization/error crates currently in use | crates.io, MIT/Apache-2.0 |
+| Axum | Planned M5 WebSocket/HTTP distribution framework, following Rusty_Server patterns | crates.io, MIT |
+| CCSDS 133.0-B-2 Space Packet Protocol | TMTC packet framing parsed by `ccsds.rs` | open international standard |
+| NASA Open MCT | Target mission-control dashboard for M5 distribution | open source (NASA) |
+| NeXosim | Planned M7 hardware-in-the-loop simulation framework | open source |
+| Project design document / milestone PDF | Roadmap, co-validation model, provisional Doppler/RSSI tolerances | owner-provided design artifact |
 
 ---
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*

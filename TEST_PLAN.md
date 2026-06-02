@@ -37,7 +37,8 @@ cargo clippy --all-targets
 ## Shared fixtures
 - **Reference TLE:** public ISS (ZARYA) 3-line set (same family Ephemerust tests use).
 - **Synthetic CCSDS frames:** helper builders producing valid + deliberately-malformed packets
-  (truncated header, bad length, wrong packet type, oversized payload).
+  (truncated header, bad length, wrong packet type, oversized payload). These are module-local
+  helpers today (`ccsds.rs` unit tests and `tests/ingest.rs`), not a shared fixture crate.
 - **Fixed instants:** evaluate near the TLE epoch so SGP4 stays in its accurate window.
 - **Mock propagator:** a deterministic `OrbitalPropagator` returning scripted `TrackingState`s
   for validation-engine tests (decouples M4 from astrodynamics).
@@ -91,6 +92,19 @@ cargo clippy --all-targets
 - [x] **Non-finite RF:** NaN measured carrier skips Doppler without panic (`nan_measured_skips_doppler_no_panic`).
 - [x] **Formula:** non-relativistic Doppler identity locked by unit test (`expected_carrier_matches_non_relativistic_formula`).
 
+**Downstream contract for M5:** `TelemetryFrame::physics_flags` is a stable bitfield exported by
+the validation engine and expected to appear in Open MCT JSON once distribution lands.
+
+| Bit | Mask | Meaning | Set by |
+|-----|------|---------|--------|
+| 0 | `0x01` | Doppler anomaly: measured carrier differs from expected beyond tolerance. | `RfMetadata::measured_carrier_hz = Some(finite)` and `|measured - expected| > T-DOPPLER` |
+| 1 | `0x02` | Horizon/elevation anomaly: predicted elevation below configured minimum. | `TrackingState::elevation_deg < minimum_elevation_deg` |
+| 2 | `0x04` | Reserved for RSSI / link-budget validation. | Not set in M4 |
+
+If `RfMetadata::measured_carrier_hz` is `None` or non-finite, Doppler is skipped and bit 0 remains
+clear. The current binary passes `RfMetadata::default()`, so live Doppler requires future RF
+metadata wiring.
+
 ### M5 — Distribution
 - [ ] **End-to-end:** in-process `ingest → parse → validate → WebSocket`; a connected client
       receives well-formed Open MCT JSON including `physics_flags`.
@@ -115,7 +129,7 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 |----|----------|-----------|--------------------|
 | T-DOPPLER | Carrier Δf deviation | ±150 Hz | **Locked (M4 / OD-C).** PDF atmospheric/ionospheric drift band; Ephemerust `range_rate_km_s` is validated to ~0.25 km/s vs central difference — at 437.5 MHz that is sub-kHz from propagation math, so ±150 Hz is conservative for physics-only error. |
 | T-ELEVATION | Minimum elevation for valid TM | Configurable (`minimum_elevation_deg`, default **0°**) | Flag when `elevation_deg < threshold` (strict inequality). Default: at or above mathematical horizon passes; use negative threshold for refraction margin. |
-| T-RANGERATE | Range-rate vs numerical | 0.25 km/s | Matches Ephemerust's central-difference check (reused convention). |
+| T-RANGERATE | Range-rate vs numerical | 0.25 km/s | Matches Ephemerust's central-difference check (reused convention; no separate gateway assertion beyond the Ephemerust-backed propagation regression). |
 | T-RSSI | Received power | ±3 dB (provisional) | PDF link-budget margin; revisit when/if implemented. |
 
 ---
@@ -127,4 +141,4 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*

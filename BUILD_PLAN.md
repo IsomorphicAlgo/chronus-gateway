@@ -11,6 +11,8 @@ in `TEST_PLAN.md` and records rationale in `Methodology.md`.
 
 Legend: `[x]` done · `[ ]` pending · **Gate** = owner approval required to advance.
 
+Current head: M0-M4 are complete and green; M5 distribution is the next stage-gated slice.
+
 ---
 
 ## Milestone 0 — Foundation ✅ **Complete (2026-05-31)**
@@ -181,4 +183,14 @@ sustained-rate soak run.
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
 - Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-05-31.*
+## Backlog / deferred scope
+- **TLE refresh:** `StationConfig` supports inline and file-based TLEs today; CelesTrak or
+  Space-Track fetch is deferred until the project needs network refresh policy, caching, and
+  operator-controlled credentials.
+- **Secondary-header and PUS semantics:** `spacepackets` can support richer CCSDS/ECSS parsing, but
+  M2 intentionally validates the Space Packet primary header and preserves the data field zero-copy
+  for later mission-specific decoding.
+- **RF side-channel:** M4 accepts optional `RfMetadata`; production wiring for measured carrier and
+  future RSSI/link-budget checks belongs with M5 distribution or a dedicated ingest side-channel.
+
+*Last updated: 2026-06-02.*
