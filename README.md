@@ -98,7 +98,7 @@ datagrams, accepts CCSDS telemetry packets, computes a tracking state at the fra
 Minimal smoke test from another shell while `cargo run` is active:
 
 ```bash
-python - <<'PY'
+python3 - <<'PY'
 import socket
 
 # CCSDS TM packet: APID 0x02a, sequence 7, unsegmented, 5-byte payload "hello".
