@@ -181,4 +181,12 @@ sustained-rate soak run.
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
 - Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-05-31.*
+## Backlog notes
+- **Remote TLE fetch:** `TleSource::File` and inline defaults are implemented; CelesTrak or
+  Space-Track fetching remains deferred until the project needs an offline-cached source strategy
+  and clear error handling for unavailable remote services.
+- **M5 distribution contract:** define the Open MCT telemetry dictionary and JSON schema before
+  committing Axum routes, so `physics_flags`, APID/sequence fields, and timing semantics have a
+  stable client-facing shape.
+
+*Last updated: 2026-06-02.*

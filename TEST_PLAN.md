@@ -11,7 +11,8 @@ offline, enforced at every stage gate.
 1. **Layered coverage**
    - **Unit** — inline `#[cfg(test)] mod tests` in each module (happy path + edge/error cases).
    - **Integration** — `tests/*.rs`, async via `#[tokio::test]`; exercise the real pipeline over
-     **loopback UDP** and **in-process Axum/WebSocket** (no live hardware).
+     **loopback UDP** now and **in-process Axum/WebSocket** when the M5 distribution layer lands
+     (no live hardware).
    - **Doctests** — runnable, asserting examples on public API items.
    - **Physics co-validation** — computed results checked against references or numerical
      cross-checks, with **every tolerance written down and justified**.
@@ -36,7 +37,7 @@ cargo clippy --all-targets
 
 ## Shared fixtures
 - **Reference TLE:** public ISS (ZARYA) 3-line set (same family Ephemerust tests use).
-- **Synthetic CCSDS frames:** helper builders producing valid + deliberately-malformed packets
+- **Synthetic CCSDS frames:** inline test builders produce valid + deliberately-malformed packets
   (truncated header, bad length, wrong packet type, oversized payload).
 - **Fixed instants:** evaluate near the TLE epoch so SGP4 stays in its accurate window.
 - **Mock propagator:** a deterministic `OrbitalPropagator` returning scripted `TrackingState`s
@@ -91,6 +92,19 @@ cargo clippy --all-targets
 - [x] **Non-finite RF:** NaN measured carrier skips Doppler without panic (`nan_measured_skips_doppler_no_panic`).
 - [x] **Formula:** non-relativistic Doppler identity locked by unit test (`expected_carrier_matches_non_relativistic_formula`).
 
+**Stable `physics_flags` contract (M4):**
+
+| Bit | Constant | Meaning | Set when |
+|-----|----------|---------|----------|
+| 0 | `FLAG_DOPPLER_ANOMALY` (`0x01`) | Measured carrier is inconsistent with range-rate Doppler. | `|measured - expected| > doppler_tolerance_hz`. |
+| 1 | `FLAG_BELOW_HORIZON` (`0x02`) | Propagated look-angle is below the configured mask. | `elevation_deg < minimum_elevation_deg` (strict inequality). |
+| 2 | `FLAG_RSSI_RESERVED` (`0x04`) | Reserved for RSSI/link-budget co-validation. | Never set in M4. |
+
+Skip/reset rules: every `apply_physics_validation` call resets `TelemetryFrame::physics_flags`
+to `0` before evaluating checks; `RfMetadata::measured_carrier_hz == None` skips Doppler without
+setting bit 0; non-finite measured carrier, nominal carrier, range-rate, or elevation skips only the
+affected check and must not panic.
+
 ### M5 — Distribution
 - [ ] **End-to-end:** in-process `ingest → parse → validate → WebSocket`; a connected client
       receives well-formed Open MCT JSON including `physics_flags`.
@@ -113,7 +127,7 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 
 | ID | Quantity | Tolerance | Rationale / source |
 |----|----------|-----------|--------------------|
-| T-DOPPLER | Carrier Δf deviation | ±150 Hz | **Locked (M4 / OD-C).** PDF atmospheric/ionospheric drift band; Ephemerust `range_rate_km_s` is validated to ~0.25 km/s vs central difference — at 437.5 MHz that is sub-kHz from propagation math, so ±150 Hz is conservative for physics-only error. |
+| T-DOPPLER | Carrier Δf deviation | ±150 Hz | **Locked (M4 / OD-C).** Methodology D-012 records the atmospheric/ionospheric, receiver-chain, and clock-error rationale; Ephemerust `range_rate_km_s` is validated to ~0.25 km/s vs central difference, which is sub-kHz at 437.5 MHz. |
 | T-ELEVATION | Minimum elevation for valid TM | Configurable (`minimum_elevation_deg`, default **0°**) | Flag when `elevation_deg < threshold` (strict inequality). Default: at or above mathematical horizon passes; use negative threshold for refraction margin. |
 | T-RANGERATE | Range-rate vs numerical | 0.25 km/s | Matches Ephemerust's central-difference check (reused convention). |
 | T-RSSI | Received power | ±3 dB (provisional) | PDF link-budget margin; revisit when/if implemented. |
@@ -127,4 +141,4 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*
