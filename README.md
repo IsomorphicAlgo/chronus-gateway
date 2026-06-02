@@ -232,8 +232,8 @@ ChronusGateway-RS builds directly on prior work, and credit is given accordingly
 - **[NeXosim](https://github.com/asynchronics/nexosim)** — the discrete-event simulation
   framework planned for hardware-in-the-loop validation.
 
-The broader Rust aerospace ecosystem — including `sat-rs`, `spacepackets`, and `nyx-space` —
-informed the design analysis.
+The broader Rust aerospace ecosystem — including `sat-rs` and `nyx-space` — informed the design
+analysis.
 
 ---
 
