@@ -55,9 +55,9 @@ chronus-gateway/
 │   │   ├── ccsds.rs        CCSDS Space Packet parsing (TelemetryFrame, validation)
 │   │   ├── validate.rs     Physics–Telemetry Co-Validation (Doppler, elevation, physics_flags)
 │   │   ├── propagator.rs   OrbitalPropagator trait + Ephemerust-backed implementation
-│   │   └── main.rs         Entrypoint (runs the ingestion server)
+│   │   └── main.rs         Entrypoint (ingest → parse → tracking → validation logging)
 │   └── tests/
-│       └── ingest.rs       Milestone 1 integration tests
+│       └── ingest.rs       Loopback UDP ingestion integration tests
 ├── AGENTS.md               Project constitution (compliance, attribution, security, testing)
 ├── Methodology.md          Decision log: the reasoning behind major choices
 ├── BUILD_PLAN.md           Iterative, stage-gated implementation roadmap
@@ -66,7 +66,46 @@ chronus-gateway/
 
 ---
 
-## Building and running
+## Current data path (implemented through M4)
+
+1. **Bind UDP** on [`IngestConfig::bind_addr`](crates/gateway/src/config.rs) (default
+   `127.0.0.1:7301`) and receive datagrams into a fixed-size buffer.
+2. **Broadcast raw frames** as cheap-clone `RawFrame { bytes: Arc<[u8]>, received_at, source }`.
+   The channel is bounded and intentionally lossy so slow consumers cannot stall the socket.
+3. **Parse CCSDS telemetry** with [`ccsds::parse_telemetry`](crates/gateway/src/ccsds.rs):
+   short, malformed, truncated, or telecommand packets return structured `CcsdsError`s and are
+   dropped by the demo consumer.
+4. **Compute tracking state** with `TrackingProvider`, which wraps an `OrbitalPropagator` and
+   caches look-angle/range-rate results for the configured recompute interval.
+5. **Apply physics validation** with
+   [`apply_physics_validation`](crates/gateway/src/validate.rs), setting `TelemetryFrame::physics_flags`:
+
+| Bit | Mask | Meaning |
+|-----|------|---------|
+| 0 | `0x01` | Doppler anomaly: measured carrier is outside `doppler_tolerance_hz` from expected. |
+| 1 | `0x02` | Elevation anomaly: predicted elevation is below `minimum_elevation_deg`. |
+| 2 | `0x04` | Reserved for future RSSI / link-budget validation; not set today. |
+
+The current binary logs the parsed/validated frames. WebSocket/Open MCT distribution is still the
+next milestone, so there is no stable JSON or HTTP API yet.
+
+---
+
+## Public interfaces
+
+The `chronus_gateway` library re-exports the main interfaces from `lib.rs`:
+
+| Area | Key APIs | Notes |
+|------|----------|-------|
+| Ingestion | `IngestConfig`, `RawFrame`, `IngestStats`, `ingest::bind`, `ingest::run` | Async UDP receive loop with explicit shutdown future and counters. |
+| CCSDS parsing | `TelemetryFrame`, `CcsdsError`, `ccsds::parse_telemetry` | Validates the CCSDS primary header and exposes zero-copy payload borrows. |
+| Station / TLE config | `StationConfig`, `TleSource`, `ConfigError` | Validates numeric station fields, inline TLE text, and file-based TLE loading. |
+| Propagation | `OrbitalPropagator`, `EphemerustPropagator`, `TrackingProvider`, `TrackingState` | Trait seam isolates the gateway from the astrodynamics backend. |
+| Co-validation | `RfMetadata`, `expected_carrier_hz`, `apply_physics_validation`, `FLAG_*` constants | Doppler check is skipped when no measured carrier is provided. Elevation still runs. |
+
+---
+
+## Building, running, and local smoke testing
 
 The project targets Rust 1.88 or newer and consumes the Ephemerust library as a sibling
 checkout. The expected on-disk layout places both repositories next to each other:
@@ -79,13 +118,52 @@ checkout. The expected on-disk layout places both repositories next to each othe
 
 ```bash
 cargo build      # compile the workspace
-cargo run        # run the foundation smoke test
+cargo run        # run the local UDP ingestion/validation demo
 cargo test       # unit + integration + doctests
 ```
+
+To exercise the binary manually, run `cargo run`, then send a synthetic CCSDS telemetry packet from
+another terminal:
+
+```bash
+python - <<'PY'
+import socket
+
+# CCSDS TM primary header: APID 0x02a, sequence 7, unsegmented, 5-byte payload "hello".
+packet = bytes([0x00, 0x2A, 0xC0, 0x07, 0x00, 0x04]) + b"hello"
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.sendto(packet, ("127.0.0.1", 7301))
+PY
+```
+
+The demo consumer should log a parsed telemetry frame. Doppler bit 0 will not be set by this demo
+because SDR carrier metadata is not wired yet (`RfMetadata::measured_carrier_hz` is `None`).
 
 > **Windows note:** on the maintainer's machine the MSVC `link.exe` is blocked from writing
 > freshly linked executables. The repository is therefore configured (`.cargo/config.toml`) to
 > link with the toolchain's bundled `rust-lld`. See `Methodology.md` (D-008) for details.
+
+---
+
+## Troubleshooting and common pitfalls
+
+- **`../Ephemerust` is missing:** clone the owner's Ephemerust repository next to this checkout.
+  In this cloud workspace that usually means `/Ephemerust` as the sibling of `/workspace`.
+- **Rust version is too old:** install or select a Rust toolchain that satisfies MSRV 1.88, then
+  rerun the command with that toolchain.
+- **Port already in use:** change `IngestConfig::bind_addr` in code/tests or stop the other local
+  listener on `127.0.0.1:7301`.
+- **No parsed frames:** the ingestion loop accepts UDP bytes, but `ccsds::parse_telemetry` drops
+  datagrams that are shorter than 6 bytes, declare more payload than arrived, or are TC packets.
+- **Unexpected frame loss under load:** this is intentional for now. The broadcast channel is
+  bounded and lossy; consumers must treat `RecvError::Lagged` as a signal that stale frames were
+  skipped.
+- **No Doppler anomaly in the demo:** measured carrier frequency is optional and not supplied by
+  the current binary. Use `RfMetadata { measured_carrier_hz: Some(...) }` in tests or future SDR
+  wiring to exercise bit 0.
+- **Old TLEs:** the default ISS TLE is public reference data for deterministic development. For
+  operational-style experiments, provide a current public TLE via `TleSource::Inline` or
+  `TleSource::File`.
 
 ---
 
@@ -95,6 +173,26 @@ Testing is a first-class deliverable. The project follows a layered strategy —
 integration tests over loopback UDP and in-process WebSockets, doctests, and physics
 co-validation tests with explicitly documented tolerances — enforced at every milestone's stage
 gate. The full strategy and per-milestone test matrix are defined in [`TEST_PLAN.md`](TEST_PLAN.md).
+
+---
+
+## References
+
+The implementation and documentation are grounded in these public sources:
+
+- [CCSDS Space Packet Protocol](https://public.ccsds.org/) — open standard used for the telemetry
+  packet primary-header model.
+- [`spacepackets` crate](https://crates.io/crates/spacepackets) — Rust/ECSS packet parsing crate
+  wrapped by the local `ccsds` module.
+- [Ephemerust](https://github.com/IsomorphicAlgo/ephemerust) — sibling SGP4/look-angle library
+  used by `EphemerustPropagator`.
+- [`sgp4` crate](https://crates.io/crates/sgp4) — SGP4/SDP4 numerical propagation used by
+  Ephemerust.
+- [Tokio](https://tokio.rs/) — async runtime used for UDP ingestion, shutdown, and broadcast
+  fan-out.
+- [Axum](https://github.com/tokio-rs/axum) and
+  [NASA Open MCT](https://nasa.github.io/openmct/) — planned Milestone 5 distribution stack and
+  dashboard target.
 
 ---
 
