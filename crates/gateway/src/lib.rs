@@ -30,9 +30,7 @@ pub mod validate;
 pub use ccsds::{CcsdsError, TelemetryFrame};
 pub use config::{ConfigError, IngestConfig, StationConfig, TleSource};
 pub use ingest::{IngestStats, RawFrame};
-pub use propagator::{
-    EphemerustPropagator, OrbitalPropagator, TrackingProvider, TrackingState,
-};
+pub use propagator::{EphemerustPropagator, OrbitalPropagator, TrackingProvider, TrackingState};
 pub use validate::{
     apply_physics_validation, expected_carrier_hz, RfMetadata, FLAG_BELOW_HORIZON,
     FLAG_DOPPLER_ANOMALY, FLAG_RSSI_RESERVED, SPEED_OF_LIGHT_M_S,
