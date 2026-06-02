@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **Milestones 0-4 complete.** The workspace, UDP ingestion loop, CCSDS TM parser,
+> station/propagator integration, and Physics-Telemetry Co-Validation engine are implemented and
+> tested. Open MCT WebSocket fan-out begins in Milestone 5.
 
 ---
 
@@ -147,9 +148,9 @@ state, counting-mock trait-swap + throttle).
 - **`RfMetadata::measured_carrier_hz == None`:** Doppler check skipped (no bit 0); production SDR
   wiring comes with M5 or a side channel.
 **Why OD-C is closed:** Ephemerust documents `range_rate_km_s` to ~0.25 km/s vs a 1 s central
-difference; at L-band (~437 MHz) that maps to sub-kHz frequency uncertainty from propagation math
-alone. The ±150 Hz band is therefore dominated by atmosphere, receiver chain, and clock effects,
-not SGP4 truncation at the teaching-grade arcminute level (D-004).
+difference; at the default UHF fixture (~437 MHz) that maps to sub-kHz frequency uncertainty from
+propagation math alone. The ±150 Hz band is therefore dominated by atmosphere, receiver chain, and
+clock effects, not SGP4 truncation at the teaching-grade arcminute level (D-004).
 **`TelemetryFrame`:** `raw` and `payload_len` are `pub(crate)` so `validate` unit tests can build
 minimal frames without exposing internals on the public API.
 **Tested by:** nine `validate` unit tests (in/out-of-band Doppler, horizon, combined flags, NaN-safe
@@ -177,7 +178,25 @@ External works this project builds on or is inspired by (keep current per `AGENT
 | Tokio, Axum, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates | crates.io, MIT/Apache-2.0 |
 | CCSDS standards | TMTC framing/packet specifications | open international standards |
 | NASA Open MCT | Target mission-control dashboard | open source (NASA) |
+| NeXosim | Planned HIL/discrete-event simulation framework | GitHub, open source |
 
 ---
 
-*Last updated: 2026-06-01.*
+## References
+
+Sources to consult when changing implementation or documentation:
+
+- `AGENTS.md` — project compliance, attribution, security, and testing requirements.
+- `BUILD_PLAN.md` — milestone scope and stage-gate status.
+- `TEST_PLAN.md` — test matrix and tolerance register, including `T-DOPPLER` and `T-ELEVATION`.
+- CCSDS public standards — source of the Space Packet framing model used by `ccsds.rs`.
+- Ephemerust documentation/tests — source for SGP4 look-angles, range-rate semantics, and physics
+  tolerance style.
+- Rust crate documentation for Tokio, Axum, Tracing, Serde, Chrono, Anyhow, Thiserror, and
+  `spacepackets` — API and license references for runtime, error handling, serialization, and
+  packet parsing.
+- NASA Open MCT documentation — target contract for the planned Milestone 5 distribution adapter.
+
+---
+
+*Last updated: 2026-06-02.*
