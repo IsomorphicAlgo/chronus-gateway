@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: Milestones 1–4 are implemented and tested: UDP ingestion, CCSDS parsing,
+> station-configured tracking, and Physics–Telemetry Co-Validation. Milestone 5
+> (Axum WebSocket / Open MCT distribution) is the next pending subsystem.
 
 ---
 
@@ -180,4 +181,4 @@ External works this project builds on or is inspired by (keep current per `AGENT
 
 ---
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*
