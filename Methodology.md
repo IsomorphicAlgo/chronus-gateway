@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **M1-M4 complete**. UDP ingestion, CCSDS telemetry parsing, station-configured
+> tracking, and Physics-Telemetry Co-Validation are implemented and tested. Open MCT WebSocket
+> fan-out remains Milestone 5.
 
 ---
 
@@ -113,6 +114,9 @@ parser would duplicate well-tested work and own the correctness burden (against 
 posture). Keeping it behind the module boundary preserves the option to swap later.
 **Frame representation:** `TelemetryFrame` retains the original `Arc<[u8]>` datagram and exposes
 the packet data field via a zero-copy `payload()` borrow (no `bytes` crate needed — extends D-009).
+**Scope note:** M2 decodes and validates the CCSDS primary header, preserves
+`has_secondary_header`, and exposes the packet data field. It does **not** decode secondary-header
+contents yet; that remains future distribution/telemetry-schema work.
 **Validation:** length → decode → declared-vs-available → TM/TC; recoverable `CcsdsError` per case,
 no panics or unbounded allocation on untrusted input.
 **Tested by:** inline unit tests in `ccsds.rs` (golden bytes, round-trip, truncation, garbage, routing).
@@ -155,6 +159,18 @@ minimal frames without exposing internals on the public API.
 **Tested by:** nine `validate` unit tests (in/out-of-band Doppler, horizon, combined flags, NaN-safe
 skip, formula identity).
 
+### D-013 — Binary wiring: implemented M1-M4 pipeline before external config/API
+**Decision:** `crates/gateway/src/main.rs` runs a development pipeline using `Default`
+configuration: bind UDP, broadcast raw frames, parse CCSDS telemetry, obtain a throttled tracking
+state, and apply physics validation before logging the frame. It intentionally has no CLI/env
+configuration and no Open MCT/WebSocket API yet.
+**Why:** This keeps the current milestone path runnable end to end while M5 defines the external
+distribution contract. The public library API remains the stable surface for tests and downstream
+integration.
+**Runtime limit:** The binary passes `RfMetadata::default()` until SDR/front-end measured-carrier
+metadata is wired, so Doppler bit 0 is skipped in `cargo run`; the elevation gate still runs when
+tracking succeeds. Unit tests cover Doppler behavior directly.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -180,4 +196,4 @@ External works this project builds on or is inspired by (keep current per `AGENT
 
 ---
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*

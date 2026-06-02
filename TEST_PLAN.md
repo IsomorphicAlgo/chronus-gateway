@@ -73,7 +73,8 @@ cargo clippy --all-targets
 
 ### M3 — Propagator integration
 - [x] **Unit:** config validation (valid default; invalid lat/lon/freq/altitude; empty inline TLE;
-      missing TLE file) with specific errors (`default_station_is_valid`, `rejects_out_of_range_fields`,
+      missing TLE file; M4 Doppler tolerance / elevation threshold fields) with specific errors
+      (`default_station_is_valid`, `rejects_out_of_range_fields`,
       `resolves_inline_tle_and_rejects_empty`, `missing_tle_file_is_reported`).
 - [x] **Deterministic:** fixed TLE + fixed instant → stable `TrackingState`, baseline-locked within
       tolerance (`from_station_is_deterministic_and_in_tolerance`).
@@ -90,6 +91,9 @@ cargo clippy --all-targets
       (`combined_anomalies_set_both_bits`, `independent_bits_doppler_only`, `no_measured_carrier_skips_doppler_even_if_would_be_bad`).
 - [x] **Non-finite RF:** NaN measured carrier skips Doppler without panic (`nan_measured_skips_doppler_no_panic`).
 - [x] **Formula:** non-relativistic Doppler identity locked by unit test (`expected_carrier_matches_non_relativistic_formula`).
+- [x] **Runtime caveat:** the current `main` binary passes `RfMetadata::default()`, so bit 0
+      Doppler checks are unit-tested but not active in the demo run path until measured-carrier
+      metadata is supplied by SDR/front-end wiring.
 
 ### M5 — Distribution
 - [ ] **End-to-end:** in-process `ingest → parse → validate → WebSocket`; a connected client
@@ -127,4 +131,8 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-01.*
+**Known coverage gap before M5:** M2-M4 are tested mostly as module-level units plus M1 loopback
+ingestion. Add an integration test for `ingest -> parse -> tracking-provider/mock -> validate`
+when the WebSocket/Open MCT path lands, so the distribution test covers a real chained pipeline.
+
+*Last updated: 2026-06-02.*
