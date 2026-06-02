@@ -181,4 +181,4 @@ sustained-rate soak run.
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
 - Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-02.*

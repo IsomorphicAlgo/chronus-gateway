@@ -120,6 +120,28 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 
 ---
 
+## `physics_flags` consumer contract
+
+Validated telemetry carries a compact bitfield for downstream clients such as the planned M5
+Open MCT WebSocket adapter. The bit assignments are locked by `validate.rs` unit tests and should
+remain stable unless a future milestone records a compatibility decision in `Methodology.md`.
+
+| Bit | Mask | Meaning | Set when |
+|-----|------|---------|----------|
+| 0 | `0x01` | Doppler anomaly | Measured carrier exists, is finite, and differs from expected by more than `T-DOPPLER`. |
+| 1 | `0x02` | Below elevation threshold | Propagated elevation is finite and strictly less than `minimum_elevation_deg`. |
+| 2 | `0x04` | RSSI / link-budget reserved | Not set by M4; reserved for a future link-budget validator. |
+
+Operational constraints:
+- `physics_flags == 0` means no implemented physics validator found an anomaly; it does **not**
+  prove the RF link is healthy when measured-carrier metadata is absent.
+- The current binary passes `RfMetadata::default()`, so Doppler bit 0 is skipped in local runs
+  until an SDR metadata side channel or M5 distribution wiring supplies measured carrier data.
+- If no tracking state is available, the frame can still be parsed and logged, but physics flags
+  are not produced by the current runtime path.
+
+---
+
 ## Status / counts (keep current)
 | Layer | Count | Notes |
 |-------|-------|-------|
@@ -127,4 +149,4 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*
