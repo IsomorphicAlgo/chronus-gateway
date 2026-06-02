@@ -137,7 +137,7 @@ cargo run -p chronus-gateway
 In another terminal, send a synthetic telemetry packet to the default UDP socket:
 
 ```bash
-python - <<'PY'
+python3 - <<'PY'
 import socket
 
 apid = 0x2A
