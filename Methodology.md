@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **M1-M4 complete**. UDP ingestion, CCSDS parsing, station tracking, and
+> Physics-Telemetry Co-Validation are implemented and tested. Open MCT WebSocket fan-out remains
+> Milestone 5.
 
 ---
 
@@ -68,7 +69,7 @@ later if/when CI reproducibility demands it.
 ### D-007 — Async runtime: Tokio (multi-threaded)
 **Decision:** Use Tokio (`features = ["full"]`) as the async runtime.
 **Why:** It's the de-facto standard for high-throughput async networking in Rust and underpins
-the planned UDP ingestion loop, broadcast channel fan-out, and Axum WebSocket distribution.
+the UDP ingestion loop, broadcast channel fan-out, and planned Axum WebSocket distribution.
 Propagators are `Send + Sync` so a single instance can be shared (`Arc`) across worker threads.
 
 ### D-008 — Linker: bundled `rust-lld` instead of MSVC `link.exe` (Windows)
@@ -155,6 +156,20 @@ minimal frames without exposing internals on the public API.
 **Tested by:** nine `validate` unit tests (in/out-of-band Doppler, horizon, combined flags, NaN-safe
 skip, formula identity).
 
+### D-013 — Current binary workflow before distribution (Milestone 4 runtime)
+**Decision:** Until the Milestone 5 WebSocket/Open MCT layer exists, `crates/gateway/src/main.rs`
+acts as an operator-visible pipeline runner rather than only a foundation smoke test: it binds the
+default UDP socket, broadcasts raw frames, parses CCSDS telemetry, obtains a throttled tracking
+state, applies physics validation, and emits structured logs.
+**Why:** This keeps every completed stage (M1-M4) exercised in one executable without committing to
+the M5 JSON or HTTP contracts prematurely. The binary remains useful for local loopback runbooks and
+manual malformed-packet checks while the public network surface stays limited to UDP.
+**Degraded behavior:** If `EphemerustPropagator::from_station` fails, ingestion and parsing still
+continue and logs explicitly state that physics is unavailable. The default run passes
+`RfMetadata::default()`, so Doppler bit 0 is skipped until SDR carrier metadata is wired; elevation
+bit 1 still runs when tracking state is available.
+**Tested by:** existing unit/integration tests for each stage plus the README loopback runbook.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -174,10 +189,11 @@ External works this project builds on or is inspired by (keep current per `AGENT
 | `sgp4` crate | Underlying SGP4/SDP4 numerics (via Ephemerust) | crates.io |
 | `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
-| Tokio, Axum, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates | crates.io, MIT/Apache-2.0 |
+| Tokio, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates currently used | crates.io, MIT/Apache-2.0 |
+| Axum | Planned HTTP/WebSocket distribution stack (M5) | crates.io, MIT |
 | CCSDS standards | TMTC framing/packet specifications | open international standards |
 | NASA Open MCT | Target mission-control dashboard | open source (NASA) |
 
 ---
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*

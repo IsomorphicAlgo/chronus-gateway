@@ -91,6 +91,11 @@ cargo clippy --all-targets
 - [x] **Non-finite RF:** NaN measured carrier skips Doppler without panic (`nan_measured_skips_doppler_no_panic`).
 - [x] **Formula:** non-relativistic Doppler identity locked by unit test (`expected_carrier_matches_non_relativistic_formula`).
 
+**Current pipeline boundary:** the binary now wires M1-M4 (`ingest → parse → tracking → validate`)
+for loopback/manual runs, but automated full pipeline coverage through a WebSocket client is still
+the M5 gate below. Until SDR metadata is wired, default binary runs use `RfMetadata::default()` and
+therefore skip Doppler bit 0 while still applying the elevation gate when physics is available.
+
 ### M5 — Distribution
 - [ ] **End-to-end:** in-process `ingest → parse → validate → WebSocket`; a connected client
       receives well-formed Open MCT JSON including `physics_flags`.
@@ -127,4 +132,4 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*
