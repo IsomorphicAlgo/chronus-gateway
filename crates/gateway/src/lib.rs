@@ -13,6 +13,17 @@
 //! Built strictly on open, international standards (CCSDS). See `AGENTS.md` for the project's
 //! ITAR/EAR posture, attribution policy, and security priorities — all contributors and agents
 //! must follow it.
+//!
+//! ## Current workflow
+//!
+//! The executable wires the public modules in this order:
+//!
+//! 1. [`ingest`] receives UDP datagrams as [`RawFrame`] values.
+//! 2. [`ccsds::parse_telemetry`] validates TM Space Packets and returns [`TelemetryFrame`].
+//! 3. [`TrackingProvider`] supplies station-relative look-angles and range rate.
+//! 4. [`apply_physics_validation`] writes the stable `physics_flags` bitfield for consumers.
+//!
+//! The WebSocket/Open MCT consumer contract is planned for Milestone 5 and is not exposed yet.
 
 pub mod ccsds;
 pub mod config;
