@@ -5,8 +5,8 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **Milestones 0-4 implemented** (workspace, UDP ingestion, CCSDS parsing, station
+> tracking, and Physics-Telemetry Co-Validation). Open MCT WebSocket fan-out remains Milestone 5.
 
 ---
 
@@ -174,10 +174,11 @@ External works this project builds on or is inspired by (keep current per `AGENT
 | `sgp4` crate | Underlying SGP4/SDP4 numerics (via Ephemerust) | crates.io |
 | `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
-| Tokio, Axum, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates | crates.io, MIT/Apache-2.0 |
+| Tokio, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates used today | crates.io, MIT/Apache-2.0 |
+| Axum | Planned HTTP/WebSocket distribution framework (M5) | crates.io, MIT |
 | CCSDS standards | TMTC framing/packet specifications | open international standards |
 | NASA Open MCT | Target mission-control dashboard | open source (NASA) |
 
 ---
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*

@@ -121,10 +121,15 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 ---
 
 ## Status / counts (keep current)
+
+Current end-to-end coverage note: M1 has loopback UDP integration tests; M2-M4 are covered by
+module-level unit tests and doctests. The first full pipeline client test
+(`ingest → parse → validate → WebSocket JSON`) is intentionally scoped to M5.
+
 | Layer | Count | Notes |
 |-------|-------|-------|
 | Unit tests | 24 | `ccsds` (7) + `config` (4) + `propagator` (4) + `validate` (9). |
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*
