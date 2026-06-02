@@ -126,7 +126,7 @@ To exercise the binary manually, run `cargo run`, then send a synthetic CCSDS te
 another terminal:
 
 ```bash
-python - <<'PY'
+python3 - <<'PY'
 import socket
 
 # CCSDS TM primary header: APID 0x02a, sequence 7, unsegmented, 5-byte payload "hello".
