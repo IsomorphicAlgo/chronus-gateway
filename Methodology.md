@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **Core validation pipeline through Milestone 4**. UDP ingestion, CCSDS Space Packet
+> primary-header parsing, station-configured tracking, and Physics–Telemetry Co-Validation are
+> implemented and tested. Open MCT WebSocket fan-out is the next milestone.
 
 ---
 
@@ -174,10 +175,11 @@ External works this project builds on or is inspired by (keep current per `AGENT
 | `sgp4` crate | Underlying SGP4/SDP4 numerics (via Ephemerust) | crates.io |
 | `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
-| Tokio, Axum, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates | crates.io, MIT/Apache-2.0 |
-| CCSDS standards | TMTC framing/packet specifications | open international standards |
+| Tokio, Tracing, Serde, Serde JSON, Chrono, Anyhow, Thiserror | Runtime/infra crates currently in the gateway workspace | crates.io, MIT/Apache-2.0 as crate-specific |
+| Axum | Planned M5 WebSocket/HTTP framework (OD-B, not yet a dependency) | crates.io, MIT |
+| CCSDS standards, incl. CCSDS 133.0-B-2 Space Packet protocol family | TMTC framing/packet specifications | open international standards |
 | NASA Open MCT | Target mission-control dashboard | open source (NASA) |
 
 ---
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-02.*

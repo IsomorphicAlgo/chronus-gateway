@@ -20,7 +20,8 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner approval required to adv
 **Deliverables**
 - [x] Cargo workspace (`crates/gateway`), centralized `[workspace.dependencies]`, MSRV 1.88.
 - [x] `OrbitalPropagator` trait + `EphemerustPropagator` backend (`src/propagator.rs`).
-- [x] `main.rs` smoke test producing a real `TrackingState` from a reference ISS TLE.
+- [x] Initial `main.rs` smoke test producing a real `TrackingState` from a reference ISS TLE
+      (later milestones evolved the binary into the live ingest → parse → validate demo).
 - [x] Governance: `AGENTS.md`, `Methodology.md`; build unblocked via `rust-lld` (D-008).
 
 **Test gate:** [TEST_PLAN.md → M0](TEST_PLAN.md#m0--foundation) — smoke run succeeds.
@@ -60,8 +61,9 @@ doctest.)
 
 **Objective:** Turn raw datagrams into validated, structured telemetry frames.
 
-**Resolved decision:** **OD-A** → **`spacepackets` 0.17** (us-irs), primary **and** secondary
-header support. Recorded in `Methodology.md` D-010.
+**Resolved decision:** **OD-A** → **`spacepackets` 0.17** (us-irs), primary-header parsing with
+the secondary-header flag exposed. Secondary-header / PUS decoding is deferred until a later
+telemetry-contract milestone. Recorded in `Methodology.md` D-010.
 
 **Deliverables**
 - [x] `ccsds` module: parses the CCSDS Space Packet primary header (version, type, APID, sequence
@@ -72,7 +74,8 @@ header support. Recorded in `Methodology.md` D-010.
       routing; structured, educational `CcsdsError` (Ephemerust style). `main` now parses frames.
 
 **Test gate:** [TEST_PLAN.md → M2](TEST_PLAN.md#m2--ccsds-parsing) — **all green**: golden bytes,
-round-trip, short/truncated/garbage rejected without panic, TM/TC routing. (7 unit tests.)
+round-trip, short/truncated/garbage rejected without panic, TM/TC routing. (7 unit tests; full
+pipeline integration lands with M5.)
 
 **Gate 2:** [x] Parser + `spacepackets` choice implemented; tests + clippy green. Ready for M3.
 
@@ -181,4 +184,4 @@ sustained-rate soak run.
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
 - Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-02.*
