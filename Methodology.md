@@ -2,8 +2,8 @@
 
 A living record of **why** the project is built the way it is: major decisions, frameworks,
 trade-offs, and the reasoning behind them. Append new entries as decisions are made; do not
-silently rewrite history (mark superseded entries). Required reading + maintenance per
-`AGENTS.md`.
+silently rewrite history (mark superseded entries). Required reading + maintenance per the
+contributor expectations in `README.md` (keep this file current when decisions change).
 
 > Status: **M1–M7** (through optional NeXosim HIL driver + ingest/soak tests). Portfolio roadmap is complete
 > at the current stage gate; further work is backlog / productization.
@@ -111,7 +111,7 @@ the `ccsds` module so the rest of the gateway depends on our `TelemetryFrame`, n
 **Why:** It supports the full primary header plus secondary-header/PUS handling we will need for
 real telemetry, is actively maintained, and parses with a clean `from_be_bytes` returning the
 header and remaining slice. `space-packet` is Kani-verified but primary-header-only; an in-house
-parser would duplicate well-tested work and own the correctness burden (against AGENTS security
+parser would duplicate well-tested work and own the correctness burden (against the project's security
 posture). Keeping it behind the module boundary preserves the option to swap later.
 **Frame representation:** `TelemetryFrame` retains the original `Arc<[u8]>` datagram and exposes
 the packet data field via a zero-copy `payload()` borrow (no `bytes` crate needed — extends D-009).
@@ -182,8 +182,17 @@ simulated spacecraft on the laptop” gate; multi-node / rack-scale co-simulatio
 out of scope until a future decision.
 **Why NeXosim:** open-source DES aligned with the README portfolio narrative; MIT OR Apache-2.0
 dual license fits the workspace `deny.toml` policy.
-**Tested by:** `crates/chronus-hil-sim/tests/hil_ingest.rs` (smoke + 400-frame soak with
-`recv_errors == 0`).
+### D-015 — File-backed gateway configuration (Milestone 8)
+**Decision:** Optional **TOML** file (`toml` 0.8) loaded at process start. Top-level tables `[ingest]`
+and `[station]` are optional; omitted tables use the same defaults as pre-M8 binaries. When
+`[station]` is present, exactly one of `tle_inline` (string) or `tle_file` (path) is required.
+`ingest.bind_addr` and `ingest.http_bind` are parsed as `SocketAddr` strings. Discovery order:
+`--config` / `-c` / `--config=` from argv, else `CHRONUS_GATEWAY_CONFIG`, else in-process defaults.
+**Why:** Operations need bind addresses and station geometry without rebuilds; TOML is human-editable
+and keeps the dependency surface small (serde already in-tree).
+**Security:** `deny_unknown_fields` on the root document; bounded file read via `read_to_string` for
+config only (TLE files remain subject to `max_datagram_size` on the UDP path, unchanged).
+**Tested by:** `config::file` unit tests (parse, merge, ambiguous TLE, bad addr, missing file).
 
 ---
 
@@ -194,7 +203,7 @@ dual license fits the workspace `deny.toml` policy.
 ---
 
 ## Attribution
-External works this project builds on or is inspired by (keep current per `AGENTS.md` rule 2):
+External works this project builds on or is inspired by (keep current; attribute in this table and at point of use):
 
 | Work | Role here | Source / License |
 |------|-----------|------------------|
@@ -204,9 +213,9 @@ External works this project builds on or is inspired by (keep current per `AGENT
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
 | Tokio, Axum, Tower, Tower-HTTP, Serde, Chrono, Anyhow, Thiserror, Base64, Futures-util | Runtime + HTTP/WS + serialization | crates.io, MIT/Apache-2.0 |
 | `criterion`, `proptest` | Benchmarks + parser robustness property tests (M6) | crates.io, MIT/Apache-2.0 |
-| **NeXosim** (`nexosim` crate) | Discrete-event HIL simulation (M7) | crates.io, MIT OR Apache-2.0 |
+| `toml` | Gateway config file parsing (M8) | crates.io, MIT/Apache-2.0 |
 | NASA Open MCT | Target mission-control dashboard | open source (NASA) |
 
 ---
 
-*Last updated: 2026-06-03.*
+*Last updated: 2026-06-01.*

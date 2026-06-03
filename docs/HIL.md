@@ -18,7 +18,7 @@ Integration tests in `crates/chronus-hil-sim/tests/hil_ingest.rs`:
 3. Poll `GET http://127.0.0.1:8080/api/v1/chronus/metrics` for ingest + gateway counters and average
    processing latency (document numbers in your own run log; figures vary by machine).
 
-All telemetry is **synthetic** (see `AGENTS.md`).
+All telemetry is **synthetic** (public demo / compliance posture; see repository README).
 
 **Credit:** [NeXosim](https://github.com/asynchronics/nexosim) — MIT OR Apache-2.0.
 

@@ -2,6 +2,13 @@
 //!
 //! Holds ingestion settings ([`IngestConfig`]) and ground-station / propagator settings
 //! ([`StationConfig`]). HTTP/WebSocket bind is part of [`IngestConfig::http_bind`] (Milestone 5).
+//! Optional TOML file loading lives in [`file`] (Milestone 8).
+
+pub mod file;
+
+pub use file::{
+    load_effective_gateway_config, load_gateway_from_path, resolve_config_path, ConfigLoadError,
+};
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -45,7 +52,7 @@ impl Default for IngestConfig {
 }
 
 /// Reference ISS (ZARYA) element set used as the default TLE (valid checksums; epoch ~2020-07-12).
-/// Public reference data only — see `AGENTS.md` (ITAR/EAR: synthetic/public data).
+/// Public reference data only — synthetic/public data per project compliance posture (README).
 pub const DEFAULT_ISS_TLE: &str = "ISS (ZARYA)\n\
     1 25544U 98067A   20194.88612269 -.00002218  00000-0 -31515-4 0  9992\n\
     2 25544  51.6461 221.2784 0001413  89.1723 280.4612 15.49507896236008";
@@ -154,12 +161,16 @@ impl StationConfig {
             return Err(ConfigError::InvalidFrequency(self.nominal_carrier_hz));
         }
         if !self.doppler_tolerance_hz.is_finite() || self.doppler_tolerance_hz <= 0.0 {
-            return Err(ConfigError::InvalidDopplerTolerance(self.doppler_tolerance_hz));
+            return Err(ConfigError::InvalidDopplerTolerance(
+                self.doppler_tolerance_hz,
+            ));
         }
         if !self.minimum_elevation_deg.is_finite()
             || !(-90.0..=90.0).contains(&self.minimum_elevation_deg)
         {
-            return Err(ConfigError::InvalidMinimumElevation(self.minimum_elevation_deg));
+            return Err(ConfigError::InvalidMinimumElevation(
+                self.minimum_elevation_deg,
+            ));
         }
         if let TleSource::Inline(text) = &self.tle {
             if text.trim().is_empty() {
@@ -190,22 +201,48 @@ mod tests {
 
     #[test]
     fn default_station_is_valid() {
-        StationConfig::default().validate().expect("default station validates");
+        StationConfig::default()
+            .validate()
+            .expect("default station validates");
     }
 
     #[test]
     fn rejects_out_of_range_fields() {
-        let bad_lat = StationConfig { latitude_deg: 91.0, ..Default::default() };
-        assert!(matches!(bad_lat.validate(), Err(ConfigError::InvalidLatitude(_))));
+        let bad_lat = StationConfig {
+            latitude_deg: 91.0,
+            ..Default::default()
+        };
+        assert!(matches!(
+            bad_lat.validate(),
+            Err(ConfigError::InvalidLatitude(_))
+        ));
 
-        let bad_lon = StationConfig { longitude_deg: 200.0, ..Default::default() };
-        assert!(matches!(bad_lon.validate(), Err(ConfigError::InvalidLongitude(_))));
+        let bad_lon = StationConfig {
+            longitude_deg: 200.0,
+            ..Default::default()
+        };
+        assert!(matches!(
+            bad_lon.validate(),
+            Err(ConfigError::InvalidLongitude(_))
+        ));
 
-        let bad_freq = StationConfig { nominal_carrier_hz: 0.0, ..Default::default() };
-        assert!(matches!(bad_freq.validate(), Err(ConfigError::InvalidFrequency(_))));
+        let bad_freq = StationConfig {
+            nominal_carrier_hz: 0.0,
+            ..Default::default()
+        };
+        assert!(matches!(
+            bad_freq.validate(),
+            Err(ConfigError::InvalidFrequency(_))
+        ));
 
-        let nan_alt = StationConfig { altitude_m: f64::NAN, ..Default::default() };
-        assert!(matches!(nan_alt.validate(), Err(ConfigError::InvalidAltitude(_))));
+        let nan_alt = StationConfig {
+            altitude_m: f64::NAN,
+            ..Default::default()
+        };
+        assert!(matches!(
+            nan_alt.validate(),
+            Err(ConfigError::InvalidAltitude(_))
+        ));
 
         let bad_doppler = StationConfig {
             doppler_tolerance_hz: 0.0,
@@ -228,11 +265,19 @@ mod tests {
 
     #[test]
     fn resolves_inline_tle_and_rejects_empty() {
-        let text = StationConfig::default().resolve_tle_text().expect("inline resolves");
+        let text = StationConfig::default()
+            .resolve_tle_text()
+            .expect("inline resolves");
         assert!(text.contains("25544"));
 
-        let empty = StationConfig { tle: TleSource::Inline("   ".into()), ..Default::default() };
-        assert!(matches!(empty.resolve_tle_text(), Err(ConfigError::EmptyTle)));
+        let empty = StationConfig {
+            tle: TleSource::Inline("   ".into()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            empty.resolve_tle_text(),
+            Err(ConfigError::EmptyTle)
+        ));
         assert!(matches!(empty.validate(), Err(ConfigError::EmptyTle)));
     }
 
@@ -242,6 +287,9 @@ mod tests {
             tle: TleSource::File(PathBuf::from("does/not/exist.tle")),
             ..Default::default()
         };
-        assert!(matches!(cfg.resolve_tle_text(), Err(ConfigError::TleRead { .. })));
+        assert!(matches!(
+            cfg.resolve_tle_text(),
+            Err(ConfigError::TleRead { .. })
+        ));
     }
 }

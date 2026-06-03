@@ -27,7 +27,9 @@ pub const CCSDS_PRIMARY_HEADER_LEN: usize = 6;
 #[derive(Debug, thiserror::Error)]
 pub enum CcsdsError {
     /// The datagram is shorter than a CCSDS primary header.
-    #[error("datagram too short for a CCSDS primary header: {len} byte(s) < {CCSDS_PRIMARY_HEADER_LEN}")]
+    #[error(
+        "datagram too short for a CCSDS primary header: {len} byte(s) < {CCSDS_PRIMARY_HEADER_LEN}"
+    )]
     TooShort {
         /// Number of bytes actually present.
         len: usize,
@@ -108,11 +110,16 @@ pub fn parse_telemetry(frame: &RawFrame) -> Result<TelemetryFrame, CcsdsError> {
     let payload_len = header.data_len() as usize + 1;
     let declared = CCSDS_PRIMARY_HEADER_LEN + payload_len;
     if raw.len() < declared {
-        return Err(CcsdsError::Truncated { declared, available: raw.len() });
+        return Err(CcsdsError::Truncated {
+            declared,
+            available: raw.len(),
+        });
     }
 
     if header.packet_type() != PacketType::Tm {
-        return Err(CcsdsError::NotTelemetry { apid: header.apid().value() });
+        return Err(CcsdsError::NotTelemetry {
+            apid: header.apid().value(),
+        });
     }
 
     Ok(TelemetryFrame {
@@ -131,9 +138,12 @@ pub fn parse_telemetry(frame: &RawFrame) -> Result<TelemetryFrame, CcsdsError> {
 ///
 /// For lab/HIL tools (Milestone 7): `apid` / `seq_count` are arbitrary test identifiers;
 /// `payload` must be non-empty per CCSDS. Not a full PUS/secondary-header encoder — see
-/// `AGENTS.md` (synthetic data only).
+/// synthetic/public data only (project README / compliance posture).
 pub fn encode_synthetic_tm(apid: u16, seq_count: u16, payload: &[u8]) -> Vec<u8> {
-    assert!(!payload.is_empty(), "CCSDS data field must be at least 1 byte");
+    assert!(
+        !payload.is_empty(),
+        "CCSDS data field must be at least 1 byte"
+    );
     let version = 0u16;
     let ptype = 0u16; // TM
     let sec_hdr = 0u16;
@@ -245,7 +255,10 @@ mod tests {
         let mut raw = encode_synthetic_tm(0x05, 0, b"hello"); // data_len encodes 5-byte field
         raw.truncate(CCSDS_PRIMARY_HEADER_LEN + 2);
         match parse_telemetry(&frame_from(raw)) {
-            Err(CcsdsError::Truncated { declared, available }) => {
+            Err(CcsdsError::Truncated {
+                declared,
+                available,
+            }) => {
                 assert_eq!(declared, CCSDS_PRIMARY_HEADER_LEN + 5);
                 assert_eq!(available, CCSDS_PRIMARY_HEADER_LEN + 2);
             }

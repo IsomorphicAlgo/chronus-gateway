@@ -1,7 +1,7 @@
 # ChronusGateway-RS — Iterative Test Plan
 
 The testing companion to `BUILD_PLAN.md`. It encodes the **Ephemerust testing standard**
-required by `AGENTS.md` rule 4: layered tests, documented physics tolerances, deterministic and
+required by the project's stage-gate protocol: layered tests, documented physics tolerances, deterministic and
 offline, enforced at every stage gate.
 
 ---
@@ -107,6 +107,12 @@ cargo clippy --all-targets
       real `ingest::run` on loopback).
 - [x] **Soak:** sustained simulated-rate run (400 frames) with `recv_errors == 0` and full parse.
 
+### M8 — File configuration
+- [x] **TOML:** valid file → merged `IngestConfig` + `StationConfig`; startup runs `validate()` and
+      TLE resolution (inline or readable file).
+- [x] **Errors:** ambiguous/missing TLE keys, bad `SocketAddr`, unknown top-level keys, missing TLE
+      file → structured `ConfigLoadError` / `ConfigError` (unit tests in `config/file.rs`).
+
 ---
 
 ## Tolerance Register (justify every number)
@@ -124,8 +130,8 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 ## Status / counts (keep current)
 | Layer | Count | Notes |
 |-------|-------|-------|
-| Unit tests | 25 | `ccsds` (8 incl. proptest) + `config` (4) + `propagator` (4) + `validate` (9). |
+| Unit tests | 33 | `ccsds` (8 incl. proptest) + `config` (12) + `propagator` (4) + `validate` (9). |
 | Integration tests | 9 | `crates/gateway/tests/*.rs` (7) + `crates/chronus-hil-sim/tests/hil_ingest.rs` (2). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-03.*
+*Last updated: 2026-06-01.*

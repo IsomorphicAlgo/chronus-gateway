@@ -126,7 +126,10 @@ async fn oversized_datagram_does_not_break_loop() {
             break;
         }
     }
-    assert!(saw_valid, "loop must keep delivering valid frames after an oversized datagram");
+    assert!(
+        saw_valid,
+        "loop must keep delivering valid frames after an oversized datagram"
+    );
 
     sd_tx.send(()).ok();
     handle.await.expect("join").expect("clean shutdown");
@@ -149,7 +152,10 @@ async fn lagging_subscriber_never_blocks_socket() {
     // The socket loop must receive all datagrams regardless of the stalled subscriber.
     let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
     while stats.frames_received.load(Ordering::Relaxed) < N {
-        assert!(tokio::time::Instant::now() < deadline, "socket loop stalled on slow subscriber");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "socket loop stalled on slow subscriber"
+        );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     assert_eq!(stats.frames_received.load(Ordering::Relaxed), N);

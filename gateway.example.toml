@@ -1,0 +1,32 @@
+# ChronusGateway-RS — example gateway configuration (Milestone 8).
+# Copy to e.g. `gateway.toml` and run: `chronus-gateway --config gateway.toml`
+# Or set: CHRONUS_GATEWAY_CONFIG=gateway.toml
+#
+# Omitted `[ingest]` or `[station]` sections fall back to the same defaults as running with no file.
+# When `[station]` is present, set exactly one of `tle_inline` or `tle_file` (paths are relative to
+# the process working directory unless given as absolute).
+
+[ingest]
+bind_addr = "127.0.0.1:7301"
+channel_capacity = 1024
+max_datagram_size = 65542
+http_bind = "127.0.0.1:8080"
+
+[station]
+latitude_deg = 35.0
+longitude_deg = -116.0
+altitude_m = 1000.0
+nominal_carrier_hz = 437500000.0
+min_recompute_interval_ms = 10
+doppler_tolerance_hz = 150.0
+minimum_elevation_deg = 0.0
+
+# Public reference ISS (ZARYA) element set — synthetic/public data only (see README / Methodology).
+tle_inline = """
+ISS (ZARYA)
+1 25544U 98067A   20194.88612269 -.00002218  00000-0 -31515-4 0  9992
+2 25544  51.6461 221.2784 0001413  89.1723 280.4612 15.49507896236008
+"""
+
+# Alternative: load TLE from a UTF-8 text file (two- or three-line set).
+# tle_file = "path/to/elements.tle"

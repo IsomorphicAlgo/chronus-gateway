@@ -122,7 +122,10 @@ async fn dictionary_stub() -> Json<DictionaryStubResponse> {
     })
 }
 
-async fn openmct_ws(ws: WebSocketUpgrade, State(state): State<Arc<SharedGateway>>) -> impl IntoResponse {
+async fn openmct_ws(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<SharedGateway>>,
+) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_openmct_socket(socket, state))
 }
 

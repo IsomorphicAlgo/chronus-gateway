@@ -49,7 +49,8 @@ async fn nexosim_smoke_reaches_ingest_and_parse() {
 
     const N: u32 = 24;
     let apid = 0x7B0u16;
-    let hil = tokio::task::spawn_blocking(move || chronus_hil_sim::run_nexosim_udp_hil(local, N, apid));
+    let hil =
+        tokio::task::spawn_blocking(move || chronus_hil_sim::run_nexosim_udp_hil(local, N, apid));
     hil.await.expect("hil join").expect("hil run");
 
     let mut parsed = 0u32;
@@ -73,7 +74,10 @@ async fn nexosim_smoke_reaches_ingest_and_parse() {
     assert_eq!(stats.recv_errors.load(Ordering::Relaxed), 0);
 
     sd_tx.send(()).ok();
-    ingest_handle.await.expect("ingest join").expect("ingest ok");
+    ingest_handle
+        .await
+        .expect("ingest join")
+        .expect("ingest ok");
 }
 
 #[tokio::test]
@@ -85,7 +89,8 @@ async fn nexosim_soak_bounded_recv_errors() {
 
     const N: u32 = 400;
     let apid = 0x7B1u16;
-    let hil = tokio::task::spawn_blocking(move || chronus_hil_sim::run_nexosim_udp_hil(local, N, apid));
+    let hil =
+        tokio::task::spawn_blocking(move || chronus_hil_sim::run_nexosim_udp_hil(local, N, apid));
     hil.await.expect("hil join").expect("hil run");
 
     let mut parsed = 0u32;

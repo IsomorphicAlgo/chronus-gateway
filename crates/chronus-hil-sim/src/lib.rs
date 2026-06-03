@@ -1,14 +1,14 @@
 //! NeXosim-backed **synthetic** spacecraft telemetry for Milestone 7 HIL.
 //!
 //! Drives [`chronus_gateway`] over UDP with CCSDS TM packets carrying abstract EPS / thermal /
-//! ADCS scalars (no mission-specific data; see `AGENTS.md`).
+//! ADCS scalars (no mission-specific data; synthetic demo only).
 //!
 //! **Credit:** [NeXosim](https://github.com/asynchronics/nexosim) (asynchronics) — MIT OR Apache-2.0.
 
 use std::net::SocketAddr;
 
 use chronus_gateway::encode_synthetic_tm;
-use nexosim::model::{BuildContext, Context, Model, ProtoModel, schedulable};
+use nexosim::model::{schedulable, BuildContext, Context, Model, ProtoModel};
 use nexosim::ports::Output;
 use nexosim::simulation::{ExecutionError, Mailbox, SimInit};
 use nexosim::time::MonotonicTime;
@@ -100,12 +100,7 @@ pub struct UdpDownlinkBridge;
 #[Model(type Env = BridgeEnv)]
 impl UdpDownlinkBridge {
     #[nexosim(schedulable)]
-    async fn recv_sample(
-        &mut self,
-        sample: TelemSample,
-        _cx: &Context<Self>,
-        env: &mut BridgeEnv,
-    ) {
+    async fn recv_sample(&mut self, sample: TelemSample, _cx: &Context<Self>, env: &mut BridgeEnv) {
         let payload = sample.to_payload_bytes();
         let seq = (sample.seq & 0x3FFF) as u16;
         let pkt = encode_synthetic_tm(env.apid, seq, &payload);
@@ -158,6 +153,7 @@ pub fn run_nexosim_udp_hil(dest: SocketAddr, total_frames: u32, apid: u16) -> an
         .init(t0)
         .map_err(|e| anyhow::anyhow!("NeXosim bench init: {e:?}"))?;
 
-    sim.run().map_err(|e: ExecutionError| anyhow::anyhow!("NeXosim run: {e:?}"))?;
+    sim.run()
+        .map_err(|e: ExecutionError| anyhow::anyhow!("NeXosim run: {e:?}"))?;
     Ok(())
 }

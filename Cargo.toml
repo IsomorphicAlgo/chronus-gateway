@@ -33,6 +33,7 @@ thiserror = "1"
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "0.8"
 
 # CCSDS / ECSS packet standards (Space Packet primary header parsing). See Methodology D-010.
 spacepackets = "0.17"

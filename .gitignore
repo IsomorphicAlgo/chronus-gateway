@@ -2,7 +2,11 @@
 /target
 **/*.rs.bk
 
-# Local environment / secrets (see AGENTS.md → Security)
+# Local-only governance / agent instructions (not distributed via git)
+AGENTS.md
+agents.md
+
+# Local environment / secrets (do not commit)
 .env
 .env.*
 *.local.toml

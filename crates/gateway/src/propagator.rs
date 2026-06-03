@@ -72,9 +72,19 @@ impl EphemerustPropagator {
     /// let state = prop.tracking_state(t).unwrap();
     /// assert!(state.range_km > 0.0 && state.range_km.is_finite());
     /// ```
-    pub fn new(tle_text: &str, latitude_deg: f64, longitude_deg: f64, altitude_m: f64) -> Result<Self> {
+    pub fn new(
+        tle_text: &str,
+        latitude_deg: f64,
+        longitude_deg: f64,
+        altitude_m: f64,
+    ) -> Result<Self> {
         let tle = Tle::parse(tle_text)?;
-        Ok(Self { tle, latitude_deg, longitude_deg, altitude_m })
+        Ok(Self {
+            tle,
+            latitude_deg,
+            longitude_deg,
+            altitude_m,
+        })
     }
 
     /// Builds a propagator from a validated [`StationConfig`], resolving its TLE source.
@@ -158,7 +168,9 @@ mod tests {
         2 25544  51.6461 221.2784 0001413  89.1723 280.4612 15.49507896236008";
 
     fn epoch() -> chrono::DateTime<Utc> {
-        Utc.with_ymd_and_hms(2020, 7, 12, 21, 0, 0).single().unwrap()
+        Utc.with_ymd_and_hms(2020, 7, 12, 21, 0, 0)
+            .single()
+            .unwrap()
     }
 
     #[test]
@@ -166,10 +178,26 @@ mod tests {
         let prop = EphemerustPropagator::new(ISS_TLE, 35.0, -116.0, 1000.0).expect("valid TLE");
         let s = prop.tracking_state(epoch()).expect("propagation succeeds");
 
-        assert!(s.range_km.is_finite() && s.range_km > 0.0, "range_km = {}", s.range_km);
-        assert!((0.0..=360.0).contains(&s.azimuth_deg), "azimuth = {}", s.azimuth_deg);
-        assert!((-90.0..=90.0).contains(&s.elevation_deg), "elevation = {}", s.elevation_deg);
-        assert!(s.range_rate_km_s.is_finite(), "range_rate = {}", s.range_rate_km_s);
+        assert!(
+            s.range_km.is_finite() && s.range_km > 0.0,
+            "range_km = {}",
+            s.range_km
+        );
+        assert!(
+            (0.0..=360.0).contains(&s.azimuth_deg),
+            "azimuth = {}",
+            s.azimuth_deg
+        );
+        assert!(
+            (-90.0..=90.0).contains(&s.elevation_deg),
+            "elevation = {}",
+            s.elevation_deg
+        );
+        assert!(
+            s.range_rate_km_s.is_finite(),
+            "range_rate = {}",
+            s.range_rate_km_s
+        );
     }
 
     #[test]
@@ -198,9 +226,21 @@ mod tests {
         assert_eq!(a.range_km, b.range_km, "propagation must be deterministic");
 
         // Baseline locked from the foundation smoke run (same TLE/station/epoch).
-        assert!((a.range_km - 9134.98).abs() < 1.0, "range_km = {}", a.range_km);
-        assert!((a.elevation_deg - (-42.07)).abs() < 0.5, "elevation = {}", a.elevation_deg);
-        assert!((a.azimuth_deg - 141.70).abs() < 0.5, "azimuth = {}", a.azimuth_deg);
+        assert!(
+            (a.range_km - 9134.98).abs() < 1.0,
+            "range_km = {}",
+            a.range_km
+        );
+        assert!(
+            (a.elevation_deg - (-42.07)).abs() < 0.5,
+            "elevation = {}",
+            a.elevation_deg
+        );
+        assert!(
+            (a.azimuth_deg - 141.70).abs() < 0.5,
+            "azimuth = {}",
+            a.azimuth_deg
+        );
     }
 
     #[test]
@@ -226,19 +266,29 @@ mod tests {
             range_km: 30.0,
             range_rate_km_s: 0.5,
         };
-        let counting = Arc::new(CountingPropagator { calls: AtomicU64::new(0), state: scripted });
+        let counting = Arc::new(CountingPropagator {
+            calls: AtomicU64::new(0),
+            state: scripted,
+        });
         let provider = TrackingProvider::new(counting.clone(), 100); // 100 ms throttle
 
         let t0 = epoch();
         let first = provider.tracking_state(t0).expect("first");
-        assert_eq!(first.range_km, scripted.range_km, "provider returns the backend's state");
+        assert_eq!(
+            first.range_km, scripted.range_km,
+            "provider returns the backend's state"
+        );
 
         // Within the throttle window → served from cache, no extra propagation.
-        provider.tracking_state(t0 + chrono::Duration::milliseconds(50)).expect("cached");
+        provider
+            .tracking_state(t0 + chrono::Duration::milliseconds(50))
+            .expect("cached");
         assert_eq!(counting.calls.load(Ordering::Relaxed), 1);
 
         // Beyond the window → recompute.
-        provider.tracking_state(t0 + chrono::Duration::milliseconds(200)).expect("recompute");
+        provider
+            .tracking_state(t0 + chrono::Duration::milliseconds(200))
+            .expect("recompute");
         assert_eq!(counting.calls.load(Ordering::Relaxed), 2);
     }
 }

@@ -11,9 +11,9 @@ telemetry only against static limits, the gateway uses a live orbital propagator
 expected Doppler shift, look-angles, and link geometry for the spacecraft, and flags frames whose
 measured RF and signal parameters disagree with the physics.
 
-> **Status:** Roadmap through **Milestone 7** is implemented: M1–M6 as before, plus the
-> **`chronus-hil-sim`** NeXosim driver (synthetic CCSDS TM over UDP) with ingest/soak tests and
-> profiling notes in [`docs/HIL.md`](docs/HIL.md). See [`BUILD_PLAN.md`](BUILD_PLAN.md).
+> **Status:** Roadmap through **Milestone 8** is implemented: M1–M7 as before, plus optional **TOML**
+> configuration (`--config` / `CHRONUS_GATEWAY_CONFIG`, `[gateway.example.toml](gateway.example.toml)`).
+> NeXosim HIL notes: `[docs/HIL.md](docs/HIL.md)`. See `[BUILD_PLAN.md](BUILD_PLAN.md)`.
 
 ---
 
@@ -25,20 +25,20 @@ abstraction boundary between the pipeline and any astrodynamics backend.
 ```
 Raw RF / SDR ──▶ Async UDP ingestion ──▶ CCSDS zero-copy parser ──▶ Physics-Telemetry
  (UDP/TCP)        (Tokio)                  (validated frames)         Co-Validation engine
-                                                                            │
-                  OrbitalPropagator trait ◀── range-rate / look-angles ─────┤
+                                                                             │
+                  OrbitalPropagator trait ◀── range-rate / look-angles ──=──┤
                   (Ephemerust today, nyx-space later)                       ▼
                                                           Axum WebSocket ──▶ NASA Open MCT
 ```
 
 - **Asynchronous core.** A Tokio runtime drives non-blocking UDP ingestion and a pool of
-  WebSocket connections, scaling to many concurrent telemetry channels and operator screens.
+WebSocket connections, scaling to many concurrent telemetry channels and operator screens.
 - **Trait-based astrodynamics.** Physical-state computation is abstracted behind the
-  `OrbitalPropagator` trait, decoupling the network and validation pipelines from the math
-  library. The default backend is the SGP4-based Ephemerust library; the trait boundary leaves a
-  clean path to a high-fidelity `nyx-space` backend without rewriting the gateway.
+`OrbitalPropagator` trait, decoupling the network and validation pipelines from the math
+library. The default backend is the SGP4-based Ephemerust library; the trait boundary leaves a
+clean path to a high-fidelity `nyx-space` backend without rewriting the gateway.
 
-The reasoning behind these and other choices is recorded in [`Methodology.md`](Methodology.md).
+The reasoning behind these and other choices is recorded in `[Methodology.md](Methodology.md)`.
 
 ---
 
@@ -48,13 +48,14 @@ The reasoning behind these and other choices is recorded in [`Methodology.md`](M
 chronus-gateway/
 ├── Cargo.toml              Workspace manifest (centralized dependency versions, MSRV 1.88)
 ├── deny.toml               cargo-deny policy (CI supply-chain gate)
+├── gateway.example.toml    Example TOML for `chronus-gateway --config` (M8)
 ├── .github/workflows/ci.yml Tests, clippy, audit, deny (checks out Ephemerust sibling)
 ├── crates/gateway/         The gateway binary + library
 │   ├── benches/
 │   │   └── parse_validate.rs   Criterion: parse + validate hot paths (M6)
 │   ├── src/
 │   │   ├── lib.rs          Crate documentation and module wiring
-│   │   ├── config.rs       Ingestion + HTTP bind (`IngestConfig`, `StationConfig`)
+│   │   ├── config/         Ingest + station types; TOML file loader (`file.rs`, M8)
 │   │   ├── ingest.rs       Asynchronous UDP ingestion loop (RawFrame, stats, shutdown)
 │   │   ├── ccsds.rs        CCSDS Space Packet parsing (TelemetryFrame, validation)
 │   │   ├── validate.rs     Physics–Telemetry Co-Validation (Doppler, elevation, physics_flags)
@@ -72,7 +73,6 @@ chronus-gateway/
 │   └── tests/hil_ingest.rs Milestone 7 smoke + soak vs real `ingest::run`
 ├── docs/
 │   └── HIL.md              Manual profiling recipe (gateway metrics)
-├── AGENTS.md               Project constitution (compliance, attribution, security, testing)
 ├── Methodology.md          Decision log: the reasoning behind major choices
 ├── BUILD_PLAN.md           Iterative, stage-gated implementation roadmap
 └── TEST_PLAN.md            Companion test plan and tolerance register
@@ -93,20 +93,18 @@ checkout. The expected on-disk layout places both repositories next to each othe
 
 ```bash
 cargo build      # compile the workspace
-cargo run        # UDP ingest (default 127.0.0.1:7301) + Axum HTTP/WebSocket (default 127.0.0.1:8080)
+cargo run -p chronus-gateway    # UDP ingest (127.0.0.1:7301) + HTTP/WebSocket (127.0.0.1:8080)
+cargo run -p chronus-gateway -- --config gateway.example.toml   # optional TOML (M8)
 cargo test       # unit + integration + doctests
 cargo bench -p chronus-gateway   # Criterion benchmarks (M6)
 cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 2000   # NeXosim HIL (M7); run gateway first
 ```
 
-See [`docs/HIL.md`](docs/HIL.md) for pairing with `GET /api/v1/chronus/metrics`.
+See `[docs/HIL.md](docs/HIL.md)` for pairing with `GET /api/v1/chronus/metrics`.
 
-Default bind addresses are loopback-only (`IngestConfig` / `StationConfig` in `config.rs`). Set
-`RUST_LOG=debug` for verbose tracing.
-
-> **Windows note:** on the maintainer's machine the MSVC `link.exe` is blocked from writing
-> freshly linked executables. The repository is therefore configured (`.cargo/config.toml`) to
-> link with the toolchain's bundled `rust-lld`. See `Methodology.md` (D-008) for details.
+Default bind addresses are loopback-only (`IngestConfig` / `StationConfig` in `config`). Set
+`RUST_LOG=debug` for verbose tracing. Settings can be overridden with TOML (`--config` / `-c`, or
+`CHRONUS_GATEWAY_CONFIG`; CLI wins when both are set) — see `[gateway.example.toml](gateway.example.toml)`.
 
 ---
 
@@ -116,7 +114,7 @@ Testing is a first-class deliverable. The project follows a layered strategy —
 integration tests over loopback UDP and in-process WebSockets, NeXosim HIL tests in
 `chronus-hil-sim`, doctests, and physics
 co-validation tests with explicitly documented tolerances — enforced at every milestone's stage
-gate. The full strategy and per-milestone test matrix are defined in [`TEST_PLAN.md`](TEST_PLAN.md).
+gate. The full strategy and per-milestone test matrix are defined in `[TEST_PLAN.md](TEST_PLAN.md)`.
 
 ---
 
@@ -125,20 +123,20 @@ gate. The full strategy and per-milestone test matrix are defined in [`TEST_PLAN
 ChronusGateway-RS builds directly on prior work, and credit is given accordingly:
 
 - **[Ephemerust](https://github.com/IsomorphicAlgo/ephemerust)** — the SGP4-based orbital
-  mechanics and satellite-tracking library that provides the look-angle and range-rate
-  computations underpinning the co-validation engine. Authored by the same maintainer.
+mechanics and satellite-tracking library that provides the look-angle and range-rate
+computations underpinning the co-validation engine. Authored by the same maintainer.
 - **Rusty_Server** — an earlier asynchronous networking and REST service by the same maintainer,
-  whose Tokio/Axum architecture and integration patterns informed this gateway's design.
-- **[`sgp4`](https://crates.io/crates/sgp4)** — the validated SGP4/SDP4 propagator that
-  Ephemerust delegates to for numerical orbit propagation.
+whose Tokio/Axum architecture and integration patterns informed this gateway's design.
+- `**[sgp4](https://crates.io/crates/sgp4)`** — the validated SGP4/SDP4 propagator that
+Ephemerust delegates to for numerical orbit propagation.
 - **[Tokio](https://tokio.rs/)** and **[Axum](https://github.com/tokio-rs/axum)** — the
-  asynchronous runtime and web framework that form the network core.
+asynchronous runtime and web framework that form the network core.
 - **[CCSDS](https://public.ccsds.org/)** — the open international standards for space packet
-  framing and protocols that define the gateway's wire formats.
+framing and protocols that define the gateway's wire formats.
 - **[NASA Open MCT](https://nasa.github.io/openmct/)** — the open-source mission-control
-  framework targeted by the distribution layer.
+framework targeted by the distribution layer.
 - **[NeXosim](https://github.com/asynchronics/nexosim)** — the discrete-event simulation
-  framework planned for hardware-in-the-loop validation.
+framework planned for hardware-in-the-loop validation.
 
 The broader Rust aerospace ecosystem — including `sat-rs`, `spacepackets`, and `nyx-space` —
 informed the design analysis.
@@ -151,4 +149,4 @@ Licensed under the MIT License.
 
 This project is designed strictly around open international standards (CCSDS) and is published
 openly to comply with the Public Domain and Fundamental Research exclusions of ITAR/EAR. See
-[`AGENTS.md`](AGENTS.md) for the project's compliance, attribution, and security policies.
+[`Methodology.md`](Methodology.md) and this README for compliance, attribution, and security expectations.

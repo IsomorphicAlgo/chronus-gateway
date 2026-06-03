@@ -7,14 +7,13 @@
 //! [`ccsds`] Space Packet parsing (Milestone 2), station-configured tracking (Milestone 3), the
 //! [`validate`] Physics–Telemetry Co-Validation engine (Milestone 4), and Axum HTTP + WebSocket
 //! distribution with Open MCT–shaped JSON ([`http`], Milestone 5), observability / benches / CI
-//! gates (Milestone 6), and the NeXosim HIL workspace crate `chronus-hil-sim` (Milestone 7). See
-//! `BUILD_PLAN.md`.
+//! gates (Milestone 6), the NeXosim HIL workspace crate `chronus-hil-sim` (Milestone 7), and
+//! optional TOML file configuration ([`config::file`], Milestone 8). See `BUILD_PLAN.md`.
 //!
 //! ## Standards & compliance
 //!
-//! Built strictly on open, international standards (CCSDS). See `AGENTS.md` for the project's
-//! ITAR/EAR posture, attribution policy, and security priorities — all contributors and agents
-//! must follow it.
+//! Built strictly on open, international standards (CCSDS). See the repository `README.md` and
+//! `Methodology.md` for compliance posture, attribution, and security priorities.
 
 pub mod ccsds;
 pub mod config;
@@ -26,11 +25,12 @@ pub mod state;
 pub mod validate;
 
 pub use ccsds::{encode_synthetic_tm, CcsdsError, TelemetryFrame};
-pub use config::{ConfigError, IngestConfig, StationConfig, TleSource};
-pub use ingest::{IngestStats, RawFrame};
-pub use propagator::{
-    EphemerustPropagator, OrbitalPropagator, TrackingProvider, TrackingState,
+pub use config::{
+    load_effective_gateway_config, load_gateway_from_path, resolve_config_path, ConfigError,
+    ConfigLoadError, IngestConfig, StationConfig, TleSource,
 };
+pub use ingest::{IngestStats, RawFrame};
+pub use propagator::{EphemerustPropagator, OrbitalPropagator, TrackingProvider, TrackingState};
 pub use validate::{
     apply_physics_validation, expected_carrier_hz, RfMetadata, FLAG_BELOW_HORIZON,
     FLAG_DOPPLER_ANOMALY, FLAG_RSSI_RESERVED, SPEED_OF_LIGHT_M_S,

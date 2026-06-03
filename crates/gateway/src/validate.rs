@@ -91,8 +91,8 @@ pub fn apply_physics_validation(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::SocketAddr;
     use chrono::Utc;
+    use std::net::SocketAddr;
 
     fn dummy_tm() -> TelemetryFrame {
         TelemetryFrame {

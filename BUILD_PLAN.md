@@ -1,7 +1,7 @@
 # ChronusGateway-RS — Iterative Build Plan
 
 An **iterative, stage-gated** roadmap from the current foundation to a physics-validated TMTC
-gateway. Governance mirrors Ephemerust's protocol (see `AGENTS.md` rule 4):
+gateway. Governance mirrors Ephemerust's protocol (see `TEST_PLAN.md` / stage-gate notes below):
 
 > **A milestone is complete only when its deliverables exist, its test gate passes
 > (`TEST_PLAN.md`), and its stage-gate checklist is confirmed. Do not chain milestones.**
@@ -21,7 +21,7 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner approval required to adv
 - [x] Cargo workspace (`crates/gateway`), centralized `[workspace.dependencies]`, MSRV 1.88.
 - [x] `OrbitalPropagator` trait + `EphemerustPropagator` backend (`src/propagator.rs`).
 - [x] `main.rs` smoke test producing a real `TrackingState` from a reference ISS TLE.
-- [x] Governance: `AGENTS.md`, `Methodology.md`; build unblocked via `rust-lld` (D-008).
+- [x] Governance: `Methodology.md`; build unblocked via `rust-lld` (D-008).
 
 **Test gate:** [TEST_PLAN.md → M0](TEST_PLAN.md#m0--foundation) — smoke run succeeds.
 
@@ -174,12 +174,37 @@ NeXosim); multi-node scope is **OD-E** backlog (`Methodology.md`).
 **Test gate:** [TEST_PLAN.md → M7](TEST_PLAN.md#m7--hil-simulation) — sim→gateway smoke + a
 sustained simulated-rate soak with bounded `recv_errors`.
 
-**Gate 7:** [x] HIL approved. **Portfolio-complete** at current roadmap.
+**Gate 7:** [x] HIL approved.
+
+---
+
+## Milestone 8 — File-backed gateway configuration ✅ **Complete (2026-06-01)**
+
+**Objective:** Deploy the gateway with explicit bind addresses, station geometry, and TLE source
+without recompiling.
+
+**Resolved decision:** **D-015** — TOML (`toml` crate) with optional top-level `[ingest]` and
+`[station]` sections; CLI `--config` / `-c` and `CHRONUS_GATEWAY_CONFIG` (CLI wins when both set).
+Recorded in `Methodology.md`.
+
+**Deliverables**
+- [x] `config::file`: deserialize → merge with defaults for omitted sections → `validate()` +
+      `resolve_tle_text()` at startup (fail fast on bad TOML, bad sockets, invalid station, or
+      unreadable TLE file).
+- [x] `chronus-gateway` entrypoint uses `load_effective_gateway_config()` (file if set, else
+      historical defaults).
+- [x] `gateway.example.toml` at workspace root documents the schema.
+
+**Test gate:** [TEST_PLAN.md → M8](TEST_PLAN.md#m8--file-configuration) — TOML parse/merge/validation
+unit tests in `config/file.rs`.
+
+**Gate 8:** [x] File configuration approved.
 
 ---
 
 ## Dependency / ordering notes
-- M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
+- M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional; M8 is
+  operational polish after the core portfolio.
 - **OD-B** (Open MCT contract) resolved at M5 (`Methodology.md` D-013). **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-06-03.*
+*Last updated: 2026-06-01.*

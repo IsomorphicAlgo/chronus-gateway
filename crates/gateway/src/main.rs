@@ -1,11 +1,11 @@
 //! ChronusGateway-RS entrypoint.
 //!
-//! Runs the UDP ingest loop and the Axum HTTP/WebSocket server until Ctrl-C (Milestones 5–6).
+//! Runs the UDP ingest loop and the Axum HTTP/WebSocket server until Ctrl-C (Milestones 5–8).
 
 use std::sync::Arc;
 
 use anyhow::Context;
-use chronus_gateway::config::{IngestConfig, StationConfig};
+use chronus_gateway::config::load_effective_gateway_config;
 use chronus_gateway::http;
 use chronus_gateway::ingest::{self, IngestStats};
 use chronus_gateway::metrics::GatewayMetrics;
@@ -23,7 +23,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let ingest_cfg = IngestConfig::default();
+    let (ingest_cfg, station_cfg) =
+        load_effective_gateway_config().context("gateway configuration")?;
     let socket = ingest::bind(&ingest_cfg)
         .await
         .with_context(|| format!("failed to bind UDP socket on {}", ingest_cfg.bind_addr))?;
@@ -33,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
     let (frame_tx, _rx) = broadcast::channel(ingest_cfg.channel_capacity);
     let ingest_stats = Arc::new(IngestStats::default());
     let gateway_metrics = Arc::new(GatewayMetrics::default());
-    let station = Arc::new(StationConfig::default());
+    let station = Arc::new(station_cfg);
 
     let tracking = match EphemerustPropagator::from_station(station.as_ref()) {
         Ok(prop) => {

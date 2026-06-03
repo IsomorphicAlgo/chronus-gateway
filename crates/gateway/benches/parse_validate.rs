@@ -68,5 +68,9 @@ fn bench_apply_physics_validation(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_parse_telemetry, bench_apply_physics_validation);
+criterion_group!(
+    benches,
+    bench_parse_telemetry,
+    bench_apply_physics_validation
+);
 criterion_main!(benches);

@@ -19,11 +19,7 @@ fn main() -> anyhow::Result<()> {
         .next()
         .unwrap_or_else(|| "127.0.0.1:7301".to_string())
         .parse()?;
-    let frames: u32 = args
-        .next()
-        .map(|s| s.parse())
-        .transpose()?
-        .unwrap_or(100);
+    let frames: u32 = args.next().map(|s| s.parse()).transpose()?.unwrap_or(100);
     let apid = 0x7B0u16;
 
     tracing::info!(%dest, frames, apid, "starting NeXosim HIL downlink");
