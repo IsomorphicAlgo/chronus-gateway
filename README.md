@@ -99,7 +99,8 @@ cargo bench -p chronus-gateway   # Criterion benchmarks (M6)
 cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 2000   # NeXosim HIL (M7); run gateway first
 ```
 
-See [`docs/HIL.md`](docs/HIL.md) for pairing with `GET /api/v1/chronus/metrics`.
+See [`docs/HIL.md`](docs/HIL.md) for the HIL payload contract, profiling workflow, metrics
+caveats, and troubleshooting notes.
 
 Default bind addresses are loopback-only (`IngestConfig` / `StationConfig` in `config.rs`). Set
 `RUST_LOG=debug` for verbose tracing.
@@ -117,6 +118,24 @@ integration tests over loopback UDP and in-process WebSockets, NeXosim HIL tests
 `chronus-hil-sim`, doctests, and physics
 co-validation tests with explicitly documented tolerances — enforced at every milestone's stage
 gate. The full strategy and per-milestone test matrix are defined in [`TEST_PLAN.md`](TEST_PLAN.md).
+
+---
+
+## References
+
+The implementation and documentation are grounded in these public sources and local source files:
+
+- **CCSDS Space Packet Protocol** — open primary-header and packet-framing conventions used by
+  `crates/gateway/src/ccsds.rs` through the `spacepackets` crate.
+- **Ephemerust** — the sibling SGP4/look-angle implementation used by
+  `crates/gateway/src/propagator.rs` for azimuth, elevation, slant range, and range rate.
+- **NeXosim** — the discrete-event simulation framework used by
+  `crates/chronus-hil-sim/src/lib.rs` for the synthetic HIL driver.
+- **NASA Open MCT** — the dashboard integration target for the real-time JSON stream exposed by
+  `GET /telemetry/openmct`.
+- **Local decision and test records** — [`Methodology.md`](Methodology.md),
+  [`BUILD_PLAN.md`](BUILD_PLAN.md), [`TEST_PLAN.md`](TEST_PLAN.md), and
+  [`docs/HIL.md`](docs/HIL.md) capture design rationale, stage gates, tolerances, and runbooks.
 
 ---
 
@@ -138,7 +157,7 @@ ChronusGateway-RS builds directly on prior work, and credit is given accordingly
 - **[NASA Open MCT](https://nasa.github.io/openmct/)** — the open-source mission-control
   framework targeted by the distribution layer.
 - **[NeXosim](https://github.com/asynchronics/nexosim)** — the discrete-event simulation
-  framework planned for hardware-in-the-loop validation.
+  framework used by the `chronus-hil-sim` hardware-in-the-loop driver.
 
 The broader Rust aerospace ecosystem — including `sat-rs`, `spacepackets`, and `nyx-space` —
 informed the design analysis.

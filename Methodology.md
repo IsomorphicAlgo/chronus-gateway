@@ -68,7 +68,7 @@ later if/when CI reproducibility demands it.
 ### D-007 — Async runtime: Tokio (multi-threaded)
 **Decision:** Use Tokio (`features = ["full"]`) as the async runtime.
 **Why:** It's the de-facto standard for high-throughput async networking in Rust and underpins
-the planned UDP ingestion loop, broadcast channel fan-out, and Axum WebSocket distribution.
+the implemented UDP ingestion loop, broadcast channel fan-out, and Axum WebSocket distribution.
 Propagators are `Send + Sync` so a single instance can be shared (`Arc`) across worker threads.
 
 ### D-008 — Linker: bundled `rust-lld` instead of MSVC `link.exe` (Windows)
