@@ -25,7 +25,9 @@ abstraction boundary between the pipeline and any astrodynamics backend.
 ```
 Raw RF / SDR ──▶ Async UDP ingestion ──▶ CCSDS zero-copy parser ──▶ Physics-Telemetry
  (UDP/TCP)        (Tokio)                  (validated frames)         Co-Validation engine
-                                                                            │
+     ▲                                                                      │
+     │            chronus-hil-sim ── synthetic CCSDS TM over UDP            │
+     │                  (NeXosim, M7; loopback lab harness)                 │
                   OrbitalPropagator trait ◀── range-rate / look-angles ─────┤
                   (Ephemerust today, nyx-space later)                       ▼
                                                           Axum WebSocket ──▶ NASA Open MCT
@@ -71,7 +73,7 @@ chronus-gateway/
 │   ├── src/main.rs        CLI: `[DEST] [FRAMES]` (default `127.0.0.1:7301`, `100`)
 │   └── tests/hil_ingest.rs Milestone 7 smoke + soak vs real `ingest::run`
 ├── docs/
-│   └── HIL.md              Manual profiling recipe (gateway metrics)
+│   └── HIL.md              NeXosim HIL workflow, payload contract, metrics recipe
 ├── AGENTS.md               Project constitution (compliance, attribution, security, testing)
 ├── Methodology.md          Decision log: the reasoning behind major choices
 ├── BUILD_PLAN.md           Iterative, stage-gated implementation roadmap
@@ -93,7 +95,7 @@ checkout. The expected on-disk layout places both repositories next to each othe
 
 ```bash
 cargo build      # compile the workspace
-cargo run        # UDP ingest (default 127.0.0.1:7301) + Axum HTTP/WebSocket (default 127.0.0.1:8080)
+cargo run -p chronus-gateway  # UDP ingest (127.0.0.1:7301) + HTTP/WebSocket (127.0.0.1:8080)
 cargo test       # unit + integration + doctests
 cargo bench -p chronus-gateway   # Criterion benchmarks (M6)
 cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 2000   # NeXosim HIL (M7); run gateway first
@@ -101,8 +103,26 @@ cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 2000   # NeXosim HIL (M
 
 See [`docs/HIL.md`](docs/HIL.md) for pairing with `GET /api/v1/chronus/metrics`.
 
-Default bind addresses are loopback-only (`IngestConfig` / `StationConfig` in `config.rs`). Set
+Default bind addresses are loopback-only (`IngestConfig` / `StationConfig` in `config.rs`). The
+binary currently uses those defaults directly: UDP `127.0.0.1:7301`, HTTP/WebSocket
+`127.0.0.1:8080`, a public ISS reference TLE, and a generic nominal carrier of `437.5 MHz`. Set
 `RUST_LOG=debug` for verbose tracing.
+
+### HTTP, WebSocket, and Open MCT surface
+
+| Endpoint | Purpose | Notes |
+|----------|---------|-------|
+| `GET /health` | Liveness probe | Returns `{"status":"ok"}`. |
+| `GET /api/v1/chronus/metrics` | Ingest + gateway counters | Includes UDP counters, WebSocket counters, and average processing latency. |
+| `GET /api/v1/chronus/history` | History stub | Returns an explanatory `note` and an empty `packets` array. |
+| `GET /api/v1/chronus/openmct/dictionary` | Dictionary stub | Returns an explanatory `note` and placeholder point identifiers. |
+| `GET /telemetry/openmct` | WebSocket telemetry stream | One text JSON object per parsed CCSDS TM frame, schema `openmct.realtime.v1`. |
+
+The stock gateway has orbital tracking enabled when the default `StationConfig` validates, so
+WebSocket messages include look-angle and range fields when propagation succeeds. Doppler
+co-validation requires measured RF metadata; the current binary passes `RfMetadata::default()`, so
+bit 0 is skipped and only the elevation/horizon check can set `physics_flags` in normal operation.
+See `validate.rs` and `Methodology.md` D-012/D-013 for the stable bitfield and JSON contract.
 
 > **Windows note:** on the maintainer's machine the MSVC `link.exe` is blocked from writing
 > freshly linked executables. The repository is therefore configured (`.cargo/config.toml`) to
@@ -138,7 +158,7 @@ ChronusGateway-RS builds directly on prior work, and credit is given accordingly
 - **[NASA Open MCT](https://nasa.github.io/openmct/)** — the open-source mission-control
   framework targeted by the distribution layer.
 - **[NeXosim](https://github.com/asynchronics/nexosim)** — the discrete-event simulation
-  framework planned for hardware-in-the-loop validation.
+  framework implemented by `chronus-hil-sim` for the Milestone 7 loopback HIL harness.
 
 The broader Rust aerospace ecosystem — including `sat-rs`, `spacepackets`, and `nyx-space` —
 informed the design analysis.

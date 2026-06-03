@@ -68,7 +68,7 @@ later if/when CI reproducibility demands it.
 ### D-007 — Async runtime: Tokio (multi-threaded)
 **Decision:** Use Tokio (`features = ["full"]`) as the async runtime.
 **Why:** It's the de-facto standard for high-throughput async networking in Rust and underpins
-the planned UDP ingestion loop, broadcast channel fan-out, and Axum WebSocket distribution.
+the implemented UDP ingestion loop, broadcast channel fan-out, and Axum WebSocket distribution.
 Propagators are `Send + Sync` so a single instance can be shared (`Arc`) across worker threads.
 
 ### D-008 — Linker: bundled `rust-lld` instead of MSVC `link.exe` (Windows)
@@ -169,6 +169,29 @@ Tokio and the existing `broadcast::Sender<RawFrame>` fan-out. A versioned schema
 clients forward-compatible.
 **Metrics (M6):** `GatewayMetrics` + `GET /api/v1/chronus/metrics` (ingest snapshot + gateway counters
 + average processing latency).
+**Example WebSocket message:** for a synthetic TM packet with APID `0x002A`, sequence `7`, payload
+`hello`, and no configured tracking state in the test harness:
+
+```json
+{
+  "chronus_schema": "openmct.realtime.v1",
+  "apid": 42,
+  "seq_count": 7,
+  "received_at": "2020-07-12T12:00:00Z",
+  "physics_flags": 0,
+  "source": "127.0.0.1:5000",
+  "elevation_deg": null,
+  "azimuth_deg": null,
+  "range_km": null,
+  "range_rate_km_s": null,
+  "payload_base64": "aGVsbG8="
+}
+```
+
+`GET /api/v1/chronus/history` returns:
+`{"note":"stub: persistent history not implemented; use real-time WebSocket stream","packets":[]}`.
+`GET /api/v1/chronus/openmct/dictionary` returns a `note` plus placeholder point identifiers until
+an official Open MCT dictionary is wired.
 **Tested by:** `tests/distribution.rs` (health, WebSocket JSON, second client after peer disconnect).
 
 ### D-014 — NeXosim HIL driver (Milestone 7; closes OD-D for single-spacecraft laptop scope)
@@ -190,6 +213,23 @@ dual license fits the workspace `deny.toml` policy.
 ## Open decisions (to resolve as milestones land)
 
 - **OD-E — Multi-node / rack-scale co-simulation.** Backlog beyond the M7 laptop scope.
+
+---
+
+## References
+
+Primary sources for the current technical design and public interfaces:
+
+| Source | Used for |
+|--------|----------|
+| `crates/gateway/src/ingest.rs` | UDP ingestion contract, lossy broadcast backpressure, metrics counters. |
+| `crates/gateway/src/ccsds.rs` | CCSDS Space Packet parsing and synthetic TM encoding. |
+| `crates/gateway/src/validate.rs` | Doppler/elevation co-validation and `physics_flags` bitfield. |
+| `crates/gateway/src/http.rs` | HTTP routes, WebSocket JSON envelope, metrics/stub responses. |
+| `crates/chronus-hil-sim/src/lib.rs` | NeXosim HIL spacecraft model, UDP bridge, synthetic payload layout. |
+| [CCSDS public standards](https://public.ccsds.org/) | Open packet framing standards used by the gateway. |
+| [NASA Open MCT](https://nasa.github.io/openmct/) | Target dashboard framework and adapter context. |
+| [NeXosim](https://github.com/asynchronics/nexosim) | Discrete-event simulation framework used in Milestone 7. |
 
 ---
 
