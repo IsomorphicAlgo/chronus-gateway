@@ -207,4 +207,6 @@ unit tests in `config/file.rs`.
   operational polish after the core portfolio.
 - **OD-B** (Open MCT contract) resolved at M5 (`Methodology.md` D-013). **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-06-01.*
+**Extended co-validation (post-M8):** link budget / RSSI, antenna pointing residual, and synthetic subsystem checks are planned under **[`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md)** — same stage-gate rules; **owner approval required between CV milestones** (do not chain).
+
+*Last updated: 2026-06-03.*
