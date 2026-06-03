@@ -18,11 +18,22 @@
 //!
 //! ## `physics_flags` bitfield (stable contract)
 //!
-//! | Bit | Mask | Meaning |
-//! |-----|------|---------|
-//! | 0 | `0x01` | Doppler anomaly — measured carrier differs from expected beyond tolerance. |
-//! | 1 | `0x02` | Horizon / elevation — spacecraft is below the configured minimum elevation. |
-//! | 2 | `0x04` | **Reserved** — link budget / RSSI (not implemented in this milestone). |
+//! Shipped (M4) and planned extended co-validation bits are **chartered** in `Methodology.md`
+//! **D-016** and [`docs/EXTENDED_COVALIDATION_PLAN.md`](../../../docs/EXTENDED_COVALIDATION_PLAN.md)
+//! (CV-0). Do not repurpose bits without updating those documents and `TEST_PLAN.md`.
+//!
+//! | Bit | Mask | Meaning | Status |
+//! |-----|------|---------|--------|
+//! | 0 | `0x01` | Doppler anomaly — measured carrier differs from expected beyond tolerance. | **M4** |
+//! | 1 | `0x02` | Horizon / elevation — spacecraft is below the configured minimum elevation. | **M4** |
+//! | 2 | `0x04` | Link budget — measured vs predicted received power (**T-RSSI**, free-space v1). | **CV-1** (const `FLAG_RSSI_RESERVED` today) |
+//! | 3 | `0x08` | Pointing residual — measured vs computed (az, el) exceeds **T-POINT**. | **CV-2** |
+//! | 4 | `0x10` | EPS / array current vs toy sun-angle model (**T-EPS**). | **CV-4** |
+//! | 5 | `0x20` | Thermal vs sun-angle proxy band (**T-THERMAL**). | **CV-4** |
+//! | 6–7 | `0x40`–`0x80` | Reserved. | — |
+//!
+//! If more than eight flags are needed, add `physics_flags_v2` (or similar) to the Open MCT JSON
+//! envelope rather than silently reusing reserved bits (D-016).
 //!
 //! When [`RfMetadata::measured_carrier_hz`] is `None`, the Doppler check is **skipped** (no bit 0);
 //! lab and integration tests pass `Some`. Production wiring from SDR metadata arrives with the
@@ -38,10 +49,15 @@ pub const SPEED_OF_LIGHT_M_S: f64 = 299_792_458.0;
 pub const FLAG_DOPPLER_ANOMALY: u8 = 0x01;
 /// Bit 1 — spacecraft below the configured minimum elevation (e.g. below local horizon).
 pub const FLAG_BELOW_HORIZON: u8 = 0x02;
-/// Bit 2 — reserved for RSSI / link-budget co-validation (not set by this module yet).
+/// Bit 2 — link-budget / RSSI anomaly (**CV-1**). Not set by this module until that milestone
+/// lands; semantics chartered in `Methodology.md` D-016 (`FLAG_RSSI_RESERVED` name retained for API stability).
 pub const FLAG_RSSI_RESERVED: u8 = 0x04;
 
-/// Optional RF measurements accompanying a frame (typically from the SDR / front-end).
+/// Optional **ground / receiver-chain** measurements accompanying a frame (SDR or synthetic lab).
+///
+/// Per **D-016**: carrier frequency for Doppler lives here; **CV-1+** will add optional received power
+/// (dBm) and **CV-2** optional measured azimuth/elevation. Spacecraft-reported engineering scalars
+/// use the versioned CCSDS payload path (**CV-3** decode), not this struct.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RfMetadata {
     /// Measured downlink carrier frequency (Hz). `None` skips the Doppler check.

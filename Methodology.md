@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per the
 contributor expectations in `README.md` (keep this file current when decisions change).
 
-> Status: **M1–M7** (through optional NeXosim HIL driver + ingest/soak tests). Portfolio roadmap is complete
-> at the current stage gate; further work is backlog / productization.
+> Status: **M1–M8** complete. **CV-0** charter is documented in
+> [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md) and **D-016**.
+> **Gate CV-0** is approved; **CV-1** may proceed under the extension plan.
 
 ---
 
@@ -146,6 +147,8 @@ state, counting-mock trait-swap + throttle).
 - **Elevation:** if `elevation_deg < minimum_elevation_deg`, set bit 1. Default threshold **0°**
   (strict: below mathematical horizon is anomalous). Negative thresholds allow a refraction mask.
 - **Bit 2:** reserved for RSSI / link budget (`FLAG_RSSI_RESERVED`); not set in this milestone.
+  **Charter:** final semantics and mask assignment for bits 2–7 are **D-016** / CV-0
+  ([`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md)); CV-1 activates bit 2.
 - **`RfMetadata::measured_carrier_hz == None`:** Doppler check skipped (no bit 0); production SDR
   wiring comes with M5 or a side channel.
 **Why OD-C is closed:** Ephemerust documents `range_rate_km_s` to ~0.25 km/s vs a 1 s central
@@ -194,6 +197,49 @@ and keeps the dependency surface small (serde already in-tree).
 config only (TLE files remain subject to `max_datagram_size` on the UDP path, unchanged).
 **Tested by:** `config::file` unit tests (parse, merge, ambiguous TLE, bad addr, missing file).
 
+### D-016 — Extended co-validation charter (CV-0; `physics_flags`, `RfMetadata`, tolerances)
+**Decision:** Freeze contracts for post-M4 co-validation work (**CV-1…CV-4** in
+[`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md)). This entry **supplements**
+D-012; it does not change shipped Doppler/elevation behavior until CV milestones land.
+
+**`physics_flags` (u8) — bit assignment**
+
+| Bit | Mask | Semantics | Milestone |
+|-----|------|-----------|-----------|
+| 0 | `0x01` | Doppler anomaly (`FLAG_DOPPLER_ANOMALY`) | M4 (shipped) |
+| 1 | `0x02` | Below minimum elevation (`FLAG_BELOW_HORIZON`) | M4 (shipped) |
+| 2 | `0x04` | Link budget: measured received power vs **free-space** prediction; anomaly if \(\|P_{rx,\mathrm{meas}} - P_{rx,\mathrm{pred}}\| >\) **T-RSSI** | CV-1 |
+| 3 | `0x08` | Pointing: great-circle separation between measured and computed (az, el) \(>\) **T-POINT** | CV-2 |
+| 4 | `0x10` | EPS / array current vs toy model from sun geometry + decoded TM | CV-4 |
+| 5 | `0x20` | Thermal scalar vs crude sun-angle proxy band (**T-THERMAL**) | CV-4 |
+| 6–7 | `0x40`–`0x80` | **Reserved** — do not assign without updating this table and `TEST_PLAN.md` | — |
+
+If more than eight independent alarms are needed, add a **new** JSON field (e.g. `physics_flags_v2: u16`)
+alongside the existing `physics_flags` for one release cycle; do **not** repurpose bits 6–7 silently.
+
+**Measurement routing**
+
+- **Ground / receiver chain** (SDR metadata, AGC-derived power if calibrated to a synthetic dBm
+  contract, servo or encoder azimuth/elevation): optional fields on **`RfMetadata`** (sidecar to the
+  UDP datagram path; same pattern as `measured_carrier_hz` today).
+- **Spacecraft-reported** engineering scalars (battery temperature, array current, attitude
+  quaternions for co-validation): decoded from the **CCSDS packet data field** using a **versioned
+  synthetic layout** for HIL/tests (**CV-3** schema); production spacecraft would need an
+  explicitly documented mapping per mission — out of scope for the open generic gateway until
+  declared.
+
+**Explicitly out of scope for CV-1–CV-4 v1** (defer unless a future decision reopens)
+
+- Ionospheric / tropospheric absorption, rain fade, multipath, polarization and pointing loss
+  beyond the free-space + T-RSSI band.
+- Full ECSS PUS / timecode (CUC/CDS) parsing for arbitrary missions.
+- SPICE-grade ephemeris or body-fixed attitude from ops products; CV-4 uses **toy** sun geometry and
+  synthetic TM only.
+- Absolute calibration of real hardware RSSI to dBm (project stays on **synthetic** numeric contracts).
+
+**Why:** Unblocks implementation without thrashing Open MCT JSON or the stable bitfield; keeps ITAR/EAR
+posture (no real mission parameters) while matching the design paper’s roadmap in controlled slices.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -218,4 +264,4 @@ External works this project builds on or is inspired by (keep current; attribute
 
 ---
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-03.*

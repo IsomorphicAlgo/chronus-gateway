@@ -12,20 +12,34 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner sign-off required to adv
 
 ---
 
-## CV-0 — Scope, contracts, and bitfield charter **Gate only (no code)**
+## CV-0 — Scope, contracts, and bitfield charter **Gate only (no code)** — **charter drafted**
 
 **Objective:** Lock the **public contract** so later milestones do not thrash Open MCT consumers or JSON fields.
 
 **Deliverables**
 
-- [ ] **Bitfield map** — Document assignment for `physics_flags` beyond bits 0–1 (reserved bit 2 becomes active in CV-1; allocate bits 3–7 for CV-2 / CV-3). If more than 8 distinct alarms are required later, plan a **versioned** JSON field (e.g. `physics_flags_v2: u16`) rather than silently repurposing bits.
-- [ ] **RfMetadata policy** — Decide: ground-chain measurements (RSSI, servo az/el) live in **`RfMetadata`**; spacecraft-reported scalars live in **decoded CCSDS payload** (synthetic layout). Record in [`Methodology.md`](../Methodology.md) as a new decision ID.
-- [ ] **Tolerance register** — Pre-register rows in [`TEST_PLAN.md`](../TEST_PLAN.md): finalize **T-RSSI** (±3 dB free-space model caveat), **T-POINT** (angular separation vs 0.25°), **T-EPS** / **T-THERMAL** (provisional % or K bounds once models are chosen).
-- [ ] **Explicit deferrals** — List what v1 **will not** do (e.g. atmospheric absorption, polarization, PUS full parsing, SPICE-grade ephemeris).
+- [x] **Bitfield map** — Recorded in **`Methodology.md` D-016**, module docs in `crates/gateway/src/validate.rs`, and the frozen table below. Bits 6–7 remain reserved; overflow policy: add **`physics_flags_v2`** (or similar) to JSON, do not repurpose bits silently.
+- [x] **RfMetadata policy** — Ground-chain measurements on **`RfMetadata`**; spacecraft-reported scalars via **versioned synthetic CCSDS payload** after **CV-3**. Decision **D-016**.
+- [x] **Tolerance register** — **`TEST_PLAN.md`** rows **T-RSSI**, **T-POINT**, **T-EPS**, **T-THERMAL** chartered with rationales (rebaseline when CV-1 / CV-2 / CV-4 models land).
+- [x] **Explicit deferrals** — Listed in **D-016** (atmosphere, multipath, full PUS, SPICE-grade ephemeris, uncalibrated hardware RSSI, mission-specific TM mapping).
 
 **Test gate:** N/A (documentation + charter only).
 
-**Gate CV-0:** `[ ]` Owner approves contracts above — **only then** implement CV-1.
+**Gate CV-0:** `[x]` **Owner approval** of this charter — **CV-1** implementation may proceed. *(Charter delivered 2026-06-03.)*
+
+### Frozen charter — `physics_flags` (u8)
+
+| Bit | Mask | Semantics | First milestone |
+|-----|------|-----------|-----------------|
+| 0 | `0x01` | Doppler anomaly | M4 (shipped) |
+| 1 | `0x02` | Below minimum elevation | M4 (shipped) |
+| 2 | `0x04` | Link budget / received power vs free-space prediction | CV-1 |
+| 3 | `0x08` | Pointing residual (measured vs computed az/el, **T-POINT**) | CV-2 |
+| 4 | `0x10` | EPS / array current vs toy sun model (**T-EPS**) | CV-4 |
+| 5 | `0x20` | Thermal vs sun-angle proxy (**T-THERMAL**) | CV-4 |
+| 6–7 | `0x40`–`0x80` | Reserved | — |
+
+**CV-3** does not consume a dedicated flag bit; it delivers the **payload decode** contract that **CV-4** depends on.
 
 ---
 
@@ -138,4 +152,4 @@ CV-0 (charter) ──▶ CV-1 (link budget) ──▶ CV-2 (pointing)
 
 ---
 
-*Document version: 2026-06-03. Maintainer: update checkboxes and gates as milestones land.*
+*Document version: 2026-06-03 (CV-0 charter drafted). Maintainer: update checkboxes and gates as milestones land.*

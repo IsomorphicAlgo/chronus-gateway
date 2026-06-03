@@ -31,6 +31,10 @@ use crate::state::SharedGateway;
 use crate::validate::{apply_physics_validation, RfMetadata};
 
 /// JSON envelope for each WebSocket text message (one line per telemetry frame).
+///
+/// `physics_flags` semantics and extension policy: **`Methodology.md` D-016** (CV-0 charter).
+/// If more than eight independent alarms are needed, add a new field (e.g. `physics_flags_v2`)
+/// rather than repurposing reserved bits.
 #[derive(Debug, Serialize)]
 pub struct OpenMctRealtimeMessageV1 {
     /// Contract identifier for adapters.
@@ -38,6 +42,7 @@ pub struct OpenMctRealtimeMessageV1 {
     pub apid: u16,
     pub seq_count: u16,
     pub received_at: chrono::DateTime<chrono::Utc>,
+    /// Bitfield per D-016 / `validate` module docs (M4 + planned CV-1…CV-4).
     pub physics_flags: u8,
     pub source: String,
     pub elevation_deg: Option<f64>,
