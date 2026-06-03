@@ -36,8 +36,9 @@ cargo clippy --all-targets
 
 ## Shared fixtures
 - **Reference TLE:** public ISS (ZARYA) 3-line set (same family Ephemerust tests use).
-- **Synthetic CCSDS frames:** helper builders producing valid + deliberately-malformed packets
-  (truncated header, bad length, wrong packet type, oversized payload).
+- **Synthetic CCSDS frames:** `ccsds.rs` keeps `#[cfg(test)]` helper builders producing valid +
+  deliberately-malformed packets (truncated header, bad length, wrong packet type, oversized
+  payload). README's local UDP example uses the same canonical golden packet shape.
 - **Fixed instants:** evaluate near the TLE epoch so SGP4 stays in its accurate window.
 - **Mock propagator:** a deterministic `OrbitalPropagator` returning scripted `TrackingState`s
   for validation-engine tests (decouples M4 from astrodynamics).

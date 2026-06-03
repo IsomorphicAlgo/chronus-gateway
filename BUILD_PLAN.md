@@ -129,6 +129,10 @@ out-of-band Doppler, horizon, combined, independent bits, no-measured skip, NaN-
 **Open decision:** **OD-B** — Axum (mirrors Rusty_Server) for WS + HTTP; confirm Open MCT
 telemetry dictionary + JSON contract.
 
+**Operator surface to define before coding:** document `GET /health`, the WebSocket route,
+per-client backpressure/disconnect behavior, and the exact JSON fields exported from
+`TelemetryFrame` / `TrackingState` (including `physics_flags`) in the M5 PR.
+
 **Deliverables**
 - [ ] Axum server; `GET /telemetry/openmct` WebSocket upgrade; subscribe to the broadcast channel
       and stream JSON frames (including `physics_flags`).
@@ -181,4 +185,4 @@ sustained-rate soak run.
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
 - Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-03.*

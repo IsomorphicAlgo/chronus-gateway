@@ -23,16 +23,16 @@ The gateway is built around two principles: an asynchronous, lock-free network c
 abstraction boundary between the pipeline and any astrodynamics backend.
 
 ```
-Raw RF / SDR ──▶ Async UDP ingestion ──▶ CCSDS zero-copy parser ──▶ Physics-Telemetry
- (UDP/TCP)        (Tokio)                  (validated frames)         Co-Validation engine
-                                                                            │
-                  OrbitalPropagator trait ◀── range-rate / look-angles ─────┤
-                  (Ephemerust today, nyx-space later)                       ▼
-                                                          Axum WebSocket ──▶ NASA Open MCT
+SDR/front-end ──▶ Async UDP ingestion ──▶ CCSDS zero-copy parser ──▶ Physics-Telemetry
+   (UDP)            (Tokio)                  (TelemetryFrame)         Co-Validation engine
+                                                                           │
+                 OrbitalPropagator trait ◀── range-rate / look-angles ─────┤
+                 (Ephemerust today, nyx-space later)                       ▼
+                                                        M5 Axum WebSocket ──▶ NASA Open MCT
 ```
 
-- **Asynchronous core.** A Tokio runtime drives non-blocking UDP ingestion and a pool of
-  WebSocket connections, scaling to many concurrent telemetry channels and operator screens.
+- **Asynchronous core.** A Tokio runtime drives non-blocking UDP ingestion today. Milestone 5 adds
+  Axum WebSocket fan-out to operator screens without changing the ingest/parser/validation seams.
 - **Trait-based astrodynamics.** Physical-state computation is abstracted behind the
   `OrbitalPropagator` trait, decoupling the network and validation pipelines from the math
   library. The default backend is the SGP4-based Ephemerust library; the trait boundary leaves a
@@ -55,7 +55,7 @@ chronus-gateway/
 │   │   ├── ccsds.rs        CCSDS Space Packet parsing (TelemetryFrame, validation)
 │   │   ├── validate.rs     Physics–Telemetry Co-Validation (Doppler, elevation, physics_flags)
 │   │   ├── propagator.rs   OrbitalPropagator trait + Ephemerust-backed implementation
-│   │   └── main.rs         Entrypoint (runs the ingestion server)
+│   │   └── main.rs         Entrypoint (runs ingest → parse → tracking → validation logging)
 │   └── tests/
 │       └── ingest.rs       Milestone 1 integration tests
 ├── AGENTS.md               Project constitution (compliance, attribution, security, testing)
@@ -78,23 +78,66 @@ checkout. The expected on-disk layout places both repositories next to each othe
 ```
 
 ```bash
-cargo build      # compile the workspace
-cargo run        # run the foundation smoke test
-cargo test       # unit + integration + doctests
+cargo build             # compile the workspace
+RUST_LOG=info cargo run # listen on UDP 127.0.0.1:7301 and log parsed telemetry
+cargo test              # unit + integration + doctests
 ```
 
 > **Windows note:** on the maintainer's machine the MSVC `link.exe` is blocked from writing
 > freshly linked executables. The repository is therefore configured (`.cargo/config.toml`) to
 > link with the toolchain's bundled `rust-lld`. See `Methodology.md` (D-008) for details.
 
+### Local ingest workflow
+
+`cargo run` uses in-code defaults; there is no file or environment config loader yet.
+
+- **Bind address:** `127.0.0.1:7301` (`IngestConfig::default`), with a bounded 65,542-byte receive
+  buffer and a lossy 1,024-frame broadcast channel.
+- **Station defaults:** a synthetic/public ISS TLE, latitude `35.0`, longitude `-116.0`, altitude
+  `1000 m`, nominal carrier `437.5 MHz`, Doppler tolerance `150 Hz`, minimum elevation `0°`.
+- **Logging:** `tracing_subscriber` reads `RUST_LOG`; if unset, the binary defaults to `info`.
+- **Shutdown:** press Ctrl-C. The ingestion loop observes the shutdown future, stops, aborts the
+  demo logger task, and prints final frame/error counters.
+- **Degraded physics mode:** if the station/TLE cannot build a propagator, ingest and CCSDS parsing
+  continue and frames are logged without physics state.
+- **RF metadata:** the demo consumer passes `RfMetadata::default()`, so Doppler bit 0 is skipped.
+  Elevation bit 1 is still evaluated whenever tracking state is available.
+
+To send one synthetic CCSDS telemetry packet to a running local gateway:
+
+```bash
+python - <<'PY'
+import socket
+pkt = bytes.fromhex("002ac0070004") + b"hello"  # TM, APID 0x02a, seq 7, 5-byte payload
+socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(pkt, ("127.0.0.1", 7301))
+PY
+```
+
+The gateway should log `telemetry frame parsed` with APID `42`, sequence `7`, payload length `5`,
+and any available tracking fields / `physics_flags`.
+
 ---
 
 ## Testing
 
 Testing is a first-class deliverable. The project follows a layered strategy — inline unit tests,
-integration tests over loopback UDP and in-process WebSockets, doctests, and physics
+integration tests over loopback UDP, future in-process WebSockets, doctests, and physics
 co-validation tests with explicitly documented tolerances — enforced at every milestone's stage
-gate. The full strategy and per-milestone test matrix are defined in [`TEST_PLAN.md`](TEST_PLAN.md).
+gate. Today, M2-M4 behavior is covered by inline unit tests and M1 by loopback integration tests.
+The full strategy and per-milestone test matrix are defined in [`TEST_PLAN.md`](TEST_PLAN.md).
+
+---
+
+## References
+
+- [`BUILD_PLAN.md`](BUILD_PLAN.md) — milestone scope, stage gates, and remaining work.
+- [`TEST_PLAN.md`](TEST_PLAN.md) — layered test matrix, test counts, and tolerance register.
+- [`Methodology.md`](Methodology.md) — decision log, trade-offs, and dependency attribution.
+- [`AGENTS.md`](AGENTS.md) — compliance, security, attribution, and testing constitution.
+- [CCSDS](https://public.ccsds.org/) — open packet and telemetry standards used for wire formats.
+- [NASA Open MCT](https://nasa.github.io/openmct/) — target dashboard framework for Milestone 5.
+- [Tokio](https://tokio.rs/) and [Axum](https://github.com/tokio-rs/axum) — async runtime and
+  planned web distribution framework.
 
 ---
 
