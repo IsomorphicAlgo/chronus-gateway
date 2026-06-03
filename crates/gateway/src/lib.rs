@@ -6,8 +6,9 @@
 //! Implemented so far: the [`propagator`] seam, the asynchronous UDP [`ingest`] loop (Milestone 1),
 //! [`ccsds`] Space Packet parsing (Milestone 2), station-configured tracking (Milestone 3), the
 //! [`validate`] Physics–Telemetry Co-Validation engine (Milestone 4), and Axum HTTP + WebSocket
-//! distribution with Open MCT–shaped JSON ([`http`], Milestone 5). Observability, benches, and
-//! CI hardening are Milestone 6 (see `BUILD_PLAN.md`).
+//! distribution with Open MCT–shaped JSON ([`http`], Milestone 5), observability / benches / CI
+//! gates (Milestone 6), and the NeXosim HIL workspace crate `chronus-hil-sim` (Milestone 7). See
+//! `BUILD_PLAN.md`.
 //!
 //! ## Standards & compliance
 //!
@@ -24,7 +25,7 @@ pub mod propagator;
 pub mod state;
 pub mod validate;
 
-pub use ccsds::{CcsdsError, TelemetryFrame};
+pub use ccsds::{encode_synthetic_tm, CcsdsError, TelemetryFrame};
 pub use config::{ConfigError, IngestConfig, StationConfig, TleSource};
 pub use ingest::{IngestStats, RawFrame};
 pub use propagator::{

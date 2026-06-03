@@ -5,8 +5,8 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **M1–M6 complete** (ingestion, CCSDS, tracking, co-validation, Axum/WebSocket distribution,
-> metrics + benches + CI supply-chain gates). HIL simulation (M7) remains optional.
+> Status: **M1–M7** (through optional NeXosim HIL driver + ingest/soak tests). Portfolio roadmap is complete
+> at the current stage gate; further work is backlog / productization.
 
 ---
 
@@ -117,7 +117,7 @@ posture). Keeping it behind the module boundary preserves the option to swap lat
 the packet data field via a zero-copy `payload()` borrow (no `bytes` crate needed — extends D-009).
 **Validation:** length → decode → declared-vs-available → TM/TC; recoverable `CcsdsError` per case,
 no panics or unbounded allocation on untrusted input.
-**Tested by:** inline unit tests in `ccsds.rs` (golden bytes, round-trip, truncation, garbage, routing) plus a `proptest` case that random byte vectors never panic the parser (M6).
+**Tested by:** inline unit tests in `ccsds.rs` (golden bytes, round-trip, truncation, garbage, routing) plus a `proptest` case that random byte vectors never panic the parser (M6). The public `encode_synthetic_tm` helper is exercised by `chronus-hil-sim` (M7).
 
 ### D-011 — Station config + throttled tracking provider (Milestone 3)
 **Decision:** A `StationConfig` (observer lat/lon/alt, nominal carrier frequency, `TleSource`,
@@ -171,11 +171,25 @@ clients forward-compatible.
 + average processing latency).
 **Tested by:** `tests/distribution.rs` (health, WebSocket JSON, second client after peer disconnect).
 
+### D-014 — NeXosim HIL driver (Milestone 7; closes OD-D for single-spacecraft laptop scope)
+**Decision:** Add workspace member **`chronus-hil-sim`** using **`nexosim` 1.x** (asynchronics): a
+discrete-event `SpacecraftDemo` emits `TelemSample` (synthetic EPS / thermal / ADCS
+scalars) on an `Output` port; a `ProtoUdpBridge` builds `UdpDownlinkBridge` with
+`ProtoModel` so a `std::net::UdpSocket` lives in non-serialized `BridgeEnv` and sends `encode_synthetic_tm` datagrams (see `crates/gateway/src/ccsds.rs`) to the gateway UDP ingest. Binary `chronus-hil-sim` accepts `HOST:PORT` and frame count for manual
+profiling against M6 metrics (`docs/HIL.md`).
+**Why OD-D is closed at this scope:** one cooperating model + one I/O bridge matches the “single
+simulated spacecraft on the laptop” gate; multi-node / rack-scale co-simulation is explicitly
+out of scope until a future decision.
+**Why NeXosim:** open-source DES aligned with the README portfolio narrative; MIT OR Apache-2.0
+dual license fits the workspace `deny.toml` policy.
+**Tested by:** `crates/chronus-hil-sim/tests/hil_ingest.rs` (smoke + 400-frame soak with
+`recv_errors == 0`).
+
 ---
 
 ## Open decisions (to resolve as milestones land)
-- **OD-D — HIL simulation (NeXosim).** Optional Milestone 7; scope a single simulated spacecraft
-  on a laptop before any multi-node/rack topology.
+
+- **OD-E — Multi-node / rack-scale co-simulation.** Backlog beyond the M7 laptop scope.
 
 ---
 
@@ -190,8 +204,9 @@ External works this project builds on or is inspired by (keep current per `AGENT
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
 | Tokio, Axum, Tower, Tower-HTTP, Serde, Chrono, Anyhow, Thiserror, Base64, Futures-util | Runtime + HTTP/WS + serialization | crates.io, MIT/Apache-2.0 |
 | `criterion`, `proptest` | Benchmarks + parser robustness property tests (M6) | crates.io, MIT/Apache-2.0 |
+| **NeXosim** (`nexosim` crate) | Discrete-event HIL simulation (M7) | crates.io, MIT OR Apache-2.0 |
 | NASA Open MCT | Target mission-control dashboard | open source (NASA) |
 
 ---
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-03.*

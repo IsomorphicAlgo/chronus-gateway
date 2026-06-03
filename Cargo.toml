@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/gateway"]
+members = ["crates/gateway", "crates/chronus-hil-sim"]
 
 # Shared metadata + dependency versions. Member crates opt in with `field.workspace = true`
 # (see Methodology.md → "Workspace + centralized dependency versions").
@@ -36,6 +36,9 @@ serde_json = "1"
 
 # CCSDS / ECSS packet standards (Space Packet primary header parsing). See Methodology D-010.
 spacepackets = "0.17"
+
+# HIL / Milestone 7 — discrete-event spacecraft driver (asynchronics/NeXosim).
+nexosim = "1"
 
 # Astrodynamics backend — sibling checkout (SGP4 look-angles + range-rate for the
 # Physics-Telemetry Co-Validation engine). Path is relative to this workspace root.

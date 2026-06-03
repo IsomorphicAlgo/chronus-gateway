@@ -1,0 +1,24 @@
+[package]
+name = "chronus-hil-sim"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "NeXosim HIL driver: synthetic spacecraft telemetry as CCSDS TM over UDP (Milestone 7)"
+
+[[bin]]
+name = "chronus-hil-sim"
+path = "src/main.rs"
+
+[dependencies]
+nexosim.workspace = true
+serde.workspace = true
+chronus-gateway = { path = "../gateway" }
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

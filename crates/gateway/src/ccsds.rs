@@ -127,6 +127,29 @@ pub fn parse_telemetry(frame: &RawFrame) -> Result<TelemetryFrame, CcsdsError> {
     })
 }
 
+/// Encodes a **synthetic** CCSDS telemetry Space Packet (primary header + packet data field).
+///
+/// For lab/HIL tools (Milestone 7): `apid` / `seq_count` are arbitrary test identifiers;
+/// `payload` must be non-empty per CCSDS. Not a full PUS/secondary-header encoder — see
+/// `AGENTS.md` (synthetic data only).
+pub fn encode_synthetic_tm(apid: u16, seq_count: u16, payload: &[u8]) -> Vec<u8> {
+    assert!(!payload.is_empty(), "CCSDS data field must be at least 1 byte");
+    let version = 0u16;
+    let ptype = 0u16; // TM
+    let sec_hdr = 0u16;
+    let word1 = (version << 13) | (ptype << 12) | (sec_hdr << 11) | (apid & 0x07FF);
+    let seq_flags = 0b11u16; // unsegmented
+    let word2 = (seq_flags << 14) | (seq_count & 0x3FFF);
+    let data_len = (payload.len() - 1) as u16;
+
+    let mut v = Vec::with_capacity(CCSDS_PRIMARY_HEADER_LEN + payload.len());
+    v.extend_from_slice(&word1.to_be_bytes());
+    v.extend_from_slice(&word2.to_be_bytes());
+    v.extend_from_slice(&data_len.to_be_bytes());
+    v.extend_from_slice(payload);
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,18 +163,16 @@ mod tests {
         }
     }
 
-    /// Builds a CCSDS Space Packet (primary header + payload) as canonical big-endian bytes.
-    /// `is_tm = true` produces a telemetry packet (type bit 0), `false` a telecommand (type bit 1).
-    fn build_packet(is_tm: bool, apid: u16, seq_count: u16, payload: &[u8]) -> Vec<u8> {
+    /// Builds a telecommand packet (type bit 1) for routing tests.
+    fn build_tc_packet(apid: u16, seq_count: u16, payload: &[u8]) -> Vec<u8> {
         assert!(!payload.is_empty(), "CCSDS data field must be >= 1 byte");
         let version = 0u16;
-        let ptype = if is_tm { 0u16 } else { 1u16 };
+        let ptype = 1u16; // TC
         let sec_hdr = 0u16;
         let word1 = (version << 13) | (ptype << 12) | (sec_hdr << 11) | (apid & 0x07FF);
-        let seq_flags = 0b11u16; // unsegmented
+        let seq_flags = 0b11u16;
         let word2 = (seq_flags << 14) | (seq_count & 0x3FFF);
         let data_len = (payload.len() - 1) as u16;
-
         let mut v = Vec::with_capacity(CCSDS_PRIMARY_HEADER_LEN + payload.len());
         v.extend_from_slice(&word1.to_be_bytes());
         v.extend_from_slice(&word2.to_be_bytes());
@@ -162,7 +183,7 @@ mod tests {
 
     #[test]
     fn parses_valid_tm_packet() {
-        let raw = build_packet(true, 0x2A, 7, b"hello");
+        let raw = encode_synthetic_tm(0x2A, 7, b"hello");
         let tm = parse_telemetry(&frame_from(raw)).expect("valid TM parses");
 
         assert_eq!(tm.apid, 0x2A);
@@ -190,7 +211,7 @@ mod tests {
     #[test]
     fn round_trip_preserves_fields() {
         for (apid, seq, payload) in [(0u16, 0u16, &b"a"[..]), (0x7FF, 0x3FFF, &b"telemetry"[..])] {
-            let raw = build_packet(true, apid, seq, payload);
+            let raw = encode_synthetic_tm(apid, seq, payload);
             let tm = parse_telemetry(&frame_from(raw)).expect("parses");
             assert_eq!(tm.apid, apid);
             assert_eq!(tm.seq_count, seq);
@@ -200,7 +221,7 @@ mod tests {
 
     #[test]
     fn telecommand_is_rejected() {
-        let raw = build_packet(false, 0x10, 1, b"cmd");
+        let raw = build_tc_packet(0x10, 1, b"cmd");
         match parse_telemetry(&frame_from(raw)) {
             Err(CcsdsError::NotTelemetry { apid }) => assert_eq!(apid, 0x10),
             other => panic!("expected NotTelemetry, got {other:?}"),
@@ -221,7 +242,7 @@ mod tests {
     #[test]
     fn truncated_payload_is_rejected() {
         // Header claims a 5-byte data field but only 2 bytes follow.
-        let mut raw = build_packet(true, 0x05, 0, b"hello"); // data_len encodes 5-byte field
+        let mut raw = encode_synthetic_tm(0x05, 0, b"hello"); // data_len encodes 5-byte field
         raw.truncate(CCSDS_PRIMARY_HEADER_LEN + 2);
         match parse_telemetry(&frame_from(raw)) {
             Err(CcsdsError::Truncated { declared, available }) => {

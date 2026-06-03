@@ -11,10 +11,9 @@ telemetry only against static limits, the gateway uses a live orbital propagator
 expected Doppler shift, look-angles, and link geometry for the spacecraft, and flags frames whose
 measured RF and signal parameters disagree with the physics.
 
-> **Status:** Core gateway through **Milestone 6** is implemented: UDP ingest (M1), CCSDS parsing
-> (M2), station tracking (M3), Physics–Telemetry Co-Validation (M4), Axum + WebSocket distribution
-> with an Open MCT–shaped JSON contract (M5), and metrics / Criterion benches / CI `audit`+`deny`
-> (M6). See [`BUILD_PLAN.md`](BUILD_PLAN.md) for M7 (optional HIL).
+> **Status:** Roadmap through **Milestone 7** is implemented: M1–M6 as before, plus the
+> **`chronus-hil-sim`** NeXosim driver (synthetic CCSDS TM over UDP) with ingest/soak tests and
+> profiling notes in [`docs/HIL.md`](docs/HIL.md). See [`BUILD_PLAN.md`](BUILD_PLAN.md).
 
 ---
 
@@ -67,6 +66,12 @@ chronus-gateway/
 │   └── tests/
 │       ├── ingest.rs       Milestone 1 integration tests (UDP loop)
 │       └── distribution.rs Milestone 5 (HTTP health + WebSocket JSON)
+├── crates/chronus-hil-sim/ NeXosim HIL: synthetic spacecraft → UDP (`chronus-hil-sim` binary)
+│   ├── src/lib.rs          `SpacecraftDemo` + UDP bridge + `run_nexosim_udp_hil`
+│   ├── src/main.rs        CLI: `[DEST] [FRAMES]` (default `127.0.0.1:7301`, `100`)
+│   └── tests/hil_ingest.rs Milestone 7 smoke + soak vs real `ingest::run`
+├── docs/
+│   └── HIL.md              Manual profiling recipe (gateway metrics)
 ├── AGENTS.md               Project constitution (compliance, attribution, security, testing)
 ├── Methodology.md          Decision log: the reasoning behind major choices
 ├── BUILD_PLAN.md           Iterative, stage-gated implementation roadmap
@@ -91,7 +96,10 @@ cargo build      # compile the workspace
 cargo run        # UDP ingest (default 127.0.0.1:7301) + Axum HTTP/WebSocket (default 127.0.0.1:8080)
 cargo test       # unit + integration + doctests
 cargo bench -p chronus-gateway   # Criterion benchmarks (M6)
+cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 2000   # NeXosim HIL (M7); run gateway first
 ```
+
+See [`docs/HIL.md`](docs/HIL.md) for pairing with `GET /api/v1/chronus/metrics`.
 
 Default bind addresses are loopback-only (`IngestConfig` / `StationConfig` in `config.rs`). Set
 `RUST_LOG=debug` for verbose tracing.
@@ -105,7 +113,8 @@ Default bind addresses are loopback-only (`IngestConfig` / `StationConfig` in `c
 ## Testing
 
 Testing is a first-class deliverable. The project follows a layered strategy — inline unit tests,
-integration tests over loopback UDP and in-process WebSockets, doctests, and physics
+integration tests over loopback UDP and in-process WebSockets, NeXosim HIL tests in
+`chronus-hil-sim`, doctests, and physics
 co-validation tests with explicitly documented tolerances — enforced at every milestone's stage
 gate. The full strategy and per-milestone test matrix are defined in [`TEST_PLAN.md`](TEST_PLAN.md).
 

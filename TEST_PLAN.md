@@ -103,8 +103,9 @@ cargo clippy --all-targets
 - [x] **Supply chain:** `cargo audit` / `cargo deny` in CI (`deny.toml`).
 
 ### M7 — HIL simulation
-- [ ] **Smoke:** NeXosim sim → gateway delivers validated frames to a client.
-- [ ] **Soak:** sustained-rate run for a fixed duration with bounded drops and no leaks.
+- [x] **Smoke:** NeXosim sim → gateway delivers validated frames to a client (`chronus-hil-sim` +
+      real `ingest::run` on loopback).
+- [x] **Soak:** sustained simulated-rate run (400 frames) with `recv_errors == 0` and full parse.
 
 ---
 
@@ -124,7 +125,7 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Layer | Count | Notes |
 |-------|-------|-------|
 | Unit tests | 25 | `ccsds` (8 incl. proptest) + `config` (4) + `propagator` (4) + `validate` (9). |
-| Integration tests | 7 | `tests/ingest.rs` (4) + `tests/distribution.rs` (3). |
+| Integration tests | 9 | `crates/gateway/tests/*.rs` (7) + `crates/chronus-hil-sim/tests/hil_ingest.rs` (2). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-03.*

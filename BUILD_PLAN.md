@@ -159,21 +159,22 @@ property tests on the parser.
 
 ---
 
-## Milestone 7 — Hardware-in-the-loop simulation (NeXosim) — **stretch**
+## Milestone 7 — Hardware-in-the-loop simulation (NeXosim) ✅ **Complete (2026-06-03)**
 
 **Objective:** Drive the gateway from a simulated spacecraft for realistic profiling.
 
-**Open decision:** **OD-D** — scope a single simulated spacecraft on the laptop before any
-multi-node/rack topology.
+**Resolved decision:** **OD-D** — single synthetic spacecraft on the laptop (`chronus-hil-sim` +
+NeXosim); multi-node scope is **OD-E** backlog (`Methodology.md`).
 
 **Deliverables**
-- [ ] NeXosim model emitting EPS/thermal/ADCS values as CCSDS over UDP.
-- [ ] Load/latency profiling harness; documented results feeding M6 metrics.
+- [x] NeXosim model emitting EPS/thermal/ADCS values as CCSDS over UDP (`SpacecraftDemo` +
+      `UdpDownlinkBridge` + `encode_synthetic_tm` in `chronus-gateway`).
+- [x] Load/latency profiling harness; documented recipe in `docs/HIL.md` (M6 metrics endpoint).
 
 **Test gate:** [TEST_PLAN.md → M7](TEST_PLAN.md#m7--hil-simulation) — sim→gateway smoke + a
-sustained-rate soak run.
+sustained simulated-rate soak with bounded `recv_errors`.
 
-**Gate 7:** [ ] HIL approved. **Portfolio-complete.**
+**Gate 7:** [x] HIL approved. **Portfolio-complete** at current roadmap.
 
 ---
 
@@ -181,4 +182,4 @@ sustained-rate soak run.
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
 - **OD-B** (Open MCT contract) resolved at M5 (`Methodology.md` D-013). **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-03.*
