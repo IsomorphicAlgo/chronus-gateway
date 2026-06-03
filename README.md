@@ -23,12 +23,16 @@ The gateway is built around two principles: an asynchronous, lock-free network c
 abstraction boundary between the pipeline and any astrodynamics backend.
 
 ```
-Raw RF / SDR ──▶ Async UDP ingestion ──▶ CCSDS zero-copy parser ──▶ Physics-Telemetry
- (UDP/TCP)        (Tokio)                  (validated frames)         Co-Validation engine
-                                                                            │
-                  OrbitalPropagator trait ◀── range-rate / look-angles ─────┤
-                  (Ephemerust today, nyx-space later)                       ▼
-                                                          Axum WebSocket ──▶ NASA Open MCT
+Raw RF / SDR ──▶ Async UDP ingestion ──▶ CCSDS zero-copy parser ──▶ TrackingProvider
+ (UDP today)       (Tokio)                 (TelemetryFrame)          (Ephemerust SGP4)
+                                                                         │
+                                                                         ▼
+                  OrbitalPropagator trait ◀── range-rate / look-angles ──┤
+                  (Ephemerust today, nyx-space later)                    ▼
+                                                  Physics co-validation sets physics_flags
+                                                                         │
+                                                                         ▼
+                                              Axum WebSocket (M5) ──▶ NASA Open MCT
 ```
 
 - **Asynchronous core.** A Tokio runtime drives non-blocking UDP ingestion and a pool of
@@ -55,7 +59,7 @@ chronus-gateway/
 │   │   ├── ccsds.rs        CCSDS Space Packet parsing (TelemetryFrame, validation)
 │   │   ├── validate.rs     Physics–Telemetry Co-Validation (Doppler, elevation, physics_flags)
 │   │   ├── propagator.rs   OrbitalPropagator trait + Ephemerust-backed implementation
-│   │   └── main.rs         Entrypoint (runs the ingestion server)
+│   │   └── main.rs         Entrypoint (ingest → parse → track → validate)
 │   └── tests/
 │       └── ingest.rs       Milestone 1 integration tests
 ├── AGENTS.md               Project constitution (compliance, attribution, security, testing)
@@ -79,9 +83,44 @@ checkout. The expected on-disk layout places both repositories next to each othe
 
 ```bash
 cargo build      # compile the workspace
-cargo run        # run the foundation smoke test
+cargo run        # listen on loopback UDP and log parsed/validated telemetry
 cargo test       # unit + integration + doctests
 ```
+
+### Current runtime workflow
+
+The binary currently uses default in-code configuration:
+
+- UDP bind address: `127.0.0.1:7301`.
+- Downlink packets: CCSDS Space Packets carrying telemetry (TM); telecommand packets are rejected
+  on this path.
+- Tracking: a public ISS (ZARYA) reference TLE and a generic synthetic ground station.
+- Co-validation: Doppler bit 0 is skipped until RF metadata is wired; the elevation gate can still
+  set `physics_flags` bit 1 when the propagated state is below the configured horizon threshold.
+
+To exercise the loopback path with a synthetic CCSDS TM packet:
+
+```bash
+# terminal 1
+RUST_LOG=info cargo run
+
+# terminal 2
+python3 - <<'PY'
+import socket
+
+payload = b"hello"
+apid = 0x2A
+seq_count = 1
+word1 = apid                 # version=0, type=TM, no secondary header
+word2 = (0b11 << 14) | seq_count
+data_len = len(payload) - 1  # CCSDS stores (data field octets - 1)
+packet = word1.to_bytes(2, "big") + word2.to_bytes(2, "big") + data_len.to_bytes(2, "big") + payload
+socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(packet, ("127.0.0.1", 7301))
+PY
+```
+
+Expected log fields include `apid=42`, `seq=1`, `payload=5`, propagated `az_deg`/`el_deg`/`range_km`,
+`range_rate_km_s`, and `physics_flags`.
 
 > **Windows note:** on the maintainer's machine the MSVC `link.exe` is blocked from writing
 > freshly linked executables. The repository is therefore configured (`.cargo/config.toml`) to
@@ -95,6 +134,41 @@ Testing is a first-class deliverable. The project follows a layered strategy —
 integration tests over loopback UDP and in-process WebSockets, doctests, and physics
 co-validation tests with explicitly documented tolerances — enforced at every milestone's stage
 gate. The full strategy and per-milestone test matrix are defined in [`TEST_PLAN.md`](TEST_PLAN.md).
+
+---
+
+## Public interface contracts
+
+- `chronus_gateway::ingest` exposes `RawFrame`, `IngestConfig`, `IngestStats`, `bind`, and `run`.
+  The broadcast channel is intentionally lossy so slow consumers do not stall UDP receive.
+- `chronus_gateway::ccsds::parse_telemetry` validates primary-header length, header decoding,
+  declared packet length, and TM/TC routing before returning a zero-copy `TelemetryFrame`.
+- `chronus_gateway::propagator` exposes the `OrbitalPropagator` seam, the Ephemerust-backed
+  implementation, and the throttled `TrackingProvider` cache used by the runtime pipeline.
+- `chronus_gateway::validate::apply_physics_validation` clears then sets `TelemetryFrame::physics_flags`.
+  Stable bits today are:
+
+| Bit | Mask | Meaning |
+|-----|------|---------|
+| 0 | `0x01` | Doppler anomaly: measured carrier differs from expected beyond tolerance. |
+| 1 | `0x02` | Horizon/elevation anomaly: propagated elevation is below the configured threshold. |
+| 2 | `0x04` | Reserved for RSSI/link-budget validation; not set yet. |
+
+If the Ephemerust propagator cannot be constructed (for example, bad TLE input), `main` logs a
+warning and continues ingesting/parsing without physics state rather than stopping the UDP path.
+
+---
+
+## References
+
+- [`AGENTS.md`](AGENTS.md) — project compliance, attribution, security, and testing rules.
+- [`BUILD_PLAN.md`](BUILD_PLAN.md) — stage-gated milestone roadmap and current implementation state.
+- [`TEST_PLAN.md`](TEST_PLAN.md) — deterministic test matrix, physics tolerances, and status counts.
+- [`Methodology.md`](Methodology.md) — decision log, trade-offs, and dependency attribution.
+- [CCSDS public standards](https://public.ccsds.org/) — open space packet and TMTC standards.
+- [NASA Open MCT](https://nasa.github.io/openmct/) — target web mission-control framework for M5.
+- [Tokio](https://tokio.rs/) and [Axum](https://github.com/tokio-rs/axum) — async runtime and
+  planned WebSocket/HTTP framework.
 
 ---
 
@@ -113,6 +187,8 @@ ChronusGateway-RS builds directly on prior work, and credit is given accordingly
   asynchronous runtime and web framework that form the network core.
 - **[CCSDS](https://public.ccsds.org/)** — the open international standards for space packet
   framing and protocols that define the gateway's wire formats.
+- **[`spacepackets`](https://crates.io/crates/spacepackets)** — the Rust CCSDS/ECSS packet crate
+  used behind the gateway's parser boundary.
 - **[NASA Open MCT](https://nasa.github.io/openmct/)** — the open-source mission-control
   framework targeted by the distribution layer.
 - **[NeXosim](https://github.com/asynchronics/nexosim)** — the discrete-event simulation

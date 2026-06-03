@@ -13,6 +13,17 @@
 //! Built strictly on open, international standards (CCSDS). See `AGENTS.md` for the project's
 //! ITAR/EAR posture, attribution policy, and security priorities — all contributors and agents
 //! must follow it.
+//!
+//! ## Runtime pipeline
+//!
+//! The binary currently wires the implemented stages as:
+//!
+//! `ingest::run` → `ccsds::parse_telemetry` → `TrackingProvider::tracking_state` →
+//! `validate::apply_physics_validation`.
+//!
+//! Downstream consumers should treat [`TelemetryFrame::physics_flags`] as the stable anomaly
+//! contract: bit 0 = Doppler anomaly, bit 1 = below configured elevation, bit 2 = reserved for
+//! future RSSI/link-budget validation.
 
 pub mod ccsds;
 pub mod config;

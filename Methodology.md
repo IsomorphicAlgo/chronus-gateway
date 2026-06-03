@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **Milestone 4 complete**. The runtime path now ingests UDP datagrams, parses CCSDS TM
+> packets, computes station-relative tracking state, and applies Physics-Telemetry Co-Validation.
+> Open MCT WebSocket fan-out is the next milestone.
 
 ---
 
@@ -180,4 +181,16 @@ External works this project builds on or is inspired by (keep current per `AGENT
 
 ---
 
-*Last updated: 2026-06-01.*
+## References
+
+- `AGENTS.md` — canonical project rules for ITAR/EAR posture, attribution, security, and testing.
+- `BUILD_PLAN.md` — milestone scope, stage gates, and current completion status.
+- `TEST_PLAN.md` — deterministic test matrix, tolerance register, and test counts.
+- `README.md` — developer-facing architecture, quick-start workflow, and public interface summary.
+- CCSDS public standards — open international TMTC packet/framing standards used by the parser.
+- Ephemerust and its `sgp4` dependency — source of the SGP4 look-angle/range-rate computations used
+  by the co-validation engine.
+
+---
+
+*Last updated: 2026-06-03.*

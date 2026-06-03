@@ -37,10 +37,13 @@ cargo clippy --all-targets
 ## Shared fixtures
 - **Reference TLE:** public ISS (ZARYA) 3-line set (same family Ephemerust tests use).
 - **Synthetic CCSDS frames:** helper builders producing valid + deliberately-malformed packets
-  (truncated header, bad length, wrong packet type, oversized payload).
+  (truncated header, bad length, wrong packet type, oversized payload). These are currently inline
+  in the relevant `#[cfg(test)]` modules; extract to shared test utilities once more integration
+  suites need them.
 - **Fixed instants:** evaluate near the TLE epoch so SGP4 stays in its accurate window.
 - **Mock propagator:** a deterministic `OrbitalPropagator` returning scripted `TrackingState`s
-  for validation-engine tests (decouples M4 from astrodynamics).
+  for validation-engine tests (decouples M4 from astrodynamics). The current mock lives inline in
+  `propagator.rs` tests.
 
 ---
 
@@ -90,6 +93,8 @@ cargo clippy --all-targets
       (`combined_anomalies_set_both_bits`, `independent_bits_doppler_only`, `no_measured_carrier_skips_doppler_even_if_would_be_bad`).
 - [x] **Non-finite RF:** NaN measured carrier skips Doppler without panic (`nan_measured_skips_doppler_no_panic`).
 - [x] **Formula:** non-relativistic Doppler identity locked by unit test (`expected_carrier_matches_non_relativistic_formula`).
+- [x] **Runtime wiring:** `main.rs` applies validation after successful parse/tracking and logs the
+      resulting `physics_flags`; full WebSocket end-to-end coverage starts in M5.
 
 ### M5 — Distribution
 - [ ] **End-to-end:** in-process `ingest → parse → validate → WebSocket`; a connected client
@@ -127,4 +132,4 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-03.*

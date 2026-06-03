@@ -13,6 +13,20 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner approval required to adv
 
 ---
 
+## Current implemented pipeline
+
+`main.rs` currently wires the completed M1-M4 stages:
+
+1. bind loopback UDP via `IngestConfig::default()` (`127.0.0.1:7301`);
+2. broadcast each `RawFrame` from the bounded, lossy ingestion loop;
+3. parse CCSDS telemetry with `ccsds::parse_telemetry`;
+4. compute a throttled `TrackingState` from `StationConfig` and `EphemerustPropagator`;
+5. call `apply_physics_validation` to set the stable `physics_flags` bitfield.
+
+M5 turns that validated stream into the external WebSocket/Open MCT contract.
+
+---
+
 ## Milestone 0 — Foundation ✅ **Complete (2026-05-31)**
 
 **Objective:** A compiling workspace with the astrodynamics seam proven end to end.
@@ -49,8 +63,8 @@ with clean startup/shutdown. (Derived from the PDF's Milestone 1 / Rusty_Server 
 length; oversized datagrams dropped (Windows `WSAEMSGSIZE`) / truncated (Unix) without desync.
 
 **Test gate:** [TEST_PLAN.md → M1](TEST_PLAN.md#m1--ingestion) — **all green**: ordered delivery,
-prompt shutdown, oversized-datagram resilience, backpressure/lag. (4 integration + 2 unit + 1
-doctest.)
+prompt shutdown, oversized-datagram resilience, backpressure/lag. (4 integration tests; shared
+library doctest coverage remains in M0.)
 
 **Gate 1:** [x] Ingestion loop implemented; tests + clippy green. Ready for M2 on approval.
 
@@ -181,4 +195,4 @@ sustained-rate soak run.
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
 - Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-03.*
