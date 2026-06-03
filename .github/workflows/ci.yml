@@ -1,0 +1,54 @@
+# CI: tests, clippy, supply-chain gates. Ephemerust is checked out as a sibling (path dependency).
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gateway
+        uses: actions/checkout@v4
+        with:
+          path: chronus-gateway
+
+      - name: Checkout Ephemerust (sibling for ../Ephemerust)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Ephemerust
+          path: Ephemerust
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88"
+          components: clippy
+
+      - name: Cargo test
+        working-directory: chronus-gateway
+        run: cargo test
+
+      - name: Compile benchmarks (Criterion)
+        working-directory: chronus-gateway
+        run: cargo bench --no-run
+
+      - name: Clippy
+        working-directory: chronus-gateway
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked --version 0.21.3
+
+      - name: cargo audit
+        working-directory: chronus-gateway
+        run: cargo audit
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked --version 0.18.6
+
+      - name: cargo deny
+        working-directory: chronus-gateway
+        run: cargo deny check

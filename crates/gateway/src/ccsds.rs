@@ -130,6 +130,7 @@ pub fn parse_telemetry(frame: &RawFrame) -> Result<TelemetryFrame, CcsdsError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     fn frame_from(bytes: Vec<u8>) -> RawFrame {
         RawFrame {
@@ -239,5 +240,17 @@ mod tests {
             parse_telemetry(&frame_from(raw)),
             Err(CcsdsError::Truncated { .. })
         ));
+    }
+
+    proptest! {
+        #[test]
+        fn parse_random_bytes_never_panics(bytes in prop::collection::vec(any::<u8>(), 0..1024)) {
+            let frame = RawFrame {
+                bytes: Arc::from(bytes.into_boxed_slice()),
+                received_at: Utc::now(),
+                source: SocketAddr::from(([127, 0, 0, 1], 5000)),
+            };
+            let _ = parse_telemetry(&frame);
+        }
     }
 }

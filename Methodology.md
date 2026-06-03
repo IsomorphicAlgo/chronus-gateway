@@ -5,8 +5,8 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **M1–M6 complete** (ingestion, CCSDS, tracking, co-validation, Axum/WebSocket distribution,
+> metrics + benches + CI supply-chain gates). HIL simulation (M7) remains optional.
 
 ---
 
@@ -100,7 +100,9 @@ any `impl Future<Output=()>`.
   Oversized datagrams error on Windows (`WSAEMSGSIZE`, counted) and truncate on Unix; the loop
   stays in sync either way.
 - A generic `Future` shutdown keeps the lib runtime-agnostic and trivially testable (oneshot in
-  tests, `ctrl_c` in `main`) without a `tokio-util` `CancellationToken` dependency.
+  tests, `ctrl_c` in `main`) without mandating a particular cancellation crate in the library API.
+**Update (M5–M6):** the binary uses `tokio_util::sync::CancellationToken` so Axum graceful shutdown
+and the UDP ingest loop stop together; the `ingest::run` contract is still `impl Future<Output=()>`.
 **Tested by:** `tests/ingest.rs` (order, shutdown, oversized, backpressure).
 
 ### D-010 — CCSDS parsing crate: `spacepackets` (resolves OD-A)
@@ -115,7 +117,7 @@ posture). Keeping it behind the module boundary preserves the option to swap lat
 the packet data field via a zero-copy `payload()` borrow (no `bytes` crate needed — extends D-009).
 **Validation:** length → decode → declared-vs-available → TM/TC; recoverable `CcsdsError` per case,
 no panics or unbounded allocation on untrusted input.
-**Tested by:** inline unit tests in `ccsds.rs` (golden bytes, round-trip, truncation, garbage, routing).
+**Tested by:** inline unit tests in `ccsds.rs` (golden bytes, round-trip, truncation, garbage, routing) plus a `proptest` case that random byte vectors never panic the parser (M6).
 
 ### D-011 — Station config + throttled tracking provider (Milestone 3)
 **Decision:** A `StationConfig` (observer lat/lon/alt, nominal carrier frequency, `TleSource`,
@@ -155,11 +157,23 @@ minimal frames without exposing internals on the public API.
 **Tested by:** nine `validate` unit tests (in/out-of-band Doppler, horizon, combined flags, NaN-safe
 skip, formula identity).
 
+### D-013 — Web distribution stack + Open MCT JSON contract (Milestone 5; resolves OD-B)
+**Decision:** Use **Axum** (`axum` 0.7 with `ws`) + `tower-http` tracing for HTTP and WebSocket.
+Each downlink frame is one WebSocket **text** JSON object with `chronus_schema: "openmct.realtime.v1"`,
+decoded TM fields (`apid`, `seq_count`, `physics_flags`, `received_at`, `source`), optional
+look-angle / range fields when a propagator is configured, and `payload_base64` for the CCSDS
+packet data field (adapter-friendly for Open MCT plugins or external bridges). Stub routes:
+`GET /api/v1/chronus/openmct/dictionary`, `GET /api/v1/chronus/history` (empty list).
+**Why:** Matches proven patterns from the owner's **Rusty_Server**; Axum integrates cleanly with
+Tokio and the existing `broadcast::Sender<RawFrame>` fan-out. A versioned schema string keeps
+clients forward-compatible.
+**Metrics (M6):** `GatewayMetrics` + `GET /api/v1/chronus/metrics` (ingest snapshot + gateway counters
++ average processing latency).
+**Tested by:** `tests/distribution.rs` (health, WebSocket JSON, second client after peer disconnect).
+
 ---
 
 ## Open decisions (to resolve as milestones land)
-- **OD-B — Web/distribution stack.** Axum (mirrors Rusty_Server) for the WebSocket + HTTP API to
-  Open MCT. Confirm the Open MCT telemetry dictionary + JSON format contract.
 - **OD-D — HIL simulation (NeXosim).** Optional Milestone 7; scope a single simulated spacecraft
   on a laptop before any multi-node/rack topology.
 
@@ -174,8 +188,8 @@ External works this project builds on or is inspired by (keep current per `AGENT
 | `sgp4` crate | Underlying SGP4/SDP4 numerics (via Ephemerust) | crates.io |
 | `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
-| Tokio, Axum, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates | crates.io, MIT/Apache-2.0 |
-| CCSDS standards | TMTC framing/packet specifications | open international standards |
+| Tokio, Axum, Tower, Tower-HTTP, Serde, Chrono, Anyhow, Thiserror, Base64, Futures-util | Runtime + HTTP/WS + serialization | crates.io, MIT/Apache-2.0 |
+| `criterion`, `proptest` | Benchmarks + parser robustness property tests (M6) | crates.io, MIT/Apache-2.0 |
 | NASA Open MCT | Target mission-control dashboard | open source (NASA) |
 
 ---

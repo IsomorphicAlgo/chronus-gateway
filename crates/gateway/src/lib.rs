@@ -4,9 +4,10 @@
 //! spacecraft downlinks and web-based mission control (e.g. NASA Open MCT).
 //!
 //! Implemented so far: the [`propagator`] seam, the asynchronous UDP [`ingest`] loop (Milestone 1),
-//! [`ccsds`] Space Packet parsing (Milestone 2), station-configured tracking (Milestone 3), and
-//! the [`validate`] Physics–Telemetry Co-Validation engine (Milestone 4). WebSocket / Open MCT
-//! distribution is Milestone 5 (see `BUILD_PLAN.md`).
+//! [`ccsds`] Space Packet parsing (Milestone 2), station-configured tracking (Milestone 3), the
+//! [`validate`] Physics–Telemetry Co-Validation engine (Milestone 4), and Axum HTTP + WebSocket
+//! distribution with Open MCT–shaped JSON ([`http`], Milestone 5). Observability, benches, and
+//! CI hardening are Milestone 6 (see `BUILD_PLAN.md`).
 //!
 //! ## Standards & compliance
 //!
@@ -16,8 +17,11 @@
 
 pub mod ccsds;
 pub mod config;
+pub mod http;
 pub mod ingest;
+pub mod metrics;
 pub mod propagator;
+pub mod state;
 pub mod validate;
 
 pub use ccsds::{CcsdsError, TelemetryFrame};
@@ -30,3 +34,7 @@ pub use validate::{
     apply_physics_validation, expected_carrier_hz, RfMetadata, FLAG_BELOW_HORIZON,
     FLAG_DOPPLER_ANOMALY, FLAG_RSSI_RESERVED, SPEED_OF_LIGHT_M_S,
 };
+
+pub use http::{router, OpenMctRealtimeMessageV1};
+pub use metrics::{GatewayMetrics, GatewayMetricsSnapshot};
+pub use state::SharedGateway;

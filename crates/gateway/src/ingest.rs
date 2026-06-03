@@ -65,6 +65,26 @@ impl IngestStats {
             self.recv_errors.load(Ordering::Relaxed),
         )
     }
+
+    /// Same counters as [`Self::snapshot`], structured for JSON metrics export.
+    pub fn snapshot_struct(&self) -> IngestSnapshot {
+        let (frames_received, bytes_received, oversized_dropped, recv_errors) = self.snapshot();
+        IngestSnapshot {
+            frames_received,
+            bytes_received,
+            oversized_dropped,
+            recv_errors,
+        }
+    }
+}
+
+/// Serializable UDP ingest counters (see `GET /api/v1/chronus/metrics`).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct IngestSnapshot {
+    pub frames_received: u64,
+    pub bytes_received: u64,
+    pub oversized_dropped: u64,
+    pub recv_errors: u64,
 }
 
 /// Binds a UDP socket according to `config`.

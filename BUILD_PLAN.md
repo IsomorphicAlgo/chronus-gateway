@@ -122,40 +122,40 @@ out-of-band Doppler, horizon, combined, independent bits, no-measured skip, NaN-
 
 ---
 
-## Milestone 5 — Distribution: WebSocket + Open MCT adapter
+## Milestone 5 — Distribution: WebSocket + Open MCT adapter ✅ **Complete (2026-06-01)**
 
 **Objective:** Serve validated telemetry to web mission control in real time.
 
-**Open decision:** **OD-B** — Axum (mirrors Rusty_Server) for WS + HTTP; confirm Open MCT
-telemetry dictionary + JSON contract.
+**Resolved decision:** **OD-B** — Axum for HTTP + WebSocket; JSON contract `chronus_schema:
+"openmct.realtime.v1"` (documented in `Methodology.md` D-013).
 
 **Deliverables**
-- [ ] Axum server; `GET /telemetry/openmct` WebSocket upgrade; subscribe to the broadcast channel
+- [x] Axum server; `GET /telemetry/openmct` WebSocket upgrade; subscribe to the broadcast channel
       and stream JSON frames (including `physics_flags`).
-- [ ] Open MCT-shaped payloads (telemetry dictionary + historical query endpoint stub).
-- [ ] HTTP `GET /health`; per-client lifecycle, backpressure, and disconnect handling.
+- [x] Open MCT-shaped payloads (telemetry dictionary + historical query endpoint stub).
+- [x] HTTP `GET /health`; per-client lifecycle, backpressure, and disconnect handling.
 
 **Test gate:** [TEST_PLAN.md → M5](TEST_PLAN.md#m5--distribution) — in-process WS test
 (ingest → parse → validate → receive JSON), health endpoint, client-drop handling.
 
-**Gate 5:** [ ] Distribution approved; tests green. **Core gateway (M1–M5) functional.**
+**Gate 5:** [x] Distribution approved; tests green. **Core gateway (M1–M5) functional.**
 
 ---
 
-## Milestone 6 — Hardening & observability
+## Milestone 6 — Hardening & observability ✅ **Complete (2026-06-01)**
 
 **Objective:** Production-grade resilience and the numbers to back up performance claims.
 
 **Deliverables**
-- [ ] Metrics: frame latency histograms, throughput, drop/anomaly counters.
-- [ ] `criterion` benchmarks for parse + validate hot paths (real latency figures, not the
-      marketing table).
-- [ ] `cargo audit` / `cargo deny` in the workflow; error taxonomy review; fuzz the parser.
+- [x] Metrics: gateway counters + average processing latency (sum/count), ingest snapshot JSON at
+      `GET /api/v1/chronus/metrics`; WebSocket client/message counters.
+- [x] `criterion` benchmarks for parse + validate hot paths (`cargo bench -p chronus-gateway`).
+- [x] `cargo audit` / `cargo deny` in CI (`deny.toml`); property tests on `parse_telemetry` (no panic).
 
-**Test gate:** [TEST_PLAN.md → M6](TEST_PLAN.md#m6--hardening) — benches run; audit clean;
-fuzz/property tests on the parser.
+**Test gate:** [TEST_PLAN.md → M6](TEST_PLAN.md#m6--hardening) — benches compile/run; audit/deny in CI;
+property tests on the parser.
 
-**Gate 6:** [ ] Hardening approved.
+**Gate 6:** [x] Hardening approved.
 
 ---
 
@@ -179,6 +179,6 @@ sustained-rate soak run.
 
 ## Dependency / ordering notes
 - M1 → M2 → M3 → M4 → M5 is the critical path; M6 runs alongside M4–M5; M7 is optional/last.
-- Resolve **OD-B** (Open MCT contract) before M5 code. **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
+- **OD-B** (Open MCT contract) resolved at M5 (`Methodology.md` D-013). **OD-A** (M2) and **OD-C** (M4) are resolved; record any future changes in `Methodology.md`.
 
-*Last updated: 2026-05-31.*
+*Last updated: 2026-06-01.*

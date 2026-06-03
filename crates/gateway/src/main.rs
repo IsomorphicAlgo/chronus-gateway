@@ -1,18 +1,19 @@
 //! ChronusGateway-RS entrypoint.
 //!
-//! Milestone 1: binds the UDP downlink socket and runs the asynchronous ingestion loop,
-//! logging received frames and final statistics. Later milestones extend this into the full
-//! pipeline: CCSDS parse → physics co-validation → Open MCT WebSocket fan-out.
+//! Runs the UDP ingest loop and the Axum HTTP/WebSocket server until Ctrl-C (Milestones 5–6).
 
 use std::sync::Arc;
 
 use anyhow::Context;
-use chronus_gateway::ccsds;
 use chronus_gateway::config::{IngestConfig, StationConfig};
-use chronus_gateway::ingest::{self, IngestStats, RawFrame};
+use chronus_gateway::http;
+use chronus_gateway::ingest::{self, IngestStats};
+use chronus_gateway::metrics::GatewayMetrics;
 use chronus_gateway::propagator::{EphemerustPropagator, TrackingProvider};
-use chronus_gateway::validate::{apply_physics_validation, RfMetadata};
+use chronus_gateway::state::SharedGateway;
+use tokio::net::TcpListener;
 use tokio::sync::broadcast;
+use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -22,20 +23,19 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let config = IngestConfig::default();
-    let socket = ingest::bind(&config)
+    let ingest_cfg = IngestConfig::default();
+    let socket = ingest::bind(&ingest_cfg)
         .await
-        .with_context(|| format!("failed to bind UDP socket on {}", config.bind_addr))?;
-    let local = socket.local_addr()?;
-    tracing::info!(%local, "ChronusGateway-RS listening for telemetry");
+        .with_context(|| format!("failed to bind UDP socket on {}", ingest_cfg.bind_addr))?;
+    let udp_local = socket.local_addr()?;
+    tracing::info!(%udp_local, "UDP telemetry ingest listening");
 
-    let (tx, mut rx) = broadcast::channel::<RawFrame>(config.channel_capacity);
-    let stats = Arc::new(IngestStats::default());
+    let (frame_tx, _rx) = broadcast::channel(ingest_cfg.channel_capacity);
+    let ingest_stats = Arc::new(IngestStats::default());
+    let gateway_metrics = Arc::new(GatewayMetrics::default());
+    let station = Arc::new(StationConfig::default());
 
-    // Build the orbital tracking provider from the station configuration. If it cannot be built
-    // (e.g. a bad TLE), the gateway still ingests and parses — it just runs without physics state.
-    let station = StationConfig::default();
-    let tracking = match EphemerustPropagator::from_station(&station) {
+    let tracking = match EphemerustPropagator::from_station(station.as_ref()) {
         Ok(prop) => {
             tracing::info!(
                 lat = station.latitude_deg,
@@ -49,77 +49,55 @@ async fn main() -> anyhow::Result<()> {
             )))
         }
         Err(e) => {
-            tracing::warn!(error = %e, "no orbital propagator; running without physics state");
+            tracing::warn!(error = %e, "no orbital propagator; WebSocket payloads omit physics fields");
             None
         }
     };
 
-    let doppler_tol = station.doppler_tolerance_hz;
-    let min_el = station.minimum_elevation_deg;
-    let nominal_hz = station.nominal_carrier_hz;
+    let state = Arc::new(SharedGateway::new(
+        frame_tx.clone(),
+        Arc::clone(&ingest_stats),
+        Arc::clone(&gateway_metrics),
+        Arc::clone(&station),
+        tracking,
+    ));
 
-    // Demonstration consumer: parse → tracking state → physics co-validation (Doppler skipped
-    // until SDR metadata is wired; elevation gate always runs when physics is available).
-    let logger = tokio::spawn(async move {
-        loop {
-            match rx.recv().await {
-                Ok(frame) => match ccsds::parse_telemetry(&frame) {
-                    Ok(mut tm) => {
-                        let physics = tracking
-                            .as_ref()
-                            .and_then(|t| t.tracking_state(tm.received_at).ok());
-                        match physics {
-                            Some(s) => {
-                                apply_physics_validation(
-                                    &mut tm,
-                                    &s,
-                                    nominal_hz,
-                                    RfMetadata::default(),
-                                    doppler_tol,
-                                    min_el,
-                                );
-                                tracing::info!(
-                                    apid = tm.apid,
-                                    seq = tm.seq_count,
-                                    payload = tm.payload_len(),
-                                    az_deg = s.azimuth_deg,
-                                    el_deg = s.elevation_deg,
-                                    range_km = s.range_km,
-                                    range_rate_km_s = s.range_rate_km_s,
-                                    physics_flags = tm.physics_flags,
-                                    "telemetry frame parsed"
-                                );
-                            }
-                            None => tracing::info!(
-                                apid = tm.apid,
-                                seq = tm.seq_count,
-                                payload = tm.payload_len(),
-                                "telemetry frame parsed (no physics state)"
-                            ),
-                        }
-                    }
-                    Err(e) => tracing::warn!(
-                        error = %e,
-                        bytes = frame.bytes.len(),
-                        "dropping invalid/non-telemetry datagram"
-                    ),
-                },
-                Err(broadcast::error::RecvError::Lagged(n)) => {
-                    tracing::warn!(skipped = n, "consumer lagged; dropped frames")
-                }
-                Err(broadcast::error::RecvError::Closed) => break,
-            }
+    let cancel = CancellationToken::new();
+    let ingest_cancel = cancel.child_token();
+    let ingest_handle = tokio::spawn({
+        let ingest_stats = Arc::clone(&state.ingest_stats);
+        let ingest_cfg_clone = ingest_cfg.clone();
+        async move {
+            ingest::run(
+                socket,
+                frame_tx,
+                ingest_cfg_clone,
+                ingest_stats,
+                ingest_cancel.cancelled(),
+            )
+            .await
         }
     });
 
-    // Run until Ctrl-C.
-    let shutdown = async {
-        let _ = tokio::signal::ctrl_c().await;
-    };
-    ingest::run(socket, tx, config, Arc::clone(&stats), shutdown).await?;
+    let listener = TcpListener::bind(ingest_cfg.http_bind)
+        .await
+        .with_context(|| format!("failed to bind HTTP on {}", ingest_cfg.http_bind))?;
+    let http_local = listener.local_addr()?;
+    tracing::info!(%http_local, "HTTP + WebSocket (GET /telemetry/openmct) listening");
 
-    logger.abort();
-    let (frames, bytes, oversized, errors) = stats.snapshot();
+    let app = http::router(Arc::clone(&state));
+    let cancel_serve = cancel.clone();
+    let server = axum::serve(listener, app).with_graceful_shutdown(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        cancel_serve.cancel();
+    });
+
+    let server_res = server.await;
+    server_res.context("HTTP server terminated with error")?;
+
+    ingest_handle.await.context("ingest task join")??;
+
+    let (frames, bytes, oversized, errors) = state.ingest_stats.snapshot();
     tracing::info!(frames, bytes, oversized, errors, "shutdown complete");
     Ok(())
 }

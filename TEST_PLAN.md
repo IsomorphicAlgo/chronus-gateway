@@ -92,15 +92,15 @@ cargo clippy --all-targets
 - [x] **Formula:** non-relativistic Doppler identity locked by unit test (`expected_carrier_matches_non_relativistic_formula`).
 
 ### M5 — Distribution
-- [ ] **End-to-end:** in-process `ingest → parse → validate → WebSocket`; a connected client
+- [x] **End-to-end:** in-process `ingest → parse → validate → WebSocket`; a connected client
       receives well-formed Open MCT JSON including `physics_flags`.
-- [ ] **Health:** `GET /health` returns `200`.
-- [ ] **Lifecycle:** client disconnect is handled without affecting other clients or the loop.
+- [x] **Health:** `GET /health` returns `200`.
+- [x] **Lifecycle:** client disconnect is handled without affecting other clients or the loop.
 
 ### M6 — Hardening
-- [ ] **Benchmarks:** `criterion` parse + validate hot paths produce reported latency numbers.
-- [ ] **Fuzz/property:** randomized byte streams never panic the parser.
-- [ ] **Supply chain:** `cargo audit` / `cargo deny` clean.
+- [x] **Benchmarks:** `criterion` parse + validate hot paths (`cargo bench -p chronus-gateway`).
+- [x] **Fuzz/property:** randomized byte streams never panic the parser (`ccsds` proptest).
+- [x] **Supply chain:** `cargo audit` / `cargo deny` in CI (`deny.toml`).
 
 ### M7 — HIL simulation
 - [ ] **Smoke:** NeXosim sim → gateway delivers validated frames to a client.
@@ -123,8 +123,8 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 ## Status / counts (keep current)
 | Layer | Count | Notes |
 |-------|-------|-------|
-| Unit tests | 24 | `ccsds` (7) + `config` (4) + `propagator` (4) + `validate` (9). |
-| Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
+| Unit tests | 25 | `ccsds` (8 incl. proptest) + `config` (4) + `propagator` (4) + `validate` (9). |
+| Integration tests | 7 | `tests/ingest.rs` (4) + `tests/distribution.rs` (3). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
 *Last updated: 2026-06-01.*

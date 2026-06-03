@@ -14,8 +14,16 @@ repository = "https://github.com/IsomorphicAlgo/chronus-gateway"
 [workspace.dependencies]
 # Async runtime + observability
 tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# HTTP / WebSocket (Milestone 5; OD-B)
+axum = { version = "0.7", features = ["macros", "ws"] }
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["trace", "limit"] }
+futures-util = "0.3"
+base64 = { version = "0.22", default-features = false, features = ["std"] }
 
 # Error handling
 anyhow = "1"

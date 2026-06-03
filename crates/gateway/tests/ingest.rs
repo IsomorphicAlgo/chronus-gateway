@@ -20,6 +20,7 @@ async fn bind_loopback(max_datagram_size: usize) -> (UdpSocket, IngestConfig, So
         bind_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
         channel_capacity: 1024,
         max_datagram_size,
+        ..Default::default()
     };
     let socket = ingest::bind(&config).await.expect("bind loopback socket");
     let local = socket.local_addr().expect("local addr");

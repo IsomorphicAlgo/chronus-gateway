@@ -1,7 +1,7 @@
 //! Gateway configuration.
 //!
 //! Holds ingestion settings ([`IngestConfig`]) and ground-station / propagator settings
-//! ([`StationConfig`]). Distribution settings arrive in a later milestone (see `BUILD_PLAN.md`).
+//! ([`StationConfig`]). HTTP/WebSocket bind is part of [`IngestConfig::http_bind`] (Milestone 5).
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -25,6 +25,9 @@ pub struct IngestConfig {
     /// never allocates based on attacker-controlled input. Datagrams larger than this are dropped
     /// (Windows) or truncated by the OS (Unix); either way the loop stays in sync.
     pub max_datagram_size: usize,
+
+    /// HTTP + WebSocket bind address (Milestone 5). Open MCT or other dashboards connect here.
+    pub http_bind: SocketAddr,
 }
 
 impl Default for IngestConfig {
@@ -36,6 +39,7 @@ impl Default for IngestConfig {
             // CCSDS space packets are at most 65536 + 6 bytes; a 64 KiB ceiling covers any single
             // packet while bounding per-datagram memory. Tunable per deployment.
             max_datagram_size: 65_542,
+            http_bind: SocketAddr::from(([127, 0, 0, 1], 8080)),
         }
     }
 }

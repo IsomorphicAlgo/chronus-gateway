@@ -11,9 +11,10 @@ telemetry only against static limits, the gateway uses a live orbital propagator
 expected Doppler shift, look-angles, and link geometry for the spacecraft, and flags frames whose
 measured RF and signal parameters disagree with the physics.
 
-> **Status:** Early development. Ingestion (M1), CCSDS parsing (M2), station tracking (M3), and the
-> Physics–Telemetry Co-Validation engine (M4) are implemented and tested. Open MCT WebSocket
-> distribution is Milestone 5 (see [`BUILD_PLAN.md`](BUILD_PLAN.md)).
+> **Status:** Core gateway through **Milestone 6** is implemented: UDP ingest (M1), CCSDS parsing
+> (M2), station tracking (M3), Physics–Telemetry Co-Validation (M4), Axum + WebSocket distribution
+> with an Open MCT–shaped JSON contract (M5), and metrics / Criterion benches / CI `audit`+`deny`
+> (M6). See [`BUILD_PLAN.md`](BUILD_PLAN.md) for M7 (optional HIL).
 
 ---
 
@@ -47,17 +48,25 @@ The reasoning behind these and other choices is recorded in [`Methodology.md`](M
 ```
 chronus-gateway/
 ├── Cargo.toml              Workspace manifest (centralized dependency versions, MSRV 1.88)
+├── deny.toml               cargo-deny policy (CI supply-chain gate)
+├── .github/workflows/ci.yml Tests, clippy, audit, deny (checks out Ephemerust sibling)
 ├── crates/gateway/         The gateway binary + library
+│   ├── benches/
+│   │   └── parse_validate.rs   Criterion: parse + validate hot paths (M6)
 │   ├── src/
 │   │   ├── lib.rs          Crate documentation and module wiring
-│   │   ├── config.rs       Ingestion configuration
+│   │   ├── config.rs       Ingestion + HTTP bind (`IngestConfig`, `StationConfig`)
 │   │   ├── ingest.rs       Asynchronous UDP ingestion loop (RawFrame, stats, shutdown)
 │   │   ├── ccsds.rs        CCSDS Space Packet parsing (TelemetryFrame, validation)
 │   │   ├── validate.rs     Physics–Telemetry Co-Validation (Doppler, elevation, physics_flags)
 │   │   ├── propagator.rs   OrbitalPropagator trait + Ephemerust-backed implementation
-│   │   └── main.rs         Entrypoint (runs the ingestion server)
+│   │   ├── http.rs         Axum router: `/health`, metrics, Open MCT WebSocket
+│   │   ├── metrics.rs      Gateway / WebSocket counters (M6)
+│   │   ├── state.rs        Shared Axum + ingest state (`SharedGateway`)
+│   │   └── main.rs         Entrypoint: UDP ingest + Axum HTTP/WebSocket (Ctrl-C shutdown)
 │   └── tests/
-│       └── ingest.rs       Milestone 1 integration tests
+│       ├── ingest.rs       Milestone 1 integration tests (UDP loop)
+│       └── distribution.rs Milestone 5 (HTTP health + WebSocket JSON)
 ├── AGENTS.md               Project constitution (compliance, attribution, security, testing)
 ├── Methodology.md          Decision log: the reasoning behind major choices
 ├── BUILD_PLAN.md           Iterative, stage-gated implementation roadmap
@@ -79,9 +88,13 @@ checkout. The expected on-disk layout places both repositories next to each othe
 
 ```bash
 cargo build      # compile the workspace
-cargo run        # run the foundation smoke test
+cargo run        # UDP ingest (default 127.0.0.1:7301) + Axum HTTP/WebSocket (default 127.0.0.1:8080)
 cargo test       # unit + integration + doctests
+cargo bench -p chronus-gateway   # Criterion benchmarks (M6)
 ```
+
+Default bind addresses are loopback-only (`IngestConfig` / `StationConfig` in `config.rs`). Set
+`RUST_LOG=debug` for verbose tracing.
 
 > **Windows note:** on the maintainer's machine the MSVC `link.exe` is blocked from writing
 > freshly linked executables. The repository is therefore configured (`.cargo/config.toml`) to
