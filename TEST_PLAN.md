@@ -47,7 +47,8 @@ cargo clippy --all-targets
 ## Per-milestone test gates
 
 ### M0 — Foundation
-- [x] Binary smoke run produces a finite `TrackingState` (az/el/range/range-rate) from the ISS TLE.
+- [x] Foundation smoke coverage produces a finite `TrackingState` (az/el/range/range-rate) from the
+      public ISS TLE.
 - [x] Doctest on `EphemerustPropagator::new` showing construction + a bounded assertion.
 - [x] Unit tests: finite tracking state near epoch; invalid TLE rejected.
 
@@ -103,8 +104,8 @@ cargo clippy --all-targets
 - [x] **Supply chain:** `cargo audit` / `cargo deny` in CI (`deny.toml`).
 
 ### M7 — HIL simulation
-- [x] **Smoke:** NeXosim sim → gateway delivers validated frames to a client (`chronus-hil-sim` +
-      real `ingest::run` on loopback).
+- [x] **Smoke:** NeXosim sim → loopback UDP → real `ingest::run` → CCSDS parse
+      (`chronus-hil-sim` + gateway library on loopback).
 - [x] **Soak:** sustained simulated-rate run (400 frames) with `recv_errors == 0` and full parse.
 
 ---

@@ -108,15 +108,16 @@ and the UDP ingest loop stop together; the `ingest::run` contract is still `impl
 ### D-010 — CCSDS parsing crate: `spacepackets` (resolves OD-A)
 **Decision:** Use **`spacepackets` 0.17** (us-irs) for CCSDS Space Packet parsing, wrapped behind
 the `ccsds` module so the rest of the gateway depends on our `TelemetryFrame`, not on the crate.
-**Why:** It supports the full primary header plus secondary-header/PUS handling we will need for
-real telemetry, is actively maintained, and parses with a clean `from_be_bytes` returning the
-header and remaining slice. `space-packet` is Kani-verified but primary-header-only; an in-house
-parser would duplicate well-tested work and own the correctness burden (against AGENTS security
-posture). Keeping it behind the module boundary preserves the option to swap later.
+**Why:** It supports the full primary header and gives a path toward secondary-header/PUS handling
+we will need for real telemetry, is actively maintained, and parses with a clean `from_be_bytes`
+returning the header and remaining slice. `space-packet` is Kani-verified but primary-header-only;
+an in-house parser would duplicate well-tested work and own the correctness burden (against AGENTS
+security posture). Keeping it behind the module boundary preserves the option to swap later.
 **Frame representation:** `TelemetryFrame` retains the original `Arc<[u8]>` datagram and exposes
 the packet data field via a zero-copy `payload()` borrow (no `bytes` crate needed — extends D-009).
 **Validation:** length → decode → declared-vs-available → TM/TC; recoverable `CcsdsError` per case,
-no panics or unbounded allocation on untrusted input.
+no panics or unbounded allocation on untrusted input. The current parser decodes the
+secondary-header flag but does not parse secondary-header/PUS fields yet.
 **Tested by:** inline unit tests in `ccsds.rs` (golden bytes, round-trip, truncation, garbage, routing) plus a `proptest` case that random byte vectors never panic the parser (M6). The public `encode_synthetic_tm` helper is exercised by `chronus-hil-sim` (M7).
 
 ### D-011 — Station config + throttled tracking provider (Milestone 3)
@@ -147,7 +148,7 @@ state, counting-mock trait-swap + throttle).
   (strict: below mathematical horizon is anomalous). Negative thresholds allow a refraction mask.
 - **Bit 2:** reserved for RSSI / link budget (`FLAG_RSSI_RESERVED`); not set in this milestone.
 - **`RfMetadata::measured_carrier_hz == None`:** Doppler check skipped (no bit 0); production SDR
-  wiring comes with M5 or a side channel.
+  metadata wiring remains deferred beyond the current WebSocket distribution path.
 **Why OD-C is closed:** Ephemerust documents `range_rate_km_s` to ~0.25 km/s vs a 1 s central
 difference; at L-band (~437 MHz) that maps to sub-kHz frequency uncertainty from propagation math
 alone. The ±150 Hz band is therefore dominated by atmosphere, receiver chain, and clock effects,
@@ -168,7 +169,9 @@ packet data field (adapter-friendly for Open MCT plugins or external bridges). S
 Tokio and the existing `broadcast::Sender<RawFrame>` fan-out. A versioned schema string keeps
 clients forward-compatible.
 **Metrics (M6):** `GatewayMetrics` + `GET /api/v1/chronus/metrics` (ingest snapshot + gateway counters
-+ average processing latency).
++ average processing latency). Live WebSocket processing currently passes `RfMetadata::default()`,
+so Doppler anomaly bit 0 is not set until SDR carrier measurements are wired in; elevation
+validation still runs when tracking is available.
 **Tested by:** `tests/distribution.rs` (health, WebSocket JSON, second client after peer disconnect).
 
 ### D-014 — NeXosim HIL driver (Milestone 7; closes OD-D for single-spacecraft laptop scope)
@@ -202,7 +205,7 @@ External works this project builds on or is inspired by (keep current per `AGENT
 | `sgp4` crate | Underlying SGP4/SDP4 numerics (via Ephemerust) | crates.io |
 | `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
-| Tokio, Axum, Tower, Tower-HTTP, Serde, Chrono, Anyhow, Thiserror, Base64, Futures-util | Runtime + HTTP/WS + serialization | crates.io, MIT/Apache-2.0 |
+| Tokio, Tokio-util, Axum, Tower, Tower-HTTP, Serde, Chrono, Anyhow, Thiserror, Base64, Futures-util | Runtime + HTTP/WS + graceful shutdown + serialization | crates.io, MIT/Apache-2.0 |
 | `criterion`, `proptest` | Benchmarks + parser robustness property tests (M6) | crates.io, MIT/Apache-2.0 |
 | **NeXosim** (`nexosim` crate) | Discrete-event HIL simulation (M7) | crates.io, MIT OR Apache-2.0 |
 | NASA Open MCT | Target mission-control dashboard | open source (NASA) |

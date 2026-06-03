@@ -24,9 +24,9 @@
 //! | 1 | `0x02` | Horizon / elevation — spacecraft is below the configured minimum elevation. |
 //! | 2 | `0x04` | **Reserved** — link budget / RSSI (not implemented in this milestone). |
 //!
-//! When [`RfMetadata::measured_carrier_hz`] is `None`, the Doppler check is **skipped** (no bit 0);
-//! lab and integration tests pass `Some`. Production wiring from SDR metadata arrives with the
-//! distribution layer or a dedicated ingest side-channel.
+//! When [`RfMetadata::measured_carrier_hz`] is `None`, the Doppler check is **skipped** (no bit 0).
+//! Unit tests pass `Some` to exercise the bitfield; the live WebSocket path currently passes
+//! default RF metadata until SDR carrier measurements are wired through ingest or a side-channel.
 
 use crate::ccsds::TelemetryFrame;
 use crate::propagator::TrackingState;

@@ -20,7 +20,7 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner approval required to adv
 **Deliverables**
 - [x] Cargo workspace (`crates/gateway`), centralized `[workspace.dependencies]`, MSRV 1.88.
 - [x] `OrbitalPropagator` trait + `EphemerustPropagator` backend (`src/propagator.rs`).
-- [x] `main.rs` smoke test producing a real `TrackingState` from a reference ISS TLE.
+- [x] Foundation smoke coverage producing a real `TrackingState` from a public ISS TLE.
 - [x] Governance: `AGENTS.md`, `Methodology.md`; build unblocked via `rust-lld` (D-008).
 
 **Test gate:** [TEST_PLAN.md → M0](TEST_PLAN.md#m0--foundation) — smoke run succeeds.
@@ -49,8 +49,7 @@ with clean startup/shutdown. (Derived from the PDF's Milestone 1 / Rusty_Server 
 length; oversized datagrams dropped (Windows `WSAEMSGSIZE`) / truncated (Unix) without desync.
 
 **Test gate:** [TEST_PLAN.md → M1](TEST_PLAN.md#m1--ingestion) — **all green**: ordered delivery,
-prompt shutdown, oversized-datagram resilience, backpressure/lag. (4 integration + 2 unit + 1
-doctest.)
+prompt shutdown, oversized-datagram resilience, backpressure/lag. (4 integration tests.)
 
 **Gate 1:** [x] Ingestion loop implemented; tests + clippy green. Ready for M2 on approval.
 
@@ -60,8 +59,9 @@ doctest.)
 
 **Objective:** Turn raw datagrams into validated, structured telemetry frames.
 
-**Resolved decision:** **OD-A** → **`spacepackets` 0.17** (us-irs), primary **and** secondary
-header support. Recorded in `Methodology.md` D-010.
+**Resolved decision:** **OD-A** → **`spacepackets` 0.17** (us-irs), primary-header parsing plus
+secondary-header flag decoding. Full secondary-header/PUS parsing is deferred. Recorded in
+`Methodology.md` D-010.
 
 **Deliverables**
 - [x] `ccsds` module: parses the CCSDS Space Packet primary header (version, type, APID, sequence
@@ -69,7 +69,8 @@ header support. Recorded in `Methodology.md` D-010.
 - [x] `TelemetryFrame { apid, seq_count, has_secondary_header, received_at, source,
       physics_flags }` with a **zero-copy** `payload()` borrow into the retained `Arc<[u8]>`.
 - [x] Strict validation: header length → header decode → declared-vs-available length → TM/TC
-      routing; structured, educational `CcsdsError` (Ephemerust style). `main` now parses frames.
+      routing; structured, educational `CcsdsError` (Ephemerust style). Distribution subscribers
+      parse frames before emitting Open MCT JSON.
 
 **Test gate:** [TEST_PLAN.md → M2](TEST_PLAN.md#m2--ccsds-parsing) — **all green**: golden bytes,
 round-trip, short/truncated/garbage rejected without panic, TM/TC routing. (7 unit tests.)
@@ -87,7 +88,7 @@ round-trip, short/truncated/garbage rejected without panic, TM/TC routing. (7 un
       recompute-throttle interval; with `validate()` and `resolve_tle_text()` (`ConfigError`).
 - [x] `EphemerustPropagator::from_station` + shareable `TrackingProvider` (`Arc<dyn
       OrbitalPropagator>`) that caches/throttles recomputation to the configured look-angle rate.
-      `main` now computes a `TrackingState` per parsed frame.
+      The WebSocket distribution path computes or reuses a `TrackingState` per parsed frame.
 - [x] TLE source supports inline now and file load; CelesTrak fetch deferred (backlog).
 
 **Test gate:** [TEST_PLAN.md → M3](TEST_PLAN.md#m3--propagator-integration) — **all green**: config
