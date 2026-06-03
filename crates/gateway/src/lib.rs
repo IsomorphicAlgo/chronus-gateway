@@ -8,6 +8,13 @@
 //! the [`validate`] Physics–Telemetry Co-Validation engine (Milestone 4). WebSocket / Open MCT
 //! distribution is Milestone 5 (see `BUILD_PLAN.md`).
 //!
+//! ## Current pipeline
+//!
+//! `RawFrame` datagrams flow through [`ccsds::parse_telemetry`], optional
+//! [`TrackingProvider`] look-angle/range-rate lookup, and [`apply_physics_validation`]. The stable
+//! downstream contract is [`TelemetryFrame::physics_flags`]: bit 0 for Doppler, bit 1 for
+//! below-elevation, and bit 2 reserved for future RSSI/link-budget validation.
+//!
 //! ## Standards & compliance
 //!
 //! Built strictly on open, international standards (CCSDS). See `AGENTS.md` for the project's

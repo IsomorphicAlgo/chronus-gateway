@@ -95,6 +95,29 @@ impl TelemetryFrame {
 ///
 /// Validation order: header length → header decode → declared-vs-available length → packet type.
 /// Bytes beyond the declared packet length (if any) are ignored.
+///
+/// # Examples
+///
+/// ```
+/// use std::{net::SocketAddr, sync::Arc};
+///
+/// use chrono::Utc;
+/// use chronus_gateway::{ccsds::parse_telemetry, RawFrame};
+///
+/// // TM packet, APID 0x02a, unsegmented sequence 7, 5-byte data field "hello".
+/// let packet = vec![0x00, 0x2A, 0xC0, 0x07, 0x00, 0x04, b'h', b'e', b'l', b'l', b'o'];
+/// let raw = RawFrame {
+///     bytes: Arc::from(packet),
+///     received_at: Utc::now(),
+///     source: SocketAddr::from(([127, 0, 0, 1], 7301)),
+/// };
+///
+/// let tm = parse_telemetry(&raw)?;
+/// assert_eq!(tm.apid, 0x02a);
+/// assert_eq!(tm.seq_count, 7);
+/// assert_eq!(tm.payload(), b"hello");
+/// # Ok::<(), chronus_gateway::CcsdsError>(())
+/// ```
 pub fn parse_telemetry(frame: &RawFrame) -> Result<TelemetryFrame, CcsdsError> {
     let raw = frame.bytes.as_ref();
     if raw.len() < CCSDS_PRIMARY_HEADER_LEN {

@@ -62,6 +62,8 @@ cargo clippy --all-targets
       datagrams (`lagging_subscriber_never_blocks_socket`).
 
 ### M2 — CCSDS parsing
+- [x] **Doctest:** public `parse_telemetry` example builds a synthetic TM packet and asserts APID,
+      sequence count, and zero-copy payload access.
 - [x] **Unit:** parse a golden primary header → correct type/APID/seq/length
       (`parses_valid_tm_packet`, `parses_known_golden_bytes`).
 - [x] **Round-trip:** canonical bytes → parse equals original fields, incl. min/max APID & seq
@@ -81,6 +83,8 @@ cargo clippy --all-targets
       recompute-throttle cache (`provider_uses_mock_and_throttles_recompute`).
 
 ### M4 — Co-validation
+- [x] **Doctest:** `expected_carrier_hz` documents the Ephemerust sign convention (approaching
+      raises received carrier, receding lowers it).
 - [x] **Doppler in-band:** measured carrier within **T-DOPPLER ±150 Hz** of `expected_carrier_hz` →
       no bit 0 (`doppler_in_band_no_flag_t_doppler_150hz`).
 - [x] **Doppler out-of-band:** deviation beyond bound → bit 0 (`doppler_out_of_band_sets_bit0`).
@@ -125,6 +129,6 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 |-------|-------|-------|
 | Unit tests | 24 | `ccsds` (7) + `config` (4) + `propagator` (4) + `validate` (9). |
 | Integration tests | 4 | `tests/ingest.rs` (order, shutdown, oversized, backpressure). |
-| Doctests | 1 | `EphemerustPropagator::new`. |
+| Doctests | 3 | `EphemerustPropagator::new`, `parse_telemetry`, `expected_carrier_hz`. |
 
-*Last updated: 2026-06-01.*
+*Last updated: 2026-06-03.*

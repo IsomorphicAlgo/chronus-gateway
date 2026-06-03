@@ -51,6 +51,19 @@ pub struct RfMetadata {
 /// Expected received carrier (Hz) from nominal transmit frequency and line-of-sight range rate.
 ///
 /// `range_rate_km_s` follows Ephemerust: positive receding, negative approaching.
+///
+/// # Examples
+///
+/// ```
+/// use chronus_gateway::expected_carrier_hz;
+///
+/// let nominal = 437_500_000.0;
+/// let approaching = expected_carrier_hz(nominal, -1.0);
+/// let receding = expected_carrier_hz(nominal, 1.0);
+///
+/// assert!(approaching > nominal);
+/// assert!(receding < nominal);
+/// ```
 #[must_use]
 pub fn expected_carrier_hz(nominal_hz: f64, range_rate_km_s: f64) -> f64 {
     let v_m_s = range_rate_km_s * 1000.0;

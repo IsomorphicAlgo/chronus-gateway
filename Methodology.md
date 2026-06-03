@@ -5,8 +5,9 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per
 `AGENTS.md`.
 
-> Status: **Foundation** (workspace + propagator seam). Ingestion, CCSDS parsing, validation
-> engine, and Open MCT WebSocket fan-out are upcoming milestones.
+> Status: **Milestone 4 complete**. UDP ingestion, CCSDS parsing, station tracking, and
+> Physics-Telemetry Co-Validation are implemented and tested. Open MCT WebSocket fan-out is
+> Milestone 5 and remains planned.
 
 ---
 
@@ -174,10 +175,26 @@ External works this project builds on or is inspired by (keep current per `AGENT
 | `sgp4` crate | Underlying SGP4/SDP4 numerics (via Ephemerust) | crates.io |
 | `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
-| Tokio, Axum, Tracing, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates | crates.io, MIT/Apache-2.0 |
+| Tokio, Tracing, tracing-subscriber, Serde, Chrono, Anyhow, Thiserror | Runtime/infra crates used today | crates.io, MIT/Apache-2.0 |
+| Axum | Planned WebSocket / HTTP distribution layer (M5) | crates.io, MIT |
 | CCSDS standards | TMTC framing/packet specifications | open international standards |
 | NASA Open MCT | Target mission-control dashboard | open source (NASA) |
+| NeXosim | Planned HIL simulation reference (M7 stretch) | GitHub, open source |
+| `sat-rs`, `nyx-space` | Rust aerospace ecosystem references; `nyx-space` is a candidate future backend | crates.io / GitHub |
 
 ---
 
-*Last updated: 2026-06-01.*
+## References
+Sources used to ground design and documentation decisions:
+
+- Repository source and tests under `crates/gateway/src` and `crates/gateway/tests`.
+- `BUILD_PLAN.md` for milestone scope and stage-gate status.
+- `TEST_PLAN.md` for tolerance IDs, deterministic fixture rules, and current test counts.
+- Ephemerust documentation/tests for SGP4 look-angles, range-rate sign convention, and validation
+  tolerances reused by D-004 and D-012.
+- CCSDS public Space Packet standards and the `spacepackets` crate API for D-010.
+- NASA Open MCT documentation for the planned M5 distribution contract.
+
+---
+
+*Last updated: 2026-06-03.*

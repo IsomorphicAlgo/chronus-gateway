@@ -24,19 +24,23 @@ abstraction boundary between the pipeline and any astrodynamics backend.
 
 ```
 Raw RF / SDR ──▶ Async UDP ingestion ──▶ CCSDS zero-copy parser ──▶ Physics-Telemetry
- (UDP/TCP)        (Tokio)                  (validated frames)         Co-Validation engine
+ (UDP today)      (Tokio)                  (validated frames)         Co-Validation engine
                                                                             │
                   OrbitalPropagator trait ◀── range-rate / look-angles ─────┤
                   (Ephemerust today, nyx-space later)                       ▼
-                                                          Axum WebSocket ──▶ NASA Open MCT
+                                                    Axum WebSocket (M5) ──▶ NASA Open MCT
 ```
 
 - **Asynchronous core.** A Tokio runtime drives non-blocking UDP ingestion and a pool of
-  WebSocket connections, scaling to many concurrent telemetry channels and operator screens.
+  consumers without letting slow downstream work block the receive loop. The WebSocket fan-out
+  layer is planned for Milestone 5.
 - **Trait-based astrodynamics.** Physical-state computation is abstracted behind the
   `OrbitalPropagator` trait, decoupling the network and validation pipelines from the math
   library. The default backend is the SGP4-based Ephemerust library; the trait boundary leaves a
   clean path to a high-fidelity `nyx-space` backend without rewriting the gateway.
+- **Stable validation contract.** `TelemetryFrame::physics_flags` carries bitwise anomaly state:
+  bit 0 = Doppler anomaly, bit 1 = below configured elevation, bit 2 = reserved for RSSI/link
+  budget. Doppler is skipped when no measured carrier metadata accompanies the frame.
 
 The reasoning behind these and other choices is recorded in [`Methodology.md`](Methodology.md).
 
@@ -50,14 +54,14 @@ chronus-gateway/
 ├── crates/gateway/         The gateway binary + library
 │   ├── src/
 │   │   ├── lib.rs          Crate documentation and module wiring
-│   │   ├── config.rs       Ingestion configuration
+│   │   ├── config.rs       Ingestion + station/tracking configuration
 │   │   ├── ingest.rs       Asynchronous UDP ingestion loop (RawFrame, stats, shutdown)
 │   │   ├── ccsds.rs        CCSDS Space Packet parsing (TelemetryFrame, validation)
 │   │   ├── validate.rs     Physics–Telemetry Co-Validation (Doppler, elevation, physics_flags)
 │   │   ├── propagator.rs   OrbitalPropagator trait + Ephemerust-backed implementation
-│   │   └── main.rs         Entrypoint (runs the ingestion server)
+│   │   └── main.rs         Entrypoint (ingest → parse → track → validate logging)
 │   └── tests/
-│       └── ingest.rs       Milestone 1 integration tests
+│       └── ingest.rs       Loopback UDP integration tests
 ├── AGENTS.md               Project constitution (compliance, attribution, security, testing)
 ├── Methodology.md          Decision log: the reasoning behind major choices
 ├── BUILD_PLAN.md           Iterative, stage-gated implementation roadmap
@@ -79,13 +83,50 @@ checkout. The expected on-disk layout places both repositories next to each othe
 
 ```bash
 cargo build      # compile the workspace
-cargo run        # run the foundation smoke test
+cargo run        # run the local UDP ingest/parse/validate demo path
 cargo test       # unit + integration + doctests
 ```
+
+`cargo run` starts the local gateway on `127.0.0.1:7301` by default. It currently logs parsed and
+validated telemetry frames; Open MCT/WebSocket distribution is the next milestone. To send one
+synthetic CCSDS telemetry packet to the default socket:
+
+```bash
+python3 - <<'PY'
+import socket
+
+# CCSDS TM primary header: APID 0x02a, unsegmented sequence 7, 5-byte data field "hello".
+packet = bytes([0x00, 0x2A, 0xC0, 0x07, 0x00, 0x04]) + b"hello"
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.sendto(packet, ("127.0.0.1", 7301))
+PY
+```
+
+With the default station configuration the gateway computes look-angles from the public ISS TLE,
+applies the elevation gate, and leaves Doppler clear unless measured RF carrier metadata is wired
+in by a later ingest side channel.
 
 > **Windows note:** on the maintainer's machine the MSVC `link.exe` is blocked from writing
 > freshly linked executables. The repository is therefore configured (`.cargo/config.toml`) to
 > link with the toolchain's bundled `rust-lld`. See `Methodology.md` (D-008) for details.
+
+---
+
+## Public workflow and interfaces
+
+The implemented M1-M4 pipeline is:
+
+1. [`ingest::run`](crates/gateway/src/ingest.rs) receives bounded UDP datagrams as cheap-clone
+   `RawFrame`s on a lossy broadcast channel.
+2. [`ccsds::parse_telemetry`](crates/gateway/src/ccsds.rs) validates CCSDS Space Packets and
+   exposes zero-copy payload access through `TelemetryFrame::payload()`.
+3. [`TrackingProvider`](crates/gateway/src/propagator.rs) caches `OrbitalPropagator` results for
+   bursts of frames within the configured recompute interval.
+4. [`apply_physics_validation`](crates/gateway/src/validate.rs) clears and sets
+   `TelemetryFrame::physics_flags` from the current tracking state and optional RF metadata.
+
+All RF/orbit examples in the repository are synthetic or public-reference data only, per the
+project's ITAR/EAR guardrails.
 
 ---
 
@@ -109,8 +150,10 @@ ChronusGateway-RS builds directly on prior work, and credit is given accordingly
   whose Tokio/Axum architecture and integration patterns informed this gateway's design.
 - **[`sgp4`](https://crates.io/crates/sgp4)** — the validated SGP4/SDP4 propagator that
   Ephemerust delegates to for numerical orbit propagation.
+- **[`spacepackets`](https://crates.io/crates/spacepackets)** by us-irs — the CCSDS/ECSS packet
+  library used behind the gateway's `ccsds` module boundary.
 - **[Tokio](https://tokio.rs/)** and **[Axum](https://github.com/tokio-rs/axum)** — the
-  asynchronous runtime and web framework that form the network core.
+  asynchronous runtime and planned web framework for the network core.
 - **[CCSDS](https://public.ccsds.org/)** — the open international standards for space packet
   framing and protocols that define the gateway's wire formats.
 - **[NASA Open MCT](https://nasa.github.io/openmct/)** — the open-source mission-control
@@ -120,6 +163,19 @@ ChronusGateway-RS builds directly on prior work, and credit is given accordingly
 
 The broader Rust aerospace ecosystem — including `sat-rs`, `spacepackets`, and `nyx-space` —
 informed the design analysis.
+
+---
+
+## References
+
+- [`BUILD_PLAN.md`](BUILD_PLAN.md), [`TEST_PLAN.md`](TEST_PLAN.md), and
+  [`Methodology.md`](Methodology.md) are the repository's source of truth for implemented
+  milestones, test gates, tolerances, and design decisions.
+- CCSDS public standards define the Space Packet framing model used by the `ccsds` module.
+- Ephemerust documentation and tests define the range-rate sign convention and numerical
+  cross-checks used by the Doppler validation notes.
+- Crate documentation for `spacepackets`, Tokio, Tracing, Serde, Chrono, Anyhow, and Thiserror
+  informed the public API and operational examples in this README.
 
 ---
 
