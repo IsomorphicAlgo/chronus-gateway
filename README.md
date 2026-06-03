@@ -104,9 +104,99 @@ See [`docs/HIL.md`](docs/HIL.md) for pairing with `GET /api/v1/chronus/metrics`.
 Default bind addresses are loopback-only (`IngestConfig` / `StationConfig` in `config.rs`). Set
 `RUST_LOG=debug` for verbose tracing.
 
+### Developer setup notes
+
+- Keep `Ephemerust` checked out beside this repository, with that exact capitalisation, because
+  `Cargo.toml` uses `ephemerust = { path = "../Ephemerust" }`.
+- Use the stable toolchain at Rust **1.88+**. If the default toolchain is older, run commands as
+  `cargo +stable ...` after installing stable with `rustup toolchain install stable`.
+- The gateway binary currently uses in-code defaults; there is no environment/config-file loader
+  yet. Change defaults through `IngestConfig` and `StationConfig` when embedding the library.
+- All examples use loopback and synthetic/public data only. Do not place mission keys, controlled
+  frequencies, or operational parameters in the repo.
+
 > **Windows note:** on the maintainer's machine the MSVC `link.exe` is blocked from writing
 > freshly linked executables. The repository is therefore configured (`.cargo/config.toml`) to
 > link with the toolchain's bundled `rust-lld`. See `Methodology.md` (D-008) for details.
+
+---
+
+## Runtime interfaces
+
+The default binary starts two local services:
+
+| Interface | Default | Codepath | Notes |
+|-----------|---------|----------|-------|
+| UDP telemetry ingest | `127.0.0.1:7301` | `crates/gateway/src/ingest.rs` | Receives one CCSDS TM Space Packet per datagram. The receive buffer is bounded by `IngestConfig::max_datagram_size` (`65_542` bytes). Slow consumers do not block ingestion; the internal broadcast channel is intentionally lossy. |
+| HTTP / WebSocket | `127.0.0.1:8080` | `crates/gateway/src/http.rs` | Serves health, metrics, Open MCT stubs, and the real-time WebSocket. |
+
+HTTP routes:
+
+| Route | Response |
+|-------|----------|
+| `GET /health` | `{"status":"ok"}` |
+| `GET /api/v1/chronus/metrics` | Combined ingest counters, gateway counters, and `avg_processing_latency_ms`. |
+| `GET /api/v1/chronus/openmct/dictionary` | Stub dictionary point list for future Open MCT wiring. |
+| `GET /api/v1/chronus/history` | Stub empty packet list; persistence/history is not implemented yet. |
+| `GET /telemetry/openmct` | WebSocket upgrade; one JSON text message per parsed TM frame. |
+
+WebSocket messages use `chronus_schema: "openmct.realtime.v1"` and include:
+
+```json
+{
+  "chronus_schema": "openmct.realtime.v1",
+  "apid": 42,
+  "seq_count": 7,
+  "received_at": "2020-07-12T12:00:00Z",
+  "physics_flags": 0,
+  "source": "127.0.0.1:5000",
+  "elevation_deg": null,
+  "azimuth_deg": null,
+  "range_km": null,
+  "range_rate_km_s": null,
+  "payload_base64": "aGVsbG8="
+}
+```
+
+The physics fields are populated when the default `EphemerustPropagator` initializes successfully.
+Malformed, truncated, or telecommand packets are counted as parse errors and are not sent on the
+WebSocket.
+
+`physics_flags` is a stable bitfield from `validate.rs`:
+
+| Bit | Mask | Meaning |
+|-----|------|---------|
+| 0 | `0x01` | Measured carrier is outside the configured Doppler tolerance. The current binary passes no SDR carrier metadata, so this check is skipped in live UDP runs. |
+| 1 | `0x02` | Predicted elevation is below `StationConfig::minimum_elevation_deg` (default `0` degrees). |
+| 2 | `0x04` | Reserved for RSSI/link-budget validation; not set yet. |
+
+### Quick manual smoke test
+
+Start the gateway, send synthetic frames, then inspect metrics:
+
+```bash
+cargo run -p chronus-gateway
+# in another shell
+cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 100
+curl http://127.0.0.1:8080/api/v1/chronus/metrics
+```
+
+Expected result after the simulator run: `ingest.frames_received` reaches the requested frame
+count, `ingest.recv_errors` remains `0`, and WebSocket/gateway counters increase only if a
+WebSocket client was connected while frames arrived.
+
+### Common pitfalls
+
+- `failed to bind UDP socket` or `failed to bind HTTP`: another process is using `7301` or `8080`;
+  change `IngestConfig` for embedded runs or stop the conflicting local service.
+- Metrics show ingest frames but no WebSocket messages: connect a client to `/telemetry/openmct`
+  before sending frames. The gateway does not replay old frames.
+- `telemetry_parse_errors` increases: the UDP payload is not a CCSDS telemetry Space Packet, is
+  truncated, or is a telecommand packet on the telemetry path.
+- `anomaly_frames` increases during HIL: the default ISS TLE and synthetic ground station may put
+  the spacecraft below the configured horizon; this exercises bit 1 of `physics_flags`.
+- Cargo cannot find `../Ephemerust`: clone the sibling dependency at the documented path or adjust
+  the path dependency locally without committing that change.
 
 ---
 
@@ -117,6 +207,27 @@ integration tests over loopback UDP and in-process WebSockets, NeXosim HIL tests
 `chronus-hil-sim`, doctests, and physics
 co-validation tests with explicitly documented tolerances — enforced at every milestone's stage
 gate. The full strategy and per-milestone test matrix are defined in [`TEST_PLAN.md`](TEST_PLAN.md).
+
+---
+
+## References
+
+The implementation and documentation are grounded in source code and open references:
+
+- [`crates/gateway/src/ingest.rs`](crates/gateway/src/ingest.rs) — UDP ingestion behavior,
+  bounded buffer, lossy broadcast, and ingest counters.
+- [`crates/gateway/src/ccsds.rs`](crates/gateway/src/ccsds.rs) — CCSDS Space Packet parsing and
+  synthetic TM encoding helper.
+- [`crates/gateway/src/validate.rs`](crates/gateway/src/validate.rs) — Doppler/elevation
+  co-validation model and `physics_flags` contract.
+- [`crates/gateway/src/http.rs`](crates/gateway/src/http.rs) — HTTP routes, metrics response, and
+  Open MCT WebSocket JSON envelope.
+- [`crates/chronus-hil-sim/src/lib.rs`](crates/chronus-hil-sim/src/lib.rs) — NeXosim synthetic
+  spacecraft model and UDP bridge.
+- [CCSDS Space Packet Protocol](https://public.ccsds.org/) — open standard for the primary header
+  parsed by the gateway.
+- [NASA Open MCT](https://nasa.github.io/openmct/) — target open-source mission-control dashboard
+  shape for the distribution layer.
 
 ---
 
@@ -138,7 +249,7 @@ ChronusGateway-RS builds directly on prior work, and credit is given accordingly
 - **[NASA Open MCT](https://nasa.github.io/openmct/)** — the open-source mission-control
   framework targeted by the distribution layer.
 - **[NeXosim](https://github.com/asynchronics/nexosim)** — the discrete-event simulation
-  framework planned for hardware-in-the-loop validation.
+  framework used by `chronus-hil-sim` for hardware-in-the-loop validation.
 
 The broader Rust aerospace ecosystem — including `sat-rs`, `spacepackets`, and `nyx-space` —
 informed the design analysis.
