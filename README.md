@@ -120,6 +120,28 @@ gate. The full strategy and per-milestone test matrix are defined in [`TEST_PLAN
 
 ---
 
+## References
+
+The implementation and documentation are grounded in these public sources and local records:
+
+- **[`Methodology.md`](Methodology.md)** — decision log for architecture, dependencies, tolerances,
+  and milestone trade-offs.
+- **[CCSDS](https://public.ccsds.org/)** — public packet and telemetry standards; the parser wraps
+  the CCSDS Space Packet primary-header support provided by `spacepackets`.
+- **[`spacepackets`](https://crates.io/crates/spacepackets)** — CCSDS/ECSS packet parsing and
+  encoding primitives used behind the gateway's `ccsds` module boundary.
+- **[Ephemerust](https://github.com/IsomorphicAlgo/ephemerust)** and the
+  **[`sgp4`](https://crates.io/crates/sgp4)** crate — SGP4 propagation, look angles, and range-rate
+  inputs used by the physics co-validation seam.
+- **[Tokio](https://tokio.rs/)**, **[Axum](https://github.com/tokio-rs/axum)**, and
+  **Tower/Tower-HTTP** — async runtime, HTTP/WebSocket serving, and tracing middleware.
+- **[NASA Open MCT](https://nasa.github.io/openmct/)** — target dashboard ecosystem for the
+  real-time JSON adapter.
+- **[NeXosim](https://github.com/asynchronics/nexosim)** — discrete-event simulation framework for
+  the `chronus-hil-sim` HIL driver.
+
+---
+
 ## Acknowledgements
 
 ChronusGateway-RS builds directly on prior work, and credit is given accordingly:
@@ -138,7 +160,7 @@ ChronusGateway-RS builds directly on prior work, and credit is given accordingly
 - **[NASA Open MCT](https://nasa.github.io/openmct/)** — the open-source mission-control
   framework targeted by the distribution layer.
 - **[NeXosim](https://github.com/asynchronics/nexosim)** — the discrete-event simulation
-  framework planned for hardware-in-the-loop validation.
+  framework used by the Milestone 7 hardware-in-the-loop driver.
 
 The broader Rust aerospace ecosystem — including `sat-rs`, `spacepackets`, and `nyx-space` —
 informed the design analysis.
