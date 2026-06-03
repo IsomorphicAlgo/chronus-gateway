@@ -104,6 +104,89 @@ See [`docs/HIL.md`](docs/HIL.md) for pairing with `GET /api/v1/chronus/metrics`.
 Default bind addresses are loopback-only (`IngestConfig` / `StationConfig` in `config.rs`). Set
 `RUST_LOG=debug` for verbose tracing.
 
+### Runtime interfaces (MVP defaults)
+
+The current binary wires `IngestConfig::default()` and `StationConfig::default()` directly in
+`main.rs`; there is not yet a CLI, environment-variable, or config-file layer for changing these
+values at runtime. To use different bind addresses, TLEs, carrier frequencies, or validation
+thresholds today, update the config in code or embed `chronus-gateway` as a library and construct
+`SharedGateway` yourself.
+
+| Interface | Default | Notes |
+|-----------|---------|-------|
+| UDP ingest | `127.0.0.1:7301` | CCSDS TM Space Packets; channel capacity `1024`; max datagram `65_542` bytes. |
+| HTTP / WebSocket | `127.0.0.1:8080` | Axum server; Ctrl-C triggers graceful shutdown of HTTP + ingest. |
+| Station model | public ISS TLE, lat `35.0`, lon `-116.0`, alt `1000 m` | Nominal carrier `437.5 MHz`, Doppler tolerance `150 Hz`, minimum elevation `0°`. |
+
+### HTTP / WebSocket API
+
+| Route | Behavior |
+|-------|----------|
+| `GET /health` | Returns `{"status":"ok"}` for liveness checks. |
+| `GET /telemetry/openmct` | WebSocket upgrade; each valid TM datagram becomes one JSON text message. |
+| `GET /api/v1/chronus/metrics` | Combined ingest + gateway counters and average processing latency. |
+| `GET /api/v1/chronus/history` | Stub: returns an empty packet list until persistence lands. |
+| `GET /api/v1/chronus/openmct/dictionary` | Stub dictionary of Open MCT point identifiers. |
+
+WebSocket messages use the stable schema identifier `openmct.realtime.v1`:
+
+```json
+{
+  "chronus_schema": "openmct.realtime.v1",
+  "apid": 42,
+  "seq_count": 7,
+  "received_at": "2020-07-12T12:00:00Z",
+  "physics_flags": 0,
+  "source": "127.0.0.1:5000",
+  "elevation_deg": null,
+  "azimuth_deg": null,
+  "range_km": null,
+  "range_rate_km_s": null,
+  "payload_base64": "aGVsbG8="
+}
+```
+
+Invalid or non-telemetry datagrams are counted as parse errors and skipped rather than sent to
+clients. The broadcast fan-out is intentionally lossy: slow WebSocket consumers may miss frames,
+but they do not block UDP ingestion. Physics fields are `null` when no tracking state is available.
+With the default binary, `physics_flags` currently has live elevation semantics but no measured
+carrier input, so Doppler bit 0 is available to callers that provide `RfMetadata`.
+
+| `physics_flags` bit | Mask | Meaning |
+|---------------------|------|---------|
+| 0 | `0x01` | Doppler anomaly; requires measured carrier metadata (`RfMetadata::measured_carrier_hz`). |
+| 1 | `0x02` | Predicted elevation is strictly below `minimum_elevation_deg`. |
+| 2 | `0x04` | Reserved for RSSI / link-budget validation; not set yet. |
+
+### Metrics quick reference
+
+`GET /api/v1/chronus/metrics` returns:
+
+```json
+{
+  "ingest": {
+    "frames_received": 0,
+    "bytes_received": 0,
+    "oversized_dropped": 0,
+    "recv_errors": 0
+  },
+  "gateway": {
+    "telemetry_frames_emitted": 0,
+    "telemetry_parse_errors": 0,
+    "anomaly_frames": 0,
+    "ws_messages_sent": 0,
+    "processing_latency_ms_sum": 0,
+    "processing_latency_ms_count": 0,
+    "ws_clients_connected": 0
+  },
+  "avg_processing_latency_ms": null
+}
+```
+
+The counters are atomic snapshots and should be treated as operational indicators under
+concurrency. `avg_processing_latency_ms` is receive-to-JSON-ready latency and is `null` until a
+WebSocket client processes at least one frame.
+
 > **Windows note:** on the maintainer's machine the MSVC `link.exe` is blocked from writing
 > freshly linked executables. The repository is therefore configured (`.cargo/config.toml`) to
 > link with the toolchain's bundled `rust-lld`. See `Methodology.md` (D-008) for details.
@@ -142,6 +225,23 @@ ChronusGateway-RS builds directly on prior work, and credit is given accordingly
 
 The broader Rust aerospace ecosystem — including `sat-rs`, `spacepackets`, and `nyx-space` —
 informed the design analysis.
+
+---
+
+## References
+
+- CCSDS Space Packet Protocol, CCSDS 133.0-B series — open packet framing used by
+  `ccsds::parse_telemetry`.
+- [`spacepackets`](https://crates.io/crates/spacepackets) — CCSDS/ECSS packet parsing crate used
+  behind the gateway's parser boundary.
+- [`Ephemerust`](https://github.com/IsomorphicAlgo/ephemerust) and the underlying
+  [`sgp4`](https://crates.io/crates/sgp4) crate — SGP4 propagation, look-angles, and range-rate.
+- [NASA Open MCT](https://nasa.github.io/openmct/) — target dashboard shape for the WebSocket
+  realtime stream and dictionary identifiers.
+- [NeXosim](https://github.com/asynchronics/nexosim) — discrete-event simulation framework used by
+  `chronus-hil-sim`.
+- [Tokio](https://tokio.rs/) and [Axum](https://github.com/tokio-rs/axum) — async runtime and
+  HTTP/WebSocket framework for the gateway core.
 
 ---
 

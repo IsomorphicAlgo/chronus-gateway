@@ -154,6 +154,11 @@ alone. The ±150 Hz band is therefore dominated by atmosphere, receiver chain, a
 not SGP4 truncation at the teaching-grade arcminute level (D-004).
 **`TelemetryFrame`:** `raw` and `payload_len` are `pub(crate)` so `validate` unit tests can build
 minimal frames without exposing internals on the public API.
+**Current live wiring:** the default WebSocket distribution path calls `apply_physics_validation`
+with `RfMetadata::default()`, so bit 0 (Doppler) is not emitted by the stock binary until an SDR /
+front-end measured-carrier side channel is wired. Bit 1 (below configured elevation) is live when
+the tracking provider initializes successfully; if tracking initialization fails, WebSocket payloads
+omit physics fields and no physics flags are set.
 **Tested by:** nine `validate` unit tests (in/out-of-band Doppler, horizon, combined flags, NaN-safe
 skip, formula identity).
 
@@ -164,6 +169,17 @@ decoded TM fields (`apid`, `seq_count`, `physics_flags`, `received_at`, `source`
 look-angle / range fields when a propagator is configured, and `payload_base64` for the CCSDS
 packet data field (adapter-friendly for Open MCT plugins or external bridges). Stub routes:
 `GET /api/v1/chronus/openmct/dictionary`, `GET /api/v1/chronus/history` (empty list).
+**Public routes:**
+- `GET /health` — liveness JSON `{ "status": "ok" }`.
+- `GET /telemetry/openmct` — WebSocket upgrade; one text JSON object per valid TM frame.
+- `GET /api/v1/chronus/metrics` — combined ingest + gateway counters and average processing
+  latency.
+- `GET /api/v1/chronus/history` — empty stub until persistence/query support lands.
+- `GET /api/v1/chronus/openmct/dictionary` — stub point list for Open MCT adapters.
+**Operational semantics:** CCSDS parse failures increment `telemetry_parse_errors` and are not sent
+to clients; lagged broadcast subscribers skip old frames rather than blocking ingestion; Ping gets
+Pong and Close/send errors drop the client. Metric snapshots use relaxed atomic loads, adequate for
+observability but not a transactional audit log.
 **Why:** Matches proven patterns from the owner's **Rusty_Server**; Axum integrates cleanly with
 Tokio and the existing `broadcast::Sender<RawFrame>` fan-out. A versioned schema string keeps
 clients forward-compatible.
@@ -177,6 +193,11 @@ discrete-event `SpacecraftDemo` emits `TelemSample` (synthetic EPS / thermal / A
 scalars) on an `Output` port; a `ProtoUdpBridge` builds `UdpDownlinkBridge` with
 `ProtoModel` so a `std::net::UdpSocket` lives in non-serialized `BridgeEnv` and sends `encode_synthetic_tm` datagrams (see `crates/gateway/src/ccsds.rs`) to the gateway UDP ingest. Binary `chronus-hil-sim` accepts `HOST:PORT` and frame count for manual
 profiling against M6 metrics (`docs/HIL.md`).
+**Operational contract:** the CLI defaults to `127.0.0.1:7301`, `100` frames, and synthetic APID
+`0x7B0`. `TelemSample::to_payload_bytes()` produces a 16-byte big-endian payload
+(`u32 seq`, then three `f32` values: EPS bus voltage, panel temperature, body rate). The simulator
+schedules frames at 1 ms **simulation-time** intervals, not wall-clock pacing; sequence counts are
+masked to CCSDS's 14-bit field.
 **Why OD-D is closed at this scope:** one cooperating model + one I/O bridge matches the “single
 simulated spacecraft on the laptop” gate; multi-node / rack-scale co-simulation is explicitly
 out of scope until a future decision.
