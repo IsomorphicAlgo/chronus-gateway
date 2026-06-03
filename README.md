@@ -106,7 +106,7 @@ cargo test              # unit + integration + doctests
 To send one synthetic CCSDS telemetry packet to a running local gateway:
 
 ```bash
-python - <<'PY'
+python3 - <<'PY'
 import socket
 pkt = bytes.fromhex("002ac0070004") + b"hello"  # TM, APID 0x02a, seq 7, 5-byte payload
 socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(pkt, ("127.0.0.1", 7301))
