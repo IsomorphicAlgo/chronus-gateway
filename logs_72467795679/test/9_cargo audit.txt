@@ -1,0 +1,38 @@
+﻿2026-06-05T02:24:38.5758026Z ##[group]Run cargo audit
+2026-06-05T02:24:38.5758343Z [36;1mcargo audit[0m
+2026-06-05T02:24:38.5783888Z shell: /usr/bin/bash -e {0}
+2026-06-05T02:24:38.5784135Z env:
+2026-06-05T02:24:38.5784332Z   CARGO_HOME: /home/runner/.cargo
+2026-06-05T02:24:38.5784597Z   CARGO_INCREMENTAL: 0
+2026-06-05T02:24:38.5784828Z   CARGO_TERM_COLOR: always
+2026-06-05T02:24:38.5785047Z ##[endgroup]
+2026-06-05T02:24:38.6018937Z [0m[0m[1m[32m    Fetching[0m advisory database from `https://github.com/RustSec/advisory-db.git`
+2026-06-05T02:24:41.3885804Z [0m[0m[1m[32m      Loaded[0m 1119 security advisories (from /home/runner/.cargo/advisory-db)
+2026-06-05T02:24:41.3886778Z [0m[0m[1m[32m    Updating[0m crates.io index
+2026-06-05T02:24:41.4049113Z [0m[0m[1m[32m    Scanning[0m Cargo.lock for vulnerabilities (295 crate dependencies)
+2026-06-05T02:24:41.6437813Z [0m[0m[1m[33mwarning:[0m 2 allowed warnings found
+2026-06-05T02:24:41.6438344Z [0m[0m[1m[33mCrate:    [0m bincode
+2026-06-05T02:24:41.6438871Z [0m[0m[1m[33mVersion:  [0m 2.0.1
+2026-06-05T02:24:41.6439338Z [0m[0m[1m[33mWarning:  [0m unmaintained
+2026-06-05T02:24:41.6439799Z [0m[0m[1m[33mTitle:    [0m Bincode is unmaintained
+2026-06-05T02:24:41.6440363Z [0m[0m[1m[33mDate:     [0m 2025-12-16
+2026-06-05T02:24:41.6441360Z [0m[0m[1m[33mID:       [0m RUSTSEC-2025-0141
+2026-06-05T02:24:41.6442202Z [0m[0m[1m[33mURL:      [0m https://rustsec.org/advisories/RUSTSEC-2025-0141
+2026-06-05T02:24:41.6442867Z [0m[0m[1m[33mDependency tree:
+2026-06-05T02:24:41.6443961Z [0mbincode 2.0.1
+2026-06-05T02:24:41.6444436Z └── nexosim 1.0.0
+2026-06-05T02:24:41.6444804Z     └── chronus-hil-sim 0.0.0
+2026-06-05T02:24:41.6445013Z 
+2026-06-05T02:24:41.6445182Z [0m[0m[1m[33mCrate:    [0m paste
+2026-06-05T02:24:41.6445577Z [0m[0m[1m[33mVersion:  [0m 1.0.15
+2026-06-05T02:24:41.6445979Z [0m[0m[1m[33mWarning:  [0m unmaintained
+2026-06-05T02:24:41.6446472Z [0m[0m[1m[33mTitle:    [0m paste - no longer maintained
+2026-06-05T02:24:41.6446954Z [0m[0m[1m[33mDate:     [0m 2024-10-07
+2026-06-05T02:24:41.6447373Z [0m[0m[1m[33mID:       [0m RUSTSEC-2024-0436
+2026-06-05T02:24:41.6447951Z [0m[0m[1m[33mURL:      [0m https://rustsec.org/advisories/RUSTSEC-2024-0436
+2026-06-05T02:24:41.6448490Z [0m[0m[1m[33mDependency tree:
+2026-06-05T02:24:41.6448841Z [0mpaste 1.0.15
+2026-06-05T02:24:41.6449141Z └── spacepackets 0.17.0
+2026-06-05T02:24:41.6449421Z     └── chronus-gateway 0.0.0
+2026-06-05T02:24:41.6449710Z         └── chronus-hil-sim 0.0.0
+2026-06-05T02:24:41.6449937Z 

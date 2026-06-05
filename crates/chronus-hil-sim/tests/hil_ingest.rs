@@ -6,7 +6,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chronus_gateway::ccsds::{self, CCSDS_PRIMARY_HEADER_LEN};
-use chronus_gateway::config::IngestConfig;
+use chronus_gateway::config::{IngestConfig, StationConfig};
+use chronus_gateway::hil_tm::{decode_hil_tm_v1, HIL_TM_V1_PAYLOAD_LEN};
 use chronus_gateway::ingest::{self, IngestStats, RawFrame};
 use tokio::net::UdpSocket;
 use tokio::sync::{broadcast, oneshot};
@@ -57,7 +58,11 @@ async fn nexosim_smoke_reaches_ingest_and_parse() {
     for _ in 0..(N as usize + 8) {
         match tokio::time::timeout(Duration::from_secs(2), rx.recv()).await {
             Ok(Ok(frame)) => {
-                if ccsds::parse_telemetry(&frame).is_ok() {
+                if let Ok(tm) = ccsds::parse_telemetry(&frame) {
+                    let station = StationConfig::default();
+                    if station.apid_allows_hil_tm_v1(tm.apid) {
+                        let _ = decode_hil_tm_v1(tm.payload()).expect("HIL v1 payload");
+                    }
                     parsed += 1;
                     if parsed >= N {
                         break;
@@ -102,8 +107,10 @@ async fn nexosim_soak_bounded_recv_errors() {
             .expect("recv");
         let tm = ccsds::parse_telemetry(&frame).expect("valid TM");
         assert_eq!(tm.apid, apid);
-        assert_eq!(tm.payload_len(), 16);
-        assert_eq!(frame.bytes.len(), CCSDS_PRIMARY_HEADER_LEN + 16);
+        assert_eq!(tm.payload_len(), HIL_TM_V1_PAYLOAD_LEN);
+        assert_eq!(frame.bytes.len(), CCSDS_PRIMARY_HEADER_LEN + HIL_TM_V1_PAYLOAD_LEN);
+        let decoded = decode_hil_tm_v1(tm.payload()).expect("v1 decode");
+        assert_eq!(decoded.seq, parsed);
         parsed += 1;
     }
 

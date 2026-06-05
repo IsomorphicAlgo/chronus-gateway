@@ -7,8 +7,8 @@ contributor expectations in `README.md` (keep this file current when decisions c
 
 > Status: **M1–M8** complete. **CV-0** charter is documented in
 > [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md) and **D-016**; **Gate CV-0** is approved.
-> **Gate CV-1** is approved; **CV-2** (pointing residual, bit 3) is **implemented** — **Gate CV-2**
-> pending owner sign-off before **CV-3**.
+> **Gate CV-2** is approved; **CV-3** (synthetic HIL TM v1 payload + decoder + APID policy) is **implemented** — **Gate CV-3**
+> pending owner sign-off before **CV-4**.
 
 ---
 
@@ -230,7 +230,7 @@ alongside the existing `physics_flags` for one release cycle; do **not** repurpo
   UDP datagram path; same pattern as `measured_carrier_hz` today).
 - **Spacecraft-reported** engineering scalars (battery temperature, array current, attitude
   quaternions for co-validation): decoded from the **CCSDS packet data field** using a **versioned
-  synthetic layout** for HIL/tests (**CV-3** schema); production spacecraft would need an
+  synthetic layout** for HIL/tests — **`chronus.hil.tm.v1`** in the `hil_tm` module (**CV-3**, **D-020**); production spacecraft would need an
   explicitly documented mapping per mission — out of scope for the open generic gateway until
   declared.
 
@@ -273,6 +273,18 @@ reports on transitive dependencies: **`nexosim`** → `bincode`, **`spacepackets
 **Why:** `cargo deny check` is a CI gate (M6); failing the build on advisories we cannot resolve without
 forking or dropping HIL / CCSDS stacks would block all merges. Revisit when `nexosim` or `spacepackets`
 publishes releases that remove these crates; remove ignores and re-run `cargo deny check`.
+
+### D-020 — Synthetic HIL TM payload contract + decode (**CV-3** / `chronus.hil.tm.v1`)
+**Decision:** Add `hil_tm` with fixed **24-byte** big-endian layout (magic **`CHI1`**, version byte,
+zeroed reserved bytes, then `seq` + three `f32` demo scalars). `decode_hil_tm_v1` returns
+`DecodedHilTmV1` or `HilTmV1DecodeError` with **no heap allocation** on the decode path.
+`StationConfig` gains inclusive `hil_tm_v1_apid_min` / `hil_tm_v1_apid_max` (defaults **0x7B0…0x7BF**)
+and `apid_allows_hil_tm_v1`. `chronus-hil-sim` emits this layout via `encode_hil_tm_v1_payload`.
+**Why:** Fulfils CV-3 charter: bounded, versioned binary contract in the CCSDS data field so CV-4
+subsystem checks do not reinterpret arbitrary bytes. APID band documents the synthetic lane vs
+arbitrary TM.
+**Tested by:** `hil_tm` unit tests (truncation, magic, version, reserved, round-trip) + `config`
+validation + `chronus-hil-sim` integration decode on the ingest path.
 
 ---
 

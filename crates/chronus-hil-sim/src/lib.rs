@@ -1,6 +1,7 @@
 //! NeXosim-backed **synthetic** spacecraft telemetry for Milestone 7 HIL.
 //!
-//! Drives [`chronus_gateway`] over UDP with CCSDS TM packets carrying abstract EPS / thermal /
+//! Drives [`chronus_gateway`] over UDP with CCSDS TM packets whose **data field** uses the
+//! versioned **`chronus.hil.tm.v1`** layout (`chronus_gateway::hil_tm`) for abstract EPS / thermal /
 //! ADCS scalars (no mission-specific data; synthetic demo only).
 //!
 //! **Credit:** [NeXosim](https://github.com/asynchronics/nexosim) (asynchronics) — MIT OR Apache-2.0.
@@ -8,6 +9,7 @@
 use std::net::SocketAddr;
 
 use chronus_gateway::encode_synthetic_tm;
+use chronus_gateway::hil_tm::encode_hil_tm_v1_payload;
 use nexosim::model::{schedulable, BuildContext, Context, Model, ProtoModel};
 use nexosim::ports::Output;
 use nexosim::simulation::{ExecutionError, Mailbox, SimInit};
@@ -25,18 +27,6 @@ pub struct TelemSample {
     pub thermal_panel_c: f32,
     /// Abstract body rate about a nominal axis [deg/s].
     pub body_rate_deg_s: f32,
-}
-
-impl TelemSample {
-    /// Packs the sample into a CCSDS packet data field (big-endian scalars).
-    pub fn to_payload_bytes(&self) -> Vec<u8> {
-        let mut b = Vec::with_capacity(16);
-        b.extend_from_slice(&self.seq.to_be_bytes());
-        b.extend_from_slice(&self.eps_bus_voltage_v.to_be_bytes());
-        b.extend_from_slice(&self.thermal_panel_c.to_be_bytes());
-        b.extend_from_slice(&self.body_rate_deg_s.to_be_bytes());
-        b
-    }
 }
 
 /// Discrete-event “spacecraft” that emits [`TelemSample`] on `downlink` at 1 ms simulation steps.
@@ -101,7 +91,12 @@ pub struct UdpDownlinkBridge;
 impl UdpDownlinkBridge {
     #[nexosim(schedulable)]
     async fn recv_sample(&mut self, sample: TelemSample, _cx: &Context<Self>, env: &mut BridgeEnv) {
-        let payload = sample.to_payload_bytes();
+        let payload = encode_hil_tm_v1_payload(
+            sample.seq,
+            sample.eps_bus_voltage_v,
+            sample.thermal_panel_c,
+            sample.body_rate_deg_s,
+        );
         let seq = (sample.seq & 0x3FFF) as u16;
         let pkt = encode_synthetic_tm(env.apid, seq, &payload);
         let _ = env.sock.send_to(&pkt, env.dest);
@@ -132,7 +127,7 @@ impl ProtoModel for ProtoUdpBridge {
 
 /// Runs the NeXosim bench until all scheduled telemetry is emitted and UDP sends complete.
 ///
-/// `apid` is a synthetic APID (default in binary: `0x7B0`). Uses **simulation** time steps of 1 ms
+/// `apid` must fall within the gateway’s configured **HIL TM v1** APID band (default **0x7B0…0x7BF**).
 /// between frames (not wall clock), so this returns quickly for tests.
 pub fn run_nexosim_udp_hil(dest: SocketAddr, total_frames: u32, apid: u16) -> anyhow::Result<()> {
     let mut sc = SpacecraftDemo {

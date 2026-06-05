@@ -1,0 +1,150 @@
+﻿2026-06-05T02:19:09.8508020Z ##[group]Run dtolnay/rust-toolchain@stable
+2026-06-05T02:19:09.8509262Z with:
+2026-06-05T02:19:09.8510055Z   toolchain: 1.89
+2026-06-05T02:19:09.8510938Z   components: clippy
+2026-06-05T02:19:09.8512020Z ##[endgroup]
+2026-06-05T02:19:09.8673706Z ##[group]Run : parse toolchain version
+2026-06-05T02:19:09.8674979Z [36;1m: parse toolchain version[0m
+2026-06-05T02:19:09.8676099Z [36;1mif [[ -z $toolchain ]]; then[0m
+2026-06-05T02:19:09.8678003Z [36;1m  # GitHub does not enforce `required: true` inputs itself. https://github.com/actions/runner/issues/1070[0m
+2026-06-05T02:19:09.8680062Z [36;1m  echo "'toolchain' is a required input" >&2[0m
+2026-06-05T02:19:09.8681450Z [36;1m  exit 1[0m
+2026-06-05T02:19:09.8682757Z [36;1melif [[ $toolchain =~ ^stable' '[0-9]+' '(year|month|week|day)s?' 'ago$ ]]; then[0m
+2026-06-05T02:19:09.8684353Z [36;1m  if [[ Linux == macOS ]]; then[0m
+2026-06-05T02:19:09.8686316Z [36;1m    echo "toolchain=1.$((($(date -v-$(sed 's/stable \([0-9]*\) \(.\).*/\1\2/' <<< $toolchain) +%s)/60/60/24-16569)/7/6))" >> $GITHUB_OUTPUT[0m
+2026-06-05T02:19:09.8688303Z [36;1m  else[0m
+2026-06-05T02:19:09.8689852Z [36;1m    echo "toolchain=1.$((($(date --date "${toolchain#stable }" +%s)/60/60/24-16569)/7/6))" >> $GITHUB_OUTPUT[0m
+2026-06-05T02:19:09.8692062Z [36;1m  fi[0m
+2026-06-05T02:19:09.8693264Z [36;1melif [[ $toolchain =~ ^stable' 'minus' '[0-9]+' 'releases?$ ]]; then[0m
+2026-06-05T02:19:09.8695287Z [36;1m  echo "toolchain=1.$((($(date +%s)/60/60/24-16569)/7/6-${toolchain//[^0-9]/}))" >> $GITHUB_OUTPUT[0m
+2026-06-05T02:19:09.8697068Z [36;1melif [[ $toolchain =~ ^1\.[0-9]+$ ]]; then[0m
+2026-06-05T02:19:09.8699080Z [36;1m  echo "toolchain=1.$((i=${toolchain#1.}, c=($(date +%s)/60/60/24-16569)/7/6, i+9*i*(10*i<=c)+90*i*(100*i<=c)))" >> $GITHUB_OUTPUT[0m
+2026-06-05T02:19:09.8701010Z [36;1melse[0m
+2026-06-05T02:19:09.8702165Z [36;1m  echo "toolchain=$toolchain" >> $GITHUB_OUTPUT[0m
+2026-06-05T02:19:09.8703407Z [36;1mfi[0m
+2026-06-05T02:19:09.8736870Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-05T02:19:09.8738191Z env:
+2026-06-05T02:19:09.8738949Z   toolchain: 1.89
+2026-06-05T02:19:09.8739796Z ##[endgroup]
+2026-06-05T02:19:09.8928803Z ##[group]Run : construct rustup command line
+2026-06-05T02:19:09.8930064Z [36;1m: construct rustup command line[0m
+2026-06-05T02:19:09.8931928Z [36;1mecho "targets=$(for t in ${targets//,/ }; do echo -n ' --target' $t; done)" >> $GITHUB_OUTPUT[0m
+2026-06-05T02:19:09.8934257Z [36;1mecho "components=$(for c in ${components//,/ }; do echo -n ' --component' $c; done)" >> $GITHUB_OUTPUT[0m
+2026-06-05T02:19:09.8936099Z [36;1mecho "downgrade=" >> $GITHUB_OUTPUT[0m
+2026-06-05T02:19:09.8964198Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-05T02:19:09.8965457Z env:
+2026-06-05T02:19:09.8966202Z   targets: 
+2026-06-05T02:19:09.8966984Z   components: clippy
+2026-06-05T02:19:09.8967831Z ##[endgroup]
+2026-06-05T02:19:09.9089033Z ##[group]Run : set $CARGO_HOME
+2026-06-05T02:19:09.9090058Z [36;1m: set $CARGO_HOME[0m
+2026-06-05T02:19:09.9091739Z [36;1mecho CARGO_HOME=${CARGO_HOME:-"$HOME/.cargo"} >> $GITHUB_ENV[0m
+2026-06-05T02:19:09.9120626Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-05T02:19:09.9122191Z ##[endgroup]
+2026-06-05T02:19:09.9238892Z ##[group]Run : install rustup if needed
+2026-06-05T02:19:09.9240045Z [36;1m: install rustup if needed[0m
+2026-06-05T02:19:09.9241438Z [36;1mif ! command -v rustup &>/dev/null; then[0m
+2026-06-05T02:19:09.9244136Z [36;1m  curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused --location --silent --show-error --fail https://sh.rustup.rs | sh -s -- --default-toolchain none -y[0m
+2026-06-05T02:19:09.9246763Z [36;1m  echo "$CARGO_HOME/bin" >> $GITHUB_PATH[0m
+2026-06-05T02:19:09.9247889Z [36;1mfi[0m
+2026-06-05T02:19:09.9275418Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-05T02:19:09.9276682Z env:
+2026-06-05T02:19:09.9277519Z   CARGO_HOME: /home/runner/.cargo
+2026-06-05T02:19:09.9278565Z ##[endgroup]
+2026-06-05T02:19:09.9403928Z ##[group]Run rustup toolchain install 1.89 --component clippy --profile minimal --no-self-update
+2026-06-05T02:19:09.9406238Z [36;1mrustup toolchain install 1.89 --component clippy --profile minimal --no-self-update[0m
+2026-06-05T02:19:09.9436122Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-05T02:19:09.9437395Z env:
+2026-06-05T02:19:09.9438196Z   CARGO_HOME: /home/runner/.cargo
+2026-06-05T02:19:09.9439234Z   RUSTUP_PERMIT_COPY_RENAME: 1
+2026-06-05T02:19:09.9440188Z ##[endgroup]
+2026-06-05T02:19:09.9937767Z info: syncing channel updates for 1.89-x86_64-unknown-linux-gnu
+2026-06-05T02:19:10.0971984Z info: latest update on 2025-08-07 for version 1.89.0 (29483883e 2025-08-04)
+2026-06-05T02:19:10.0984390Z info: downloading 4 components
+2026-06-05T02:19:18.0714212Z 
+2026-06-05T02:19:18.0788263Z   1.89-x86_64-unknown-linux-gnu installed - rustc 1.89.0 (29483883e 2025-08-04)
+2026-06-05T02:19:18.0789159Z 
+2026-06-05T02:19:18.0870176Z ##[group]Run rustup default 1.89
+2026-06-05T02:19:18.0870501Z [36;1mrustup default 1.89[0m
+2026-06-05T02:19:18.0896084Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-05T02:19:18.0896449Z env:
+2026-06-05T02:19:18.0896661Z   CARGO_HOME: /home/runner/.cargo
+2026-06-05T02:19:18.0896916Z ##[endgroup]
+2026-06-05T02:19:18.0993872Z info: using existing install for 1.89-x86_64-unknown-linux-gnu
+2026-06-05T02:19:18.1001612Z info: default toolchain set to 1.89-x86_64-unknown-linux-gnu
+2026-06-05T02:19:18.1002130Z 
+2026-06-05T02:19:18.1074063Z   1.89-x86_64-unknown-linux-gnu unchanged - rustc 1.89.0 (29483883e 2025-08-04)
+2026-06-05T02:19:18.1074866Z 
+2026-06-05T02:19:18.1107617Z ##[group]Run : create cachekey
+2026-06-05T02:19:18.1107927Z [36;1m: create cachekey[0m
+2026-06-05T02:19:18.1108430Z [36;1mDATE=$(rustc +1.89 --version --verbose | sed -ne 's/^commit-date: \(20[0-9][0-9]\)-\([01][0-9]\)-\([0-3][0-9]\)$/\1\2\3/p')[0m
+2026-06-05T02:19:18.1109085Z [36;1mHASH=$(rustc +1.89 --version --verbose | sed -ne 's/^commit-hash: //p')[0m
+2026-06-05T02:19:18.1109598Z [36;1mecho "cachekey=$(echo $DATE$HASH | head -c12)" >> $GITHUB_OUTPUT[0m
+2026-06-05T02:19:18.1135454Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-05T02:19:18.1135800Z env:
+2026-06-05T02:19:18.1136004Z   CARGO_HOME: /home/runner/.cargo
+2026-06-05T02:19:18.1136250Z ##[endgroup]
+2026-06-05T02:19:18.1483637Z ##[group]Run : disable incremental compilation
+2026-06-05T02:19:18.1484013Z [36;1m: disable incremental compilation[0m
+2026-06-05T02:19:18.1484345Z [36;1mif [ -z "${CARGO_INCREMENTAL+set}" ]; then[0m
+2026-06-05T02:19:18.1484686Z [36;1m  echo CARGO_INCREMENTAL=0 >> $GITHUB_ENV[0m
+2026-06-05T02:19:18.1485129Z [36;1mfi[0m
+2026-06-05T02:19:18.1510492Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-05T02:19:18.1510843Z env:
+2026-06-05T02:19:18.1511041Z   CARGO_HOME: /home/runner/.cargo
+2026-06-05T02:19:18.1511737Z ##[endgroup]
+2026-06-05T02:19:18.1573148Z ##[group]Run : enable colors in Cargo output
+2026-06-05T02:19:18.1573472Z [36;1m: enable colors in Cargo output[0m
+2026-06-05T02:19:18.1573799Z [36;1mif [ -z "${CARGO_TERM_COLOR+set}" ]; then[0m
+2026-06-05T02:19:18.1574134Z [36;1m  echo CARGO_TERM_COLOR=always >> $GITHUB_ENV[0m
+2026-06-05T02:19:18.1574425Z [36;1mfi[0m
+2026-06-05T02:19:18.1596921Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-05T02:19:18.1597260Z env:
+2026-06-05T02:19:18.1597455Z   CARGO_HOME: /home/runner/.cargo
+2026-06-05T02:19:18.1597710Z   CARGO_INCREMENTAL: 0
+2026-06-05T02:19:18.1597933Z ##[endgroup]
+2026-06-05T02:19:18.1658909Z ##[group]Run : enable Cargo sparse registry
+2026-06-05T02:19:18.1659240Z [36;1m: enable Cargo sparse registry[0m
+2026-06-05T02:19:18.1659618Z [36;1m# implemented in 1.66, stabilized in 1.68, made default in 1.70[0m
+2026-06-05T02:19:18.1660337Z [36;1mif [ -z "${CARGO_REGISTRIES_CRATES_IO_PROTOCOL+set}" -o -f "/home/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol ]; then[0m
+2026-06-05T02:19:18.1661048Z [36;1m  if rustc +1.89 --version --verbose | grep -q '^release: 1\.6[89]\.'; then[0m
+2026-06-05T02:19:18.1662137Z [36;1m    touch "/home/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol || true[0m
+2026-06-05T02:19:18.1662713Z [36;1m    echo CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse >> $GITHUB_ENV[0m
+2026-06-05T02:19:18.1663209Z [36;1m  elif rustc +1.89 --version --verbose | grep -q '^release: 1\.6[67]\.'; then[0m
+2026-06-05T02:19:18.1663778Z [36;1m    touch "/home/runner/work/_temp"/.implicit_cargo_registries_crates_io_protocol || true[0m
+2026-06-05T02:19:18.1664307Z [36;1m    echo CARGO_REGISTRIES_CRATES_IO_PROTOCOL=git >> $GITHUB_ENV[0m
+2026-06-05T02:19:18.1664702Z [36;1m  fi[0m
+2026-06-05T02:19:18.1664890Z [36;1mfi[0m
+2026-06-05T02:19:18.1687744Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-05T02:19:18.1688085Z env:
+2026-06-05T02:19:18.1688289Z   CARGO_HOME: /home/runner/.cargo
+2026-06-05T02:19:18.1688547Z   CARGO_INCREMENTAL: 0
+2026-06-05T02:19:18.1688768Z   CARGO_TERM_COLOR: always
+2026-06-05T02:19:18.1689000Z ##[endgroup]
+2026-06-05T02:19:18.2011906Z ##[group]Run : work around spurious network errors in curl 8.0
+2026-06-05T02:19:18.2012380Z [36;1m: work around spurious network errors in curl 8.0[0m
+2026-06-05T02:19:18.2012964Z [36;1m# https://rust-lang.zulipchat.com/#narrow/stream/246057-t-cargo/topic/timeout.20investigation[0m
+2026-06-05T02:19:18.2013591Z [36;1mif rustc +1.89 --version --verbose | grep -q '^release: 1\.7[01]\.'; then[0m
+2026-06-05T02:19:18.2014049Z [36;1m  echo CARGO_HTTP_MULTIPLEXING=false >> $GITHUB_ENV[0m
+2026-06-05T02:19:18.2014367Z [36;1mfi[0m
+2026-06-05T02:19:18.2039643Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-05T02:19:18.2040016Z env:
+2026-06-05T02:19:18.2040211Z   CARGO_HOME: /home/runner/.cargo
+2026-06-05T02:19:18.2040461Z   CARGO_INCREMENTAL: 0
+2026-06-05T02:19:18.2040677Z   CARGO_TERM_COLOR: always
+2026-06-05T02:19:18.2040898Z ##[endgroup]
+2026-06-05T02:19:18.2235575Z ##[group]Run rustc +1.89 --version --verbose
+2026-06-05T02:19:18.2235935Z [36;1mrustc +1.89 --version --verbose[0m
+2026-06-05T02:19:18.2261030Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-06-05T02:19:18.2261642Z env:
+2026-06-05T02:19:18.2261847Z   CARGO_HOME: /home/runner/.cargo
+2026-06-05T02:19:18.2262111Z   CARGO_INCREMENTAL: 0
+2026-06-05T02:19:18.2262330Z   CARGO_TERM_COLOR: always
+2026-06-05T02:19:18.2262549Z ##[endgroup]
+2026-06-05T02:19:18.2422468Z rustc 1.89.0 (29483883e 2025-08-04)
+2026-06-05T02:19:18.2423065Z binary: rustc
+2026-06-05T02:19:18.2423601Z commit-hash: 29483883eed69d5fb4db01964cdf2af4d86e9cb2
+2026-06-05T02:19:18.2424276Z commit-date: 2025-08-04
+2026-06-05T02:19:18.2425111Z host: x86_64-unknown-linux-gnu
+2026-06-05T02:19:18.2425530Z release: 1.89.0
+2026-06-05T02:19:18.2426210Z LLVM version: 20.1.7

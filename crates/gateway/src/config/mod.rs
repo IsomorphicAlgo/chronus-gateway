@@ -13,6 +13,8 @@ pub use file::{
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use crate::hil_tm::{CCSDS_APID_MAX, DEFAULT_HIL_TM_V1_APID_MAX, DEFAULT_HIL_TM_V1_APID_MIN};
+
 /// Configuration for the asynchronous UDP ingestion loop.
 #[derive(Debug, Clone)]
 pub struct IngestConfig {
@@ -106,6 +108,11 @@ pub struct StationConfig {
     /// Great-circle angular tolerance (degrees) for measured vs computed azimuth/elevation (**CV-2** / **T-POINT**).
     /// Default **0.25°** — see `TEST_PLAN.md` and `Methodology.md` D-016.
     pub pointing_tolerance_deg: f64,
+    /// Inclusive lower bound of CCSDS APIDs carrying **chronus.hil.tm.v1** synthetic payloads (**CV-3**).
+    /// Default [`DEFAULT_HIL_TM_V1_APID_MIN`](crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MIN).
+    pub hil_tm_v1_apid_min: u16,
+    /// Inclusive upper bound (must be ≥ `hil_tm_v1_apid_min` and ≤ **0x7FF**).
+    pub hil_tm_v1_apid_max: u16,
 }
 
 impl Default for StationConfig {
@@ -125,6 +132,8 @@ impl Default for StationConfig {
             rx_gain_dbi: 5.0,
             link_budget_tolerance_db: 3.0,
             pointing_tolerance_deg: 0.25,
+            hil_tm_v1_apid_min: DEFAULT_HIL_TM_V1_APID_MIN,
+            hil_tm_v1_apid_max: DEFAULT_HIL_TM_V1_APID_MAX,
         }
     }
 }
@@ -159,6 +168,11 @@ pub enum ConfigError {
     /// Pointing tolerance (degrees) is not a finite value greater than zero (**T-POINT** / CV-2).
     #[error("pointing tolerance {0}° is invalid (expected a finite value > 0)")]
     InvalidPointingTolerance(f64),
+    /// HIL TM v1 synthetic APID range is empty or outside the 11-bit CCSDS APID space.
+    #[error(
+        "HIL TM v1 APID range {min:#x}..={max:#x} is invalid (expected min <= max and both <= {apid_max:#x})"
+    )]
+    InvalidHilTmV1ApidRange { min: u16, max: u16, apid_max: u16 },
     /// A link-budget power or gain field is non-finite.
     #[error("link budget field `{field}` is invalid (expected a finite value)")]
     InvalidLinkBudgetField {
@@ -240,7 +254,23 @@ impl StationConfig {
                 self.pointing_tolerance_deg,
             ));
         }
+        if self.hil_tm_v1_apid_min > self.hil_tm_v1_apid_max
+            || self.hil_tm_v1_apid_min > CCSDS_APID_MAX
+            || self.hil_tm_v1_apid_max > CCSDS_APID_MAX
+        {
+            return Err(ConfigError::InvalidHilTmV1ApidRange {
+                min: self.hil_tm_v1_apid_min,
+                max: self.hil_tm_v1_apid_max,
+                apid_max: CCSDS_APID_MAX,
+            });
+        }
         Ok(())
+    }
+
+    /// Returns `true` if `apid` lies in the configured inclusive **HIL TM v1** synthetic band (**CV-3**).
+    #[must_use]
+    pub fn apid_allows_hil_tm_v1(&self, apid: u16) -> bool {
+        (self.hil_tm_v1_apid_min..=self.hil_tm_v1_apid_max).contains(&apid)
     }
 
     /// Resolves the configured [`TleSource`] to TLE text (reading the file if necessary).
@@ -354,6 +384,35 @@ mod tests {
             bad_point.validate(),
             Err(ConfigError::InvalidPointingTolerance(_))
         ));
+
+        let bad_hil_apid = StationConfig {
+            hil_tm_v1_apid_min: 0x100,
+            hil_tm_v1_apid_max: 0x50,
+            ..Default::default()
+        };
+        assert!(matches!(
+            bad_hil_apid.validate(),
+            Err(ConfigError::InvalidHilTmV1ApidRange { .. })
+        ));
+
+        let apid_overflow = StationConfig {
+            hil_tm_v1_apid_min: 0x7FF,
+            hil_tm_v1_apid_max: 0x800,
+            ..Default::default()
+        };
+        assert!(matches!(
+            apid_overflow.validate(),
+            Err(ConfigError::InvalidHilTmV1ApidRange { .. })
+        ));
+    }
+
+    #[test]
+    fn apid_allows_hil_tm_v1_respects_range() {
+        let s = StationConfig::default();
+        assert!(s.apid_allows_hil_tm_v1(0x7B0));
+        assert!(s.apid_allows_hil_tm_v1(0x7BF));
+        assert!(!s.apid_allows_hil_tm_v1(0x7C0));
+        assert!(!s.apid_allows_hil_tm_v1(0x100));
     }
 
     #[test]

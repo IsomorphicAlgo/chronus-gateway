@@ -14,7 +14,7 @@ measured RF and signal parameters disagree with the physics.
 > **Status:** Roadmap through **Milestone 8** is implemented: M1–M7 as before, plus optional **TOML**
 > configuration (`--config` / `CHRONUS_GATEWAY_CONFIG`, `[gateway.example.toml](gateway.example.toml)`).
 > NeXosim HIL notes: `[docs/HIL.md](docs/HIL.md)`.
-> Post-M8 **extended co-validation** (link budget, pointing, subsystem checks): `[docs/EXTENDED_COVALIDATION_PLAN.md](docs/EXTENDED_COVALIDATION_PLAN.md)` — approval-gated **CV-0…CV-4**. **CV-0** charter is in **`Methodology.md` D-016** and `TEST_PLAN.md` (tolerances **T-RSSI**, **T-POINT**, …); **CV-1** (link budget) and **CV-2** (pointing) are implemented — **Gate CV-2** pending before **CV-3**. See `[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)`.
+> Post-M8 **extended co-validation** (`[docs/EXTENDED_COVALIDATION_PLAN.md](docs/EXTENDED_COVALIDATION_PLAN.md)`): **CV-1…CV-3** implemented (link budget, pointing, **HIL TM v1** synthetic payload); **Gate CV-3** pending before **CV-4**. See `[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)`.
 
 ---
 

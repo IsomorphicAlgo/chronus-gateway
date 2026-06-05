@@ -111,6 +111,10 @@ struct StationToml {
     link_budget_tolerance_db: Option<f64>,
     #[serde(default)]
     pointing_tolerance_deg: Option<f64>,
+    #[serde(default)]
+    hil_tm_v1_apid_min: Option<u16>,
+    #[serde(default)]
+    hil_tm_v1_apid_max: Option<u16>,
     tle_inline: Option<String>,
     tle_file: Option<PathBuf>,
 }
@@ -144,6 +148,8 @@ impl TryFrom<StationToml> for StationConfig {
             pointing_tolerance_deg: t
                 .pointing_tolerance_deg
                 .unwrap_or(def.pointing_tolerance_deg),
+            hil_tm_v1_apid_min: t.hil_tm_v1_apid_min.unwrap_or(def.hil_tm_v1_apid_min),
+            hil_tm_v1_apid_max: t.hil_tm_v1_apid_max.unwrap_or(def.hil_tm_v1_apid_max),
         })
     }
 }

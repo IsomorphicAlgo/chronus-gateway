@@ -1,0 +1,553 @@
+﻿2026-06-05T02:19:18.2493889Z ##[group]Run cargo test
+2026-06-05T02:19:18.2494187Z [36;1mcargo test[0m
+2026-06-05T02:19:18.2520316Z shell: /usr/bin/bash -e {0}
+2026-06-05T02:19:18.2520577Z env:
+2026-06-05T02:19:18.2520779Z   CARGO_HOME: /home/runner/.cargo
+2026-06-05T02:19:18.2521042Z   CARGO_INCREMENTAL: 0
+2026-06-05T02:19:18.2521543Z   CARGO_TERM_COLOR: always
+2026-06-05T02:19:18.2521770Z ##[endgroup]
+2026-06-05T02:19:18.2959627Z [1m[32m    Updating[0m crates.io index
+2026-06-05T02:19:18.9307236Z [1m[32m Downloading[0m crates ...
+2026-06-05T02:19:18.9864734Z [1m[32m  Downloaded[0m anstyle v1.0.14
+2026-06-05T02:19:18.9891068Z [1m[32m  Downloaded[0m anstream v1.0.0
+2026-06-05T02:19:18.9921434Z [1m[32m  Downloaded[0m anes v0.1.6
+2026-06-05T02:19:18.9956799Z [1m[32m  Downloaded[0m aho-corasick v1.1.4
+2026-06-05T02:19:19.0022977Z [1m[32m  Downloaded[0m bitflags v1.3.2
+2026-06-05T02:19:19.0071788Z [1m[32m  Downloaded[0m percent-encoding v2.3.2
+2026-06-05T02:19:19.0091652Z [1m[32m  Downloaded[0m sha1 v0.10.6
+2026-06-05T02:19:19.0121313Z [1m[32m  Downloaded[0m pin-project-internal v1.1.13
+2026-06-05T02:19:19.0154205Z [1m[32m  Downloaded[0m slab v0.4.12
+2026-06-05T02:19:19.0177342Z [1m[32m  Downloaded[0m colorchoice v1.0.5
+2026-06-05T02:19:19.0198819Z [1m[32m  Downloaded[0m clap_lex v1.1.0
+2026-06-05T02:19:19.0220778Z [1m[32m  Downloaded[0m ciborium v0.2.2
+2026-06-05T02:19:19.0258867Z [1m[32m  Downloaded[0m memchr v2.8.1
+2026-06-05T02:19:19.0327644Z [1m[32m  Downloaded[0m chrono v0.4.44
+2026-06-05T02:19:19.0412875Z [1m[32m  Downloaded[0m matchers v0.2.0
+2026-06-05T02:19:19.0442710Z [1m[32m  Downloaded[0m once_cell v1.21.4
+2026-06-05T02:19:19.0481806Z [1m[32m  Downloaded[0m hyper v1.10.1
+2026-06-05T02:19:19.0575241Z [1m[32m  Downloaded[0m tinytemplate v1.2.1
+2026-06-05T02:19:19.0612149Z [1m[32m  Downloaded[0m tokio-macros v2.7.0
+2026-06-05T02:19:19.0646635Z [1m[32m  Downloaded[0m tokio-util v0.7.18
+2026-06-05T02:19:19.0752570Z [1m[32m  Downloaded[0m plotters-svg v0.3.7
+2026-06-05T02:19:19.0780139Z [1m[32m  Downloaded[0m thread_local v1.1.9
+2026-06-05T02:19:19.0807546Z [1m[32m  Downloaded[0m toml_write v0.1.2
+2026-06-05T02:19:19.0825643Z [1m[32m  Downloaded[0m tower-service v0.3.3
+2026-06-05T02:19:19.0837813Z [1m[32m  Downloaded[0m http-body v1.0.1
+2026-06-05T02:19:19.0850717Z [1m[32m  Downloaded[0m tracing-subscriber v0.3.23
+2026-06-05T02:19:19.0945012Z [1m[32m  Downloaded[0m tracing v0.1.44
+2026-06-05T02:19:19.1121220Z [1m[32m  Downloaded[0m half v2.7.1
+2026-06-05T02:19:19.1159164Z [1m[32m  Downloaded[0m num_enum_derive v0.7.6
+2026-06-05T02:19:19.1179785Z [1m[32m  Downloaded[0m typenum v1.20.1
+2026-06-05T02:19:19.1224205Z [1m[32m  Downloaded[0m lock_api v0.4.14
+2026-06-05T02:19:19.1245573Z [1m[32m  Downloaded[0m getrandom v0.4.2
+2026-06-05T02:19:19.1295078Z [1m[32m  Downloaded[0m futures-core v0.3.32
+2026-06-05T02:19:19.1314132Z [1m[32m  Downloaded[0m nexosim v1.0.0
+2026-06-05T02:19:19.1426641Z [1m[32m  Downloaded[0m ref-cast v1.0.25
+2026-06-05T02:19:19.1466160Z [1m[32m  Downloaded[0m st3 v0.4.1
+2026-06-05T02:19:19.1492882Z [1m[32m  Downloaded[0m rand v0.8.6
+2026-06-05T02:19:19.1532563Z [1m[32m  Downloaded[0m either v1.16.0
+2026-06-05T02:19:19.1552128Z [1m[32m  Downloaded[0m walkdir v2.5.0
+2026-06-05T02:19:19.1575814Z [1m[32m  Downloaded[0m signal-hook-registry v1.4.8
+2026-06-05T02:19:19.1592410Z [1m[32m  Downloaded[0m serde_urlencoded v0.7.1
+2026-06-05T02:19:19.1614036Z [1m[32m  Downloaded[0m schemars v1.2.1
+2026-06-05T02:19:19.1809414Z [1m[32m  Downloaded[0m tracing-log v0.2.0
+2026-06-05T02:19:19.1840761Z [1m[32m  Downloaded[0m tower-layer v0.3.3
+2026-06-05T02:19:19.1862452Z [1m[32m  Downloaded[0m sgp4 v2.4.0
+2026-06-05T02:19:19.1897567Z [1m[32m  Downloaded[0m rustix v1.1.4
+2026-06-05T02:19:19.2193548Z [1m[32m  Downloaded[0m thiserror-impl v2.0.18
+2026-06-05T02:19:19.2226995Z [1m[32m  Downloaded[0m thiserror v1.0.69
+2026-06-05T02:19:19.2297023Z [1m[32m  Downloaded[0m tracing-core v0.1.36
+2026-06-05T02:19:19.2335129Z [1m[32m  Downloaded[0m sharded-slab v0.1.7
+2026-06-05T02:19:19.2383929Z [1m[32m  Downloaded[0m serde_derive v1.0.228
+2026-06-05T02:19:19.2422974Z [1m[32m  Downloaded[0m toml v0.8.23
+2026-06-05T02:19:19.2455302Z [1m[32m  Downloaded[0m tokio v1.52.3
+2026-06-05T02:19:19.2907229Z [1m[32m  Downloaded[0m toml_edit v0.22.27
+2026-06-05T02:19:19.2962086Z [1m[32m  Downloaded[0m paste v1.0.15
+2026-06-05T02:19:19.2996679Z [1m[32m  Downloaded[0m regex-syntax v0.8.10
+2026-06-05T02:19:19.3064719Z [1m[32m  Downloaded[0m tower v0.4.13
+2026-06-05T02:19:19.3166733Z [1m[32m  Downloaded[0m plotters-backend v0.3.7
+2026-06-05T02:19:19.3180447Z [1m[32m  Downloaded[0m spacepackets v0.17.0
+2026-06-05T02:19:19.3235758Z [1m[32m  Downloaded[0m serde v1.0.228
+2026-06-05T02:19:19.3273518Z [1m[32m  Downloaded[0m rayon v1.12.0
+2026-06-05T02:19:19.3368367Z [1m[32m  Downloaded[0m ryu v1.0.23
+2026-06-05T02:19:19.3402741Z [1m[32m  Downloaded[0m regex-automata v0.4.14
+2026-06-05T02:19:19.3540598Z [1m[32m  Downloaded[0m tai-time v1.0.0
+2026-06-05T02:19:19.3556387Z [1m[32m  Downloaded[0m proptest v1.11.0
+2026-06-05T02:19:19.3653945Z [1m[32m  Downloaded[0m tower-http v0.5.2
+2026-06-05T02:19:19.3732922Z [1m[32m  Downloaded[0m termcolor v1.4.1
+2026-06-05T02:19:19.3745582Z [1m[32m  Downloaded[0m smallvec v1.15.1
+2026-06-05T02:19:19.3767318Z [1m[32m  Downloaded[0m ppv-lite86 v0.2.21
+2026-06-05T02:19:19.3780572Z [1m[32m  Downloaded[0m num_enum v0.7.6
+2026-06-05T02:19:19.3838126Z [1m[32m  Downloaded[0m winnow v0.7.15
+2026-06-05T02:19:19.3932967Z [1m[32m  Downloaded[0m unty v0.0.4
+2026-06-05T02:19:19.3943121Z [1m[32m  Downloaded[0m rand_chacha v0.9.0
+2026-06-05T02:19:19.3956028Z [1m[32m  Downloaded[0m num-traits v0.2.19
+2026-06-05T02:19:19.3981467Z [1m[32m  Downloaded[0m virtue v0.0.18
+2026-06-05T02:19:19.4006236Z [1m[32m  Downloaded[0m unicode-ident v1.0.24
+2026-06-05T02:19:19.4034515Z [1m[32m  Downloaded[0m toml_datetime v0.6.11
+2026-06-05T02:19:19.4045697Z [1m[32m  Downloaded[0m proc-macro-error-attr2 v2.0.0
+2026-06-05T02:19:19.4054460Z [1m[32m  Downloaded[0m utf8parse v0.2.2
+2026-06-05T02:19:19.4064390Z [1m[32m  Downloaded[0m utf-8 v0.7.6
+2026-06-05T02:19:19.4076846Z [1m[32m  Downloaded[0m tempfile v3.27.0
+2026-06-05T02:19:19.4102090Z [1m[32m  Downloaded[0m sync_wrapper v1.0.2
+2026-06-05T02:19:19.4110546Z [1m[32m  Downloaded[0m serde_spanned v0.6.9
+2026-06-05T02:19:19.4121868Z [1m[32m  Downloaded[0m serde_core v1.0.228
+2026-06-05T02:19:19.4148743Z [1m[32m  Downloaded[0m same-file v1.0.6
+2026-06-05T02:19:19.4161962Z [1m[32m  Downloaded[0m rand_chacha v0.3.1
+2026-06-05T02:19:19.4173910Z [1m[32m  Downloaded[0m quick-error v1.2.3
+2026-06-05T02:19:19.4185998Z [1m[32m  Downloaded[0m proc-macro2 v1.0.106
+2026-06-05T02:19:19.4215247Z [1m[32m  Downloaded[0m proc-macro-error2 v2.0.1
+2026-06-05T02:19:19.4248218Z [1m[32m  Downloaded[0m parking v2.2.1
+2026-06-05T02:19:19.4259619Z [1m[32m  Downloaded[0m version_check v0.9.5
+2026-06-05T02:19:19.4271912Z [1m[32m  Downloaded[0m crossbeam-epoch v0.9.18
+2026-06-05T02:19:19.4296035Z [1m[32m  Downloaded[0m thiserror v2.0.18
+2026-06-05T02:19:19.4360029Z [1m[32m  Downloaded[0m socket2 v0.6.4
+2026-06-05T02:19:19.4377911Z [1m[32m  Downloaded[0m serde_path_to_error v0.1.20
+2026-06-05T02:19:19.4393985Z [1m[32m  Downloaded[0m serde_derive_internals v0.29.1
+2026-06-05T02:19:19.4408474Z [1m[32m  Downloaded[0m scopeguard v1.2.0
+2026-06-05T02:19:19.4423589Z [1m[32m  Downloaded[0m rusty-fork v0.3.1
+2026-06-05T02:19:19.4438193Z [1m[32m  Downloaded[0m rustversion v1.0.22
+2026-06-05T02:19:19.4466944Z [1m[32m  Downloaded[0m ref-cast-impl v1.0.25
+2026-06-05T02:19:19.4475252Z [1m[32m  Downloaded[0m recycle-box v0.2.0
+2026-06-05T02:19:19.4485959Z [1m[32m  Downloaded[0m rand_core v0.6.4
+2026-06-05T02:19:19.4499119Z [1m[32m  Downloaded[0m pollster v0.4.0
+2026-06-05T02:19:19.4512415Z [1m[32m  Downloaded[0m pin-project v1.1.13
+2026-06-05T02:19:19.4643472Z [1m[32m  Downloaded[0m mime v0.3.17
+2026-06-05T02:19:19.4656030Z [1m[32m  Downloaded[0m regex v1.12.3
+2026-06-05T02:19:19.4708790Z [1m[32m  Downloaded[0m rayon-core v1.13.0
+2026-06-05T02:19:19.4746415Z [1m[32m  Downloaded[0m rand v0.9.4
+2026-06-05T02:19:19.4783792Z [1m[32m  Downloaded[0m futures-macro v0.3.32
+2026-06-05T02:19:19.4794697Z [1m[32m  Downloaded[0m tracing-attributes v0.1.31
+2026-06-05T02:19:19.4820568Z [1m[32m  Downloaded[0m spin_sleep v1.3.3
+2026-06-05T02:19:19.4832617Z [1m[32m  Downloaded[0m serde_json v1.0.150
+2026-06-05T02:19:19.4907801Z [1m[32m  Downloaded[0m schemars_derive v1.2.1
+2026-06-05T02:19:19.4932319Z [1m[32m  Downloaded[0m thiserror-impl v1.0.69
+2026-06-05T02:19:19.4941155Z [1m[32m  Downloaded[0m strsim v0.11.1
+2026-06-05T02:19:19.4954030Z [1m[32m  Downloaded[0m smol_str v0.3.6
+2026-06-05T02:19:19.4970280Z [1m[32m  Downloaded[0m libc v0.2.186
+2026-06-05T02:19:19.5357166Z [1m[32m  Downloaded[0m nexosim-macros v1.0.0
+2026-06-05T02:19:19.5364881Z [1m[32m  Downloaded[0m rand_core v0.9.5
+2026-06-05T02:19:19.5378061Z [1m[32m  Downloaded[0m quote v1.0.45
+2026-06-05T02:19:19.5405298Z [1m[32m  Downloaded[0m fastrand v2.4.1
+2026-06-05T02:19:19.5419531Z [1m[32m  Downloaded[0m iana-time-zone v0.1.65
+2026-06-05T02:19:19.5448191Z [1m[32m  Downloaded[0m heck v0.5.0
+2026-06-05T02:19:19.5461139Z [1m[32m  Downloaded[0m futures-util v0.3.32
+2026-06-05T02:19:19.5591796Z [1m[32m  Downloaded[0m base64 v0.22.1
+2026-06-05T02:19:19.5629354Z [1m[32m  Downloaded[0m itertools v0.10.5
+2026-06-05T02:19:19.5691581Z [1m[32m  Downloaded[0m bincode_derive v2.0.1
+2026-06-05T02:19:19.5701581Z [1m[32m  Downloaded[0m getrandom v0.2.17
+2026-06-05T02:19:19.5730736Z [1m[32m  Downloaded[0m digest v0.10.7
+2026-06-05T02:19:19.5749520Z [1m[32m  Downloaded[0m defmt-parser v1.0.0
+2026-06-05T02:19:19.5758984Z [1m[32m  Downloaded[0m crypto-common v0.1.7
+2026-06-05T02:19:19.5768210Z [1m[32m  Downloaded[0m anstyle-parse v1.0.0
+2026-06-05T02:19:19.5784355Z [1m[32m  Downloaded[0m multishot v0.3.2
+2026-06-05T02:19:19.5798117Z [1m[32m  Downloaded[0m indexmap v2.14.0
+2026-06-05T02:19:19.5840675Z [1m[32m  Downloaded[0m tokio-tungstenite v0.24.0
+2026-06-05T02:19:19.5861280Z [1m[32m  Downloaded[0m plotters v0.3.7
+2026-06-05T02:19:19.5954896Z [1m[32m  Downloaded[0m oorandom v11.1.5
+2026-06-05T02:19:19.5965119Z [1m[32m  Downloaded[0m mio v1.2.1
+2026-06-05T02:19:19.6024435Z [1m[32m  Downloaded[0m criterion v0.5.1
+2026-06-05T02:19:19.6096625Z [1m[32m  Downloaded[0m axum v0.7.9
+2026-06-05T02:19:19.6173093Z [1m[32m  Downloaded[0m async-trait v0.1.89
+2026-06-05T02:19:19.6212438Z [1m[32m  Downloaded[0m zerocopy-derive v0.8.50
+2026-06-05T02:19:19.6304920Z [1m[32m  Downloaded[0m defmt-macros v1.1.0
+2026-06-05T02:19:19.6340836Z [1m[32m  Downloaded[0m bitflags v2.11.1
+2026-06-05T02:19:19.6383993Z [1m[32m  Downloaded[0m axum-macros v0.4.2
+2026-06-05T02:19:19.6493297Z [1m[32m  Downloaded[0m axum-core v0.4.5
+2026-06-05T02:19:19.6513910Z [1m[32m  Downloaded[0m anstyle-query v1.1.5
+2026-06-05T02:19:19.6526198Z [1m[32m  Downloaded[0m pin-project-lite v0.2.17
+2026-06-05T02:19:19.6584621Z [1m[32m  Downloaded[0m parking_lot_core v0.9.12
+2026-06-05T02:19:19.6606636Z [1m[32m  Downloaded[0m num_cpus v1.17.0
+2026-06-05T02:19:19.6638086Z [1m[32m  Downloaded[0m linux-raw-sys v0.12.1
+2026-06-05T02:19:19.7255285Z [1m[32m  Downloaded[0m log v0.4.30
+2026-06-05T02:19:19.7279877Z [1m[32m  Downloaded[0m lazy_static v1.5.0
+2026-06-05T02:19:19.7297563Z [1m[32m  Downloaded[0m itoa v1.0.18
+2026-06-05T02:19:19.7311280Z [1m[32m  Downloaded[0m is-terminal v0.4.17
+2026-06-05T02:19:19.7319956Z [1m[32m  Downloaded[0m http-body-util v0.1.3
+2026-06-05T02:19:19.7337497Z [1m[32m  Downloaded[0m generic-array v0.14.7
+2026-06-05T02:19:19.7351843Z [1m[32m  Downloaded[0m futures-task v0.3.32
+2026-06-05T02:19:19.7363503Z [1m[32m  Downloaded[0m futures-sink v0.3.32
+2026-06-05T02:19:19.7371420Z [1m[32m  Downloaded[0m futures v0.3.32
+2026-06-05T02:19:19.7422384Z [1m[32m  Downloaded[0m env_logger v0.10.2
+2026-06-05T02:19:19.7450536Z [1m[32m  Downloaded[0m dyn-clone v1.0.20
+2026-06-05T02:19:19.7466826Z [1m[32m  Downloaded[0m data-encoding v2.11.0
+2026-06-05T02:19:19.7476595Z [1m[32m  Downloaded[0m crossbeam-deque v0.8.6
+2026-06-05T02:19:19.7489878Z [1m[32m  Downloaded[0m cast v0.3.0
+2026-06-05T02:19:19.7501034Z [1m[32m  Downloaded[0m bit-vec v0.8.0
+2026-06-05T02:19:19.7516241Z [1m[32m  Downloaded[0m tower v0.5.3
+2026-06-05T02:19:19.7616627Z [1m[32m  Downloaded[0m humantime v2.3.0
+2026-06-05T02:19:19.7632250Z [1m[32m  Downloaded[0m httpdate v1.0.3
+2026-06-05T02:19:19.7643543Z [1m[32m  Downloaded[0m httparse v1.10.1
+2026-06-05T02:19:19.7668237Z [1m[32m  Downloaded[0m crossbeam-utils v0.8.21
+2026-06-05T02:19:19.7697446Z [1m[32m  Downloaded[0m clap_derive v4.6.1
+2026-06-05T02:19:19.7718647Z [1m[32m  Downloaded[0m clap_builder v4.6.0
+2026-06-05T02:19:19.7781568Z [1m[32m  Downloaded[0m zmij v1.0.21
+2026-06-05T02:19:19.7799253Z [1m[32m  Downloaded[0m tungstenite v0.24.0
+2026-06-05T02:19:19.7831125Z [1m[32m  Downloaded[0m bincode v2.0.1
+2026-06-05T02:19:19.7883449Z [1m[32m  Downloaded[0m atomic-waker v1.1.2
+2026-06-05T02:19:19.7894838Z [1m[32m  Downloaded[0m syn v2.0.117
+2026-06-05T02:19:19.7999460Z [1m[32m  Downloaded[0m zerocopy v0.8.50
+2026-06-05T02:19:19.8218422Z [1m[32m  Downloaded[0m is_terminal_polyfill v1.70.2
+2026-06-05T02:19:19.8227884Z [1m[32m  Downloaded[0m hyper-util v0.1.20
+2026-06-05T02:19:19.8288794Z [1m[32m  Downloaded[0m hashbrown v0.17.1
+2026-06-05T02:19:19.8340896Z [1m[32m  Downloaded[0m getrandom v0.3.4
+2026-06-05T02:19:19.8375964Z [1m[32m  Downloaded[0m futures-io v0.3.32
+2026-06-05T02:19:19.8384435Z [1m[32m  Downloaded[0m borsh v1.6.1
+2026-06-05T02:19:19.8454832Z [1m[32m  Downloaded[0m fnv v1.0.7
+2026-06-05T02:19:19.8463076Z [1m[32m  Downloaded[0m criterion-plot v0.5.0
+2026-06-05T02:19:19.8479837Z [1m[32m  Downloaded[0m autocfg v1.5.1
+2026-06-05T02:19:19.8497875Z [1m[32m  Downloaded[0m matchit v0.7.3
+2026-06-05T02:19:19.8516762Z [1m[32m  Downloaded[0m http v1.4.1
+2026-06-05T02:19:19.8552424Z [1m[32m  Downloaded[0m futures-channel v0.3.32
+2026-06-05T02:19:19.8570735Z [1m[32m  Downloaded[0m form_urlencoded v1.2.2
+2026-06-05T02:19:19.8578647Z [1m[32m  Downloaded[0m errno v0.3.14
+2026-06-05T02:19:19.8593533Z [1m[32m  Downloaded[0m equivalent v1.0.2
+2026-06-05T02:19:19.8603267Z [1m[32m  Downloaded[0m delegate v0.13.5
+2026-06-05T02:19:19.8612479Z [1m[32m  Downloaded[0m defmt v1.1.0
+2026-06-05T02:19:19.8659778Z [1m[32m  Downloaded[0m ciborium-ll v0.2.2
+2026-06-05T02:19:19.8670289Z [1m[32m  Downloaded[0m crc-catalog v2.5.0
+2026-06-05T02:19:19.8683937Z [1m[32m  Downloaded[0m crc v3.4.0
+2026-06-05T02:19:19.8700007Z [1m[32m  Downloaded[0m cpufeatures v0.2.17
+2026-06-05T02:19:19.8713321Z [1m[32m  Downloaded[0m cfg_aliases v0.2.1
+2026-06-05T02:19:19.8722581Z [1m[32m  Downloaded[0m bit-set v0.8.0
+2026-06-05T02:19:19.8735052Z [1m[32m  Downloaded[0m arbitrary-int v1.3.0
+2026-06-05T02:19:19.8752631Z [1m[32m  Downloaded[0m arbitrary-int v2.1.1
+2026-06-05T02:19:19.8783396Z [1m[32m  Downloaded[0m diatomic-waker v0.2.3
+2026-06-05T02:19:19.8797778Z [1m[32m  Downloaded[0m block-buffer v0.10.4
+2026-06-05T02:19:19.8807582Z [1m[32m  Downloaded[0m anyhow v1.0.102
+2026-06-05T02:19:19.8846770Z [1m[32m  Downloaded[0m ciborium-io v0.2.2
+2026-06-05T02:19:19.8854003Z [1m[32m  Downloaded[0m bytes v1.11.1
+2026-06-05T02:19:19.8895024Z [1m[32m  Downloaded[0m parking_lot v0.12.5
+2026-06-05T02:19:19.8919214Z [1m[32m  Downloaded[0m cfg-if v1.0.4
+2026-06-05T02:19:19.8931837Z [1m[32m  Downloaded[0m byteorder v1.5.0
+2026-06-05T02:19:19.8947065Z [1m[32m  Downloaded[0m nu-ansi-term v0.50.3
+2026-06-05T02:19:19.8970201Z [1m[32m  Downloaded[0m unarray v0.1.4
+2026-06-05T02:19:19.8982251Z [1m[32m  Downloaded[0m bitbybit v1.4.0
+2026-06-05T02:19:19.8997091Z [1m[32m  Downloaded[0m rand_xorshift v0.4.0
+2026-06-05T02:19:19.9007432Z [1m[32m  Downloaded[0m wait-timeout v0.2.1
+2026-06-05T02:19:19.9023379Z [1m[32m  Downloaded[0m clap v4.6.1
+2026-06-05T02:19:19.9117911Z [1m[32m  Downloaded[0m async-event v0.2.1
+2026-06-05T02:19:19.9699136Z [1m[32m   Compiling[0m proc-macro2 v1.0.106
+2026-06-05T02:19:19.9700583Z [1m[32m   Compiling[0m quote v1.0.45
+2026-06-05T02:19:19.9722071Z [1m[32m   Compiling[0m unicode-ident v1.0.24
+2026-06-05T02:19:19.9722916Z [1m[32m   Compiling[0m libc v0.2.186
+2026-06-05T02:19:20.0301336Z [1m[32m   Compiling[0m cfg-if v1.0.4
+2026-06-05T02:19:20.0646969Z [1m[32m   Compiling[0m serde_core v1.0.228
+2026-06-05T02:19:20.2350258Z [1m[32m   Compiling[0m itoa v1.0.18
+2026-06-05T02:19:20.3689748Z [1m[32m   Compiling[0m serde v1.0.228
+2026-06-05T02:19:20.6282562Z [1m[32m   Compiling[0m pin-project-lite v0.2.17
+2026-06-05T02:19:20.6692526Z [1m[32m   Compiling[0m zerocopy v0.8.50
+2026-06-05T02:19:20.9882941Z [1m[32m   Compiling[0m memchr v2.8.1
+2026-06-05T02:19:21.1332525Z [1m[32m   Compiling[0m syn v2.0.117
+2026-06-05T02:19:21.4702996Z [1m[32m   Compiling[0m futures-core v0.3.32
+2026-06-05T02:19:21.5813221Z [1m[32m   Compiling[0m bytes v1.11.1
+2026-06-05T02:19:21.7272583Z [1m[32m   Compiling[0m once_cell v1.21.4
+2026-06-05T02:19:21.9184000Z [1m[32m   Compiling[0m futures-sink v0.3.32
+2026-06-05T02:19:21.9682741Z [1m[32m   Compiling[0m log v0.4.30
+2026-06-05T02:19:22.0984497Z [1m[32m   Compiling[0m smallvec v1.15.1
+2026-06-05T02:19:22.2493054Z [1m[32m   Compiling[0m parking_lot_core v0.9.12
+2026-06-05T02:19:22.2943065Z [1m[32m   Compiling[0m zmij v1.0.21
+2026-06-05T02:19:22.4602315Z [1m[32m   Compiling[0m scopeguard v1.2.0
+2026-06-05T02:19:22.5023021Z [1m[32m   Compiling[0m version_check v0.9.5
+2026-06-05T02:19:22.5443308Z [1m[32m   Compiling[0m serde_json v1.0.150
+2026-06-05T02:19:22.6972706Z [1m[32m   Compiling[0m slab v0.4.12
+2026-06-05T02:19:22.7652356Z [1m[32m   Compiling[0m futures-task v0.3.32
+2026-06-05T02:19:22.7752571Z [1m[32m   Compiling[0m autocfg v1.5.1
+2026-06-05T02:19:22.8152765Z [1m[32m   Compiling[0m generic-array v0.14.7
+2026-06-05T02:19:22.9957052Z [1m[32m   Compiling[0m lock_api v0.4.14
+2026-06-05T02:19:23.1173134Z [1m[32m   Compiling[0m num-traits v0.2.19
+2026-06-05T02:19:23.1952419Z [1m[32m   Compiling[0m http v1.4.1
+2026-06-05T02:19:23.2898867Z [1m[32m   Compiling[0m errno v0.3.14
+2026-06-05T02:19:23.3712683Z [1m[32m   Compiling[0m signal-hook-registry v1.4.8
+2026-06-05T02:19:23.3951569Z [1m[32m   Compiling[0m parking_lot v0.12.5
+2026-06-05T02:19:23.7873781Z [1m[32m   Compiling[0m tracing-core v0.1.36
+2026-06-05T02:19:24.2862649Z [1m[32m   Compiling[0m socket2 v0.6.4
+2026-06-05T02:19:24.4102624Z [1m[32m   Compiling[0m mio v1.2.1
+2026-06-05T02:19:24.8252543Z [1m[32m   Compiling[0m typenum v1.20.1
+2026-06-05T02:19:24.9502795Z [1m[32m   Compiling[0m regex-syntax v0.8.10
+2026-06-05T02:19:25.8842735Z [1m[32m   Compiling[0m aho-corasick v1.1.4
+2026-06-05T02:19:26.1092575Z [1m[32m   Compiling[0m httparse v1.10.1
+2026-06-05T02:19:26.3972596Z [1m[32m   Compiling[0m crossbeam-utils v0.8.21
+2026-06-05T02:19:26.4173024Z [1m[32m   Compiling[0m serde_derive v1.0.228
+2026-06-05T02:19:26.6232516Z [1m[32m   Compiling[0m zerocopy-derive v0.8.50
+2026-06-05T02:19:28.1592625Z [1m[32m   Compiling[0m futures-macro v0.3.32
+2026-06-05T02:19:28.3782949Z [1m[32m   Compiling[0m tokio-macros v2.7.0
+2026-06-05T02:19:29.0853111Z [1m[32m   Compiling[0m futures-util v0.3.32
+2026-06-05T02:19:29.1692594Z [1m[32m   Compiling[0m tokio v1.52.3
+2026-06-05T02:19:30.4673278Z [1m[32m   Compiling[0m tracing-attributes v0.1.31
+2026-06-05T02:19:31.4962678Z [1m[32m   Compiling[0m regex-automata v0.4.14
+2026-06-05T02:19:32.0213391Z [1m[32m   Compiling[0m tracing v0.1.44
+2026-06-05T02:19:32.2592452Z [1m[32m   Compiling[0m http-body v1.0.1
+2026-06-05T02:19:32.3423044Z [1m[32m   Compiling[0m futures-channel v0.3.32
+2026-06-05T02:19:32.5143373Z [1m[32m   Compiling[0m getrandom v0.2.17
+2026-06-05T02:19:32.5993424Z [1m[32m   Compiling[0m ppv-lite86 v0.2.21
+2026-06-05T02:19:32.6742597Z [1m[32m   Compiling[0m thiserror v1.0.69
+2026-06-05T02:19:32.9328190Z [1m[32m   Compiling[0m tower-service v0.3.3
+2026-06-05T02:19:32.9382094Z [1m[32m   Compiling[0m rustversion v1.0.22
+2026-06-05T02:19:32.9712673Z [1m[32m   Compiling[0m utf8parse v0.2.2
+2026-06-05T02:19:33.0192981Z [1m[32m   Compiling[0m anstyle-parse v1.0.0
+2026-06-05T02:19:33.1713122Z [1m[32m   Compiling[0m rand_core v0.6.4
+2026-06-05T02:19:33.5182969Z [1m[32m   Compiling[0m thiserror-impl v1.0.69
+2026-06-05T02:19:33.8652813Z [1m[32m   Compiling[0m block-buffer v0.10.4
+2026-06-05T02:19:33.9382773Z [1m[32m   Compiling[0m crypto-common v0.1.7
+2026-06-05T02:19:33.9930751Z [1m[32m   Compiling[0m anstyle v1.0.14
+2026-06-05T02:19:34.1539944Z [1m[32m   Compiling[0m is_terminal_polyfill v1.70.2
+2026-06-05T02:19:34.1952535Z [1m[32m   Compiling[0m colorchoice v1.0.5
+2026-06-05T02:19:34.2426206Z [1m[32m   Compiling[0m anstyle-query v1.1.5
+2026-06-05T02:19:34.2932631Z [1m[32m   Compiling[0m tower-layer v0.3.3
+2026-06-05T02:19:34.4102384Z [1m[32m   Compiling[0m bitflags v2.11.1
+2026-06-05T02:19:34.5932880Z [1m[32m   Compiling[0m anstream v1.0.0
+2026-06-05T02:19:34.8662981Z [1m[32m   Compiling[0m digest v0.10.7
+2026-06-05T02:19:34.9592454Z [1m[32m   Compiling[0m rand_chacha v0.3.1
+2026-06-05T02:19:35.4522330Z [1m[32m   Compiling[0m clap_lex v1.1.0
+2026-06-05T02:19:35.5542793Z [1m[32m   Compiling[0m iana-time-zone v0.1.65
+2026-06-05T02:19:35.6162962Z [1m[32m   Compiling[0m heck v0.5.0
+2026-06-05T02:19:35.7823146Z [1m[32m   Compiling[0m cpufeatures v0.2.17
+2026-06-05T02:19:35.8022780Z [1m[32m   Compiling[0m strsim v0.11.1
+2026-06-05T02:19:35.8162465Z [1m[32m   Compiling[0m sha1 v0.10.6
+2026-06-05T02:19:35.9883166Z [1m[32m   Compiling[0m clap_builder v4.6.0
+2026-06-05T02:19:36.1772983Z [1m[32m   Compiling[0m clap_derive v4.6.1
+2026-06-05T02:19:36.6864839Z [1m[32m   Compiling[0m chrono v0.4.44
+2026-06-05T02:19:37.4892604Z [1m[32m   Compiling[0m rand v0.8.6
+2026-06-05T02:19:38.1882664Z [1m[32m   Compiling[0m regex v1.12.3
+2026-06-05T02:19:38.3262499Z [1m[32m   Compiling[0m http-body-util v0.1.3
+2026-06-05T02:19:38.4812644Z [1m[32m   Compiling[0m pin-project-internal v1.1.13
+2026-06-05T02:19:38.5087020Z [1m[32m   Compiling[0m is-terminal v0.4.17
+2026-06-05T02:19:38.5492708Z [1m[32m   Compiling[0m percent-encoding v2.3.2
+2026-06-05T02:19:38.6142564Z [1m[32m   Compiling[0m atomic-waker v1.1.2
+2026-06-05T02:19:38.6652991Z [1m[32m   Compiling[0m hashbrown v0.17.1
+2026-06-05T02:19:38.6742460Z [1m[32m   Compiling[0m paste v1.0.15
+2026-06-05T02:19:38.8912475Z [1m[32m   Compiling[0m sync_wrapper v1.0.2
+2026-06-05T02:19:38.9313429Z [1m[32m   Compiling[0m equivalent v1.0.2
+2026-06-05T02:19:38.9628581Z [1m[32m   Compiling[0m data-encoding v2.11.0
+2026-06-05T02:19:39.2222662Z [1m[32m   Compiling[0m anyhow v1.0.102
+2026-06-05T02:19:39.4762744Z [1m[32m   Compiling[0m httpdate v1.0.3
+2026-06-05T02:19:39.6363781Z [1m[32m   Compiling[0m byteorder v1.5.0
+2026-06-05T02:19:39.7699657Z [1m[32m   Compiling[0m utf-8 v0.7.6
+2026-06-05T02:19:39.8163078Z [1m[32m   Compiling[0m thiserror v2.0.18
+2026-06-05T02:19:39.8572851Z [1m[32m   Compiling[0m tungstenite v0.24.0
+2026-06-05T02:19:39.8941743Z [1m[32m   Compiling[0m pin-project v1.1.13
+2026-06-05T02:19:39.9317997Z [1m[32m   Compiling[0m hyper v1.10.1
+2026-06-05T02:19:40.2232682Z [1m[32m   Compiling[0m indexmap v2.14.0
+2026-06-05T02:19:40.3992782Z [1m[32m   Compiling[0m form_urlencoded v1.2.2
+2026-06-05T02:19:40.5113094Z [1m[32m   Compiling[0m clap v4.6.1
+2026-06-05T02:19:40.5472658Z [1m[32m   Compiling[0m serde_spanned v0.6.9
+2026-06-05T02:19:40.6158186Z [1m[32m   Compiling[0m toml_datetime v0.6.11
+2026-06-05T02:19:40.8319035Z [1m[32m   Compiling[0m thiserror-impl v2.0.18
+2026-06-05T02:19:40.8982628Z [1m[32m   Compiling[0m async-trait v0.1.89
+2026-06-05T02:19:40.9683109Z [1m[32m   Compiling[0m num_enum_derive v0.7.6
+2026-06-05T02:19:41.2963219Z [1m[32m   Compiling[0m mime v0.3.17
+2026-06-05T02:19:41.5183510Z [1m[32m   Compiling[0m crc-catalog v2.5.0
+2026-06-05T02:19:41.5710753Z [1m[32m   Compiling[0m winnow v0.7.15
+2026-06-05T02:19:42.0060640Z [1m[32m   Compiling[0m lazy_static v1.5.0
+2026-06-05T02:19:42.0532462Z [1m[32m   Compiling[0m ryu v1.0.23
+2026-06-05T02:19:42.0622591Z [1m[32m   Compiling[0m termcolor v1.4.1
+2026-06-05T02:19:42.1976461Z [1m[32m   Compiling[0m arbitrary-int v1.3.0
+2026-06-05T02:19:42.3312995Z [1m[32m   Compiling[0m toml_write v0.1.2
+2026-06-05T02:19:42.3942750Z [1m[32m   Compiling[0m humantime v2.3.0
+2026-06-05T02:19:42.5102969Z [1m[32m   Compiling[0m serde_urlencoded v0.7.1
+2026-06-05T02:19:42.6042550Z [1m[32m   Compiling[0m env_logger v0.10.2
+2026-06-05T02:19:42.7082829Z [1m[32m   Compiling[0m bitbybit v1.4.0
+2026-06-05T02:19:42.7192770Z [1m[32m   Compiling[0m num_enum v0.7.6
+2026-06-05T02:19:42.7570748Z [1m[32m   Compiling[0m sharded-slab v0.1.7
+2026-06-05T02:19:43.1853048Z [1m[32m   Compiling[0m axum-core v0.4.5
+2026-06-05T02:19:43.3342624Z [1m[32m   Compiling[0m toml_edit v0.22.27
+2026-06-05T02:19:43.4532967Z [1m[32m   Compiling[0m crc v3.4.0
+2026-06-05T02:19:43.6312694Z [1m[32m   Compiling[0m hyper-util v0.1.20
+2026-06-05T02:19:44.0202987Z [1m[32m   Compiling[0m tokio-tungstenite v0.24.0
+2026-06-05T02:19:44.3540541Z [1m[32m   Compiling[0m tower v0.5.3
+2026-06-05T02:19:44.6192421Z [1m[32m   Compiling[0m sgp4 v2.4.0
+2026-06-05T02:19:44.7142983Z [1m[32m   Compiling[0m matchers v0.2.0
+2026-06-05T02:19:44.7913022Z [1m[32m   Compiling[0m delegate v0.13.5
+2026-06-05T02:19:45.4823028Z [1m[32m   Compiling[0m axum-macros v0.4.2
+2026-06-05T02:19:45.7392613Z [1m[32m   Compiling[0m tracing-log v0.2.0
+2026-06-05T02:19:45.8242427Z [1m[32m   Compiling[0m serde_path_to_error v0.1.20
+2026-06-05T02:19:45.9312646Z [1m[32m   Compiling[0m thread_local v1.1.9
+2026-06-05T02:19:46.1763083Z [1m[32m   Compiling[0m arbitrary-int v2.1.1
+2026-06-05T02:19:46.2102597Z [1m[32m   Compiling[0m matchit v0.7.3
+2026-06-05T02:19:46.5113039Z [1m[32m   Compiling[0m nu-ansi-term v0.50.3
+2026-06-05T02:19:46.7950129Z [1m[32m   Compiling[0m base64 v0.22.1
+2026-06-05T02:19:47.0972837Z [1m[32m   Compiling[0m tracing-subscriber v0.3.23
+2026-06-05T02:19:47.3622306Z [1m[32m   Compiling[0m spacepackets v0.17.0
+2026-06-05T02:19:47.6292606Z [1m[32m   Compiling[0m axum v0.7.9
+2026-06-05T02:19:47.6367588Z [1m[32m   Compiling[0m ephemerust v0.2.0 (/home/runner/work/chronus-gateway/chronus-gateway/Ephemerust)
+2026-06-05T02:19:48.3860736Z [1m[32m   Compiling[0m toml v0.8.23
+2026-06-05T02:19:49.1852602Z [1m[32m   Compiling[0m tower v0.4.13
+2026-06-05T02:19:49.5183006Z [1m[32m   Compiling[0m tower-http v0.5.2
+2026-06-05T02:19:49.6933135Z [1m[32m   Compiling[0m tokio-util v0.7.18
+2026-06-05T02:19:49.7232516Z [1m[32m   Compiling[0m getrandom v0.3.4
+2026-06-05T02:19:50.0039090Z [1m[32m   Compiling[0m ref-cast v1.0.25
+2026-06-05T02:19:50.2682695Z [1m[32m   Compiling[0m ref-cast-impl v1.0.25
+2026-06-05T02:19:50.3732965Z [1m[32m   Compiling[0m serde_derive_internals v0.29.1
+2026-06-05T02:19:50.5173800Z [1m[32m   Compiling[0m rustix v1.1.4
+2026-06-05T02:19:50.8019137Z [1m[32m   Compiling[0m getrandom v0.4.2
+2026-06-05T02:19:51.0039047Z [1m[32m   Compiling[0m rand_core v0.9.5
+2026-06-05T02:19:51.0183006Z [1m[32m   Compiling[0m crossbeam-epoch v0.9.18
+2026-06-05T02:19:51.1555302Z [1m[32m   Compiling[0m linux-raw-sys v0.12.1
+2026-06-05T02:19:51.2572975Z [1m[32m   Compiling[0m schemars_derive v1.2.1
+2026-06-05T02:19:51.3092471Z [1m[32m   Compiling[0m dyn-clone v1.0.20
+2026-06-05T02:19:51.3823247Z [1m[32m   Compiling[0m either v1.16.0
+2026-06-05T02:19:51.5567020Z [1m[32m   Compiling[0m virtue v0.0.18
+2026-06-05T02:19:51.5983263Z [1m[32m   Compiling[0m rayon-core v1.13.0
+2026-06-05T02:19:52.1503365Z [1m[32m   Compiling[0m chronus-gateway v0.0.0 (/home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/crates/gateway)
+2026-06-05T02:19:52.7962438Z [1m[32m   Compiling[0m bincode_derive v2.0.1
+2026-06-05T02:19:53.1254674Z [1m[32m   Compiling[0m schemars v1.2.1
+2026-06-05T02:19:53.4481444Z [1m[32m   Compiling[0m crossbeam-deque v0.8.6
+2026-06-05T02:19:53.6983192Z [1m[32m   Compiling[0m half v2.7.1
+2026-06-05T02:19:53.7062924Z [1m[32m   Compiling[0m ciborium-io v0.2.2
+2026-06-05T02:19:53.7402617Z [1m[32m   Compiling[0m nexosim v1.0.0
+2026-06-05T02:19:53.9033000Z [1m[32m   Compiling[0m fastrand v2.4.1
+2026-06-05T02:19:53.9819591Z [1m[32m   Compiling[0m unty v0.0.4
+2026-06-05T02:19:54.0243096Z [1m[32m   Compiling[0m plotters-backend v0.3.7
+2026-06-05T02:19:54.0792584Z [1m[32m   Compiling[0m tempfile v3.27.0
+2026-06-05T02:19:54.2502859Z [1m[32m   Compiling[0m plotters-svg v0.3.7
+2026-06-05T02:19:54.4103226Z [1m[32m   Compiling[0m bincode v2.0.1
+2026-06-05T02:19:54.4982853Z [1m[32m   Compiling[0m ciborium-ll v0.2.2
+2026-06-05T02:19:54.6152810Z [1m[32m   Compiling[0m tai-time v1.0.0
+2026-06-05T02:19:54.9462559Z [1m[32m   Compiling[0m itertools v0.10.5
+2026-06-05T02:19:55.0813001Z [1m[32m   Compiling[0m st3 v0.4.1
+2026-06-05T02:19:55.2162850Z [1m[32m   Compiling[0m nexosim-macros v1.0.0
+2026-06-05T02:19:55.3413130Z [1m[32m   Compiling[0m smol_str v0.3.6
+2026-06-05T02:19:55.4452657Z [1m[32m   Compiling[0m wait-timeout v0.2.1
+2026-06-05T02:19:55.5372834Z [1m[32m   Compiling[0m num_cpus v1.17.0
+2026-06-05T02:19:55.6817300Z [1m[32m   Compiling[0m async-event v0.2.1
+2026-06-05T02:19:55.8042902Z [1m[32m   Compiling[0m cast v0.3.0
+2026-06-05T02:19:55.8772367Z [1m[32m   Compiling[0m quick-error v1.2.3
+2026-06-05T02:19:55.8872679Z [1m[32m   Compiling[0m spin_sleep v1.3.3
+2026-06-05T02:19:55.9226245Z [1m[32m   Compiling[0m recycle-box v0.2.0
+2026-06-05T02:19:55.9352118Z [1m[32m   Compiling[0m same-file v1.0.6
+2026-06-05T02:19:55.9766564Z [1m[32m   Compiling[0m parking v2.2.1
+2026-06-05T02:19:55.9923465Z [1m[32m   Compiling[0m futures-io v0.3.32
+2026-06-05T02:19:56.0240668Z [1m[32m   Compiling[0m pollster v0.4.0
+2026-06-05T02:19:56.0282218Z [1m[32m   Compiling[0m diatomic-waker v0.2.3
+2026-06-05T02:19:56.0765489Z [1m[32m   Compiling[0m bit-vec v0.8.0
+2026-06-05T02:19:56.0939830Z [1m[32m   Compiling[0m multishot v0.3.2
+2026-06-05T02:19:56.1156980Z [1m[32m   Compiling[0m fnv v1.0.7
+2026-06-05T02:19:56.1806203Z [1m[32m   Compiling[0m rusty-fork v0.3.1
+2026-06-05T02:19:56.1827423Z [1m[32m   Compiling[0m criterion-plot v0.5.0
+2026-06-05T02:19:56.2682667Z [1m[32m   Compiling[0m bit-set v0.8.0
+2026-06-05T02:19:56.3732576Z [1m[32m   Compiling[0m futures v0.3.32
+2026-06-05T02:19:56.4061440Z [1m[32m   Compiling[0m walkdir v2.5.0
+2026-06-05T02:19:56.5262970Z [1m[32m   Compiling[0m rayon v1.12.0
+2026-06-05T02:19:56.6353299Z [1m[32m   Compiling[0m ciborium v0.2.2
+2026-06-05T02:19:56.7403080Z [1m[32m   Compiling[0m plotters v0.3.7
+2026-06-05T02:19:57.2803083Z [1m[32m   Compiling[0m rand_chacha v0.9.0
+2026-06-05T02:19:57.5412634Z [1m[32m   Compiling[0m rand v0.9.4
+2026-06-05T02:19:57.8982738Z [1m[32m   Compiling[0m rand_xorshift v0.4.0
+2026-06-05T02:19:57.9752578Z [1m[32m   Compiling[0m tinytemplate v1.2.1
+2026-06-05T02:19:58.1123079Z [1m[32m   Compiling[0m unarray v0.1.4
+2026-06-05T02:19:58.1653280Z [1m[32m   Compiling[0m oorandom v11.1.5
+2026-06-05T02:19:58.2312617Z [1m[32m   Compiling[0m anes v0.1.6
+2026-06-05T02:19:58.4002617Z [1m[32m   Compiling[0m proptest v1.11.0
+2026-06-05T02:19:58.4386882Z [1m[32m   Compiling[0m chronus-hil-sim v0.0.0 (/home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/crates/chronus-hil-sim)
+2026-06-05T02:19:58.7625022Z [1m[32m   Compiling[0m criterion v0.5.1
+2026-06-05T02:20:07.0503073Z [1m[32m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 48.78s
+2026-06-05T02:20:07.1136180Z [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/chronus_gateway-978415a1597d9607)
+2026-06-05T02:20:07.1172686Z 
+2026-06-05T02:20:07.1173080Z running 45 tests
+2026-06-05T02:20:07.1183621Z test ccsds::tests::garbage_does_not_panic ... ok
+2026-06-05T02:20:07.1184829Z test ccsds::tests::parses_known_golden_bytes ... ok
+2026-06-05T02:20:07.1185944Z test ccsds::tests::parses_valid_tm_packet ... ok
+2026-06-05T02:20:07.1187043Z test ccsds::tests::round_trip_preserves_fields ... ok
+2026-06-05T02:20:07.1188135Z test ccsds::tests::short_datagram_is_rejected ... ok
+2026-06-05T02:20:07.1189024Z test ccsds::tests::telecommand_is_rejected ... ok
+2026-06-05T02:20:07.1189873Z test ccsds::tests::truncated_payload_is_rejected ... ok
+2026-06-05T02:20:07.1190845Z test config::file::tests::empty_document_uses_defaults ... ok
+2026-06-05T02:20:07.1192153Z test config::file::tests::deny_unknown_top_level_key ... ok
+2026-06-05T02:20:07.1193092Z test config::file::tests::load_from_path_round_trip ... ok
+2026-06-05T02:20:07.1194076Z test config::file::tests::parses_minimal_valid_toml ... ok
+2026-06-05T02:20:07.1194950Z test config::file::tests::rejects_bad_bind_addr ... ok
+2026-06-05T02:20:07.1205019Z test config::file::tests::rejects_ambiguous_tle ... ok
+2026-06-05T02:20:07.1206026Z test config::file::tests::rejects_missing_tle_when_station_present ... ok
+2026-06-05T02:20:07.1207047Z test config::tests::default_station_is_valid ... ok
+2026-06-05T02:20:07.1207931Z test config::tests::missing_tle_file_is_reported ... ok
+2026-06-05T02:20:07.1208854Z test config::tests::resolves_inline_tle_and_rejects_empty ... ok
+2026-06-05T02:20:07.1209766Z test config::tests::rejects_out_of_range_fields ... ok
+2026-06-05T02:20:07.1212134Z test propagator::tests::from_station_is_deterministic_and_in_tolerance ... ok
+2026-06-05T02:20:07.1213185Z test config::file::tests::tle_file_must_exist_at_load ... ok
+2026-06-05T02:20:07.1214135Z test propagator::tests::invalid_tle_is_rejected ... ok
+2026-06-05T02:20:07.1215082Z test validate::tests::angular_separation_orthogonal_ninety_deg ... ok
+2026-06-05T02:20:07.1216158Z test propagator::tests::provider_uses_mock_and_throttles_recompute ... ok
+2026-06-05T02:20:07.1217209Z test propagator::tests::tracking_state_is_finite_near_epoch ... ok
+2026-06-05T02:20:07.1218276Z test validate::tests::angular_separation_same_direction_near_zero ... ok
+2026-06-05T02:20:07.1219296Z test validate::tests::combined_anomalies_set_both_bits ... ok
+2026-06-05T02:20:07.1220232Z test validate::tests::below_horizon_sets_bit1 ... ok
+2026-06-05T02:20:07.1221517Z test validate::tests::doppler_in_band_no_flag_t_doppler_150hz ... ok
+2026-06-05T02:20:07.1222685Z test validate::tests::doppler_out_of_band_sets_bit0 ... ok
+2026-06-05T02:20:07.1223758Z test validate::tests::elevation_at_horizon_not_flagged_when_minimum_is_zero ... ok
+2026-06-05T02:20:07.1224962Z test validate::tests::expected_carrier_matches_non_relativistic_formula ... ok
+2026-06-05T02:20:07.1226045Z test validate::tests::free_space_path_loss_matches_manual ... ok
+2026-06-05T02:20:07.1227002Z test validate::tests::link_budget_in_band_no_flag_t_rssi ... ok
+2026-06-05T02:20:07.1227908Z test validate::tests::independent_bits_doppler_only ... ok
+2026-06-05T02:20:07.1228819Z test validate::tests::link_budget_out_of_band_sets_bit2 ... ok
+2026-06-05T02:20:07.1229740Z test validate::tests::nan_measured_rx_skips_link_no_panic ... ok
+2026-06-05T02:20:07.1230801Z test validate::tests::no_measured_carrier_skips_doppler_even_if_would_be_bad ... ok
+2026-06-05T02:20:07.1232203Z test validate::tests::nan_measured_skips_doppler_no_panic ... ok
+2026-06-05T02:20:07.1233209Z test validate::tests::non_finite_pointing_tolerance_skips_pointing ... ok
+2026-06-05T02:20:07.1234322Z test validate::tests::no_measured_rx_skips_link_budget_even_if_would_be_bad ... ok
+2026-06-05T02:20:07.1235380Z test validate::tests::pointing_exceeds_t_point_sets_bit3 ... ok
+2026-06-05T02:20:07.1236324Z test validate::tests::pointing_only_azimuth_skips_no_bit3 ... ok
+2026-06-05T02:20:07.1237248Z test validate::tests::pointing_within_t_point_no_bit3 ... ok
+2026-06-05T02:20:07.1238587Z test validate::tests::zero_range_skips_link_budget_no_flag ... ok
+2026-06-05T02:20:07.1810093Z test ccsds::tests::parse_random_bytes_never_panics ... ok
+2026-06-05T02:20:07.1810862Z 
+2026-06-05T02:20:07.1811503Z test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+2026-06-05T02:20:07.1811964Z 
+2026-06-05T02:20:07.1816862Z [1m[32m     Running[0m unittests src/main.rs (target/debug/deps/chronus_gateway-805a3eb57889709e)
+2026-06-05T02:20:07.1828604Z 
+2026-06-05T02:20:07.1828794Z running 0 tests
+2026-06-05T02:20:07.1829056Z 
+2026-06-05T02:20:07.1829902Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+2026-06-05T02:20:07.1830731Z 
+2026-06-05T02:20:07.1832075Z [1m[32m     Running[0m tests/distribution.rs (target/debug/deps/distribution-c6ecb4df3936c4ff)
+2026-06-05T02:20:07.1844427Z 
+2026-06-05T02:20:07.1844582Z running 3 tests
+2026-06-05T02:20:07.1855384Z test health_returns_200 ... ok
+2026-06-05T02:20:07.1866210Z test websocket_receives_openmct_json ... ok
+2026-06-05T02:20:07.1875779Z test second_client_still_receives_after_first_disconnects ... ok
+2026-06-05T02:20:07.1876199Z 
+2026-06-05T02:20:07.1876465Z test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+2026-06-05T02:20:07.1876808Z 
+2026-06-05T02:20:07.1880922Z [1m[32m     Running[0m tests/ingest.rs (target/debug/deps/ingest-0a1c0de484550059)
+2026-06-05T02:20:07.1892659Z 
+2026-06-05T02:20:07.1892839Z running 4 tests
+2026-06-05T02:20:07.1902719Z test shutdown_stops_loop_promptly ... ok
+2026-06-05T02:20:07.1903542Z test oversized_datagram_does_not_break_loop ... ok
+2026-06-05T02:20:07.1904843Z test receives_all_datagrams_in_order ... ok
+2026-06-05T02:20:07.2017642Z test lagging_subscriber_never_blocks_socket ... ok
+2026-06-05T02:20:07.2018111Z 
+2026-06-05T02:20:07.2018489Z test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+2026-06-05T02:20:07.2018937Z 
+2026-06-05T02:20:07.2022563Z [1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/chronus_hil_sim-7f4d59bd6cdb6231)
+2026-06-05T02:20:07.2034315Z 
+2026-06-05T02:20:07.2034643Z running 0 tests
+2026-06-05T02:20:07.2034892Z 
+2026-06-05T02:20:07.2035344Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+2026-06-05T02:20:07.2035840Z 
+2026-06-05T02:20:07.2037314Z [1m[32m     Running[0m unittests src/main.rs (target/debug/deps/chronus_hil_sim-101d037ba4b4cafa)
+2026-06-05T02:20:07.2046243Z 
+2026-06-05T02:20:07.2046442Z running 0 tests
+2026-06-05T02:20:07.2048259Z 
+2026-06-05T02:20:07.2048795Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+2026-06-05T02:20:07.2049577Z 
+2026-06-05T02:20:07.2050506Z [1m[32m     Running[0m tests/hil_ingest.rs (target/debug/deps/hil_ingest-6adece3ed5db0ae7)
+2026-06-05T02:20:07.2060054Z 
+2026-06-05T02:20:07.2060280Z running 2 tests
+2026-06-05T02:20:07.2108962Z test nexosim_smoke_reaches_ingest_and_parse ... ok
+2026-06-05T02:20:07.2444236Z test nexosim_soak_bounded_recv_errors ... ok
+2026-06-05T02:20:07.2444729Z 
+2026-06-05T02:20:07.2445232Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+2026-06-05T02:20:07.2445863Z 
+2026-06-05T02:20:07.2449461Z [1m[32m   Doc-tests[0m chronus_gateway
+2026-06-05T02:20:07.3244685Z 
+2026-06-05T02:20:07.3245331Z running 1 test
+2026-06-05T02:20:08.0549489Z test crates/gateway/src/propagator.rs - propagator::EphemerustPropagator::new (line 62) ... ok
+2026-06-05T02:20:08.0550166Z 
+2026-06-05T02:20:08.0550527Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.73s
+2026-06-05T02:20:08.0551046Z 
+2026-06-05T02:20:08.0569630Z [1m[32m   Doc-tests[0m chronus_hil_sim
+2026-06-05T02:20:08.1008921Z 
+2026-06-05T02:20:08.1009477Z running 0 tests
+2026-06-05T02:20:08.1009750Z 
+2026-06-05T02:20:08.1010300Z test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+2026-06-05T02:20:08.1011568Z 

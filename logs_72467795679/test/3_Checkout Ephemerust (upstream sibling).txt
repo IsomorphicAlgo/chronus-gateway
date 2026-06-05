@@ -1,0 +1,76 @@
+﻿2026-06-05T02:19:08.5385200Z ##[group]Run actions/checkout@v5
+2026-06-05T02:19:08.5386391Z with:
+2026-06-05T02:19:08.5387284Z   repository: IsomorphicAlgo/Ephemerust
+2026-06-05T02:19:08.5388498Z   path: Ephemerust
+2026-06-05T02:19:08.5401189Z   token: ***
+2026-06-05T02:19:08.5402084Z   ssh-strict: true
+2026-06-05T02:19:08.5402984Z   ssh-user: git
+2026-06-05T02:19:08.5403909Z   persist-credentials: true
+2026-06-05T02:19:08.5404940Z   clean: true
+2026-06-05T02:19:08.5406107Z   sparse-checkout-cone-mode: true
+2026-06-05T02:19:08.5407235Z   fetch-depth: 1
+2026-06-05T02:19:08.5408133Z   fetch-tags: false
+2026-06-05T02:19:08.5409057Z   show-progress: true
+2026-06-05T02:19:08.5409988Z   lfs: false
+2026-06-05T02:19:08.5410845Z   submodules: false
+2026-06-05T02:19:08.5412288Z   set-safe-directory: true
+2026-06-05T02:19:08.5413316Z ##[endgroup]
+2026-06-05T02:19:08.6280671Z Syncing repository: IsomorphicAlgo/Ephemerust
+2026-06-05T02:19:08.6283630Z ##[group]Getting Git version info
+2026-06-05T02:19:08.6293049Z Working directory is '/home/runner/work/chronus-gateway/chronus-gateway/Ephemerust'
+2026-06-05T02:19:08.6318808Z [command]/usr/bin/git version
+2026-06-05T02:19:08.6354146Z git version 2.54.0
+2026-06-05T02:19:08.6376911Z ##[endgroup]
+2026-06-05T02:19:08.6392212Z Temporarily overriding HOME='/home/runner/work/_temp/064fc5d8-873d-4d78-be79-363ffbd7c264' before making global git config changes
+2026-06-05T02:19:08.6397509Z Adding repository directory to the temporary git global config as a safe directory
+2026-06-05T02:19:08.6402567Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/chronus-gateway/chronus-gateway/Ephemerust
+2026-06-05T02:19:08.6430089Z ##[group]Initializing the repository
+2026-06-05T02:19:08.6436289Z [command]/usr/bin/git init /home/runner/work/chronus-gateway/chronus-gateway/Ephemerust
+2026-06-05T02:19:08.6473321Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-06-05T02:19:08.6476857Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-06-05T02:19:08.6479949Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-06-05T02:19:08.6482341Z hint: call:
+2026-06-05T02:19:08.6483716Z hint:
+2026-06-05T02:19:08.6485127Z hint: 	git config --global init.defaultBranch <name>
+2026-06-05T02:19:08.6486525Z hint:
+2026-06-05T02:19:08.6487806Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-06-05T02:19:08.6489916Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-06-05T02:19:08.6492015Z hint:
+2026-06-05T02:19:08.6492896Z hint: 	git branch -m <name>
+2026-06-05T02:19:08.6493900Z hint:
+2026-06-05T02:19:08.6495358Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-06-05T02:19:08.6497989Z Initialized empty Git repository in /home/runner/work/chronus-gateway/chronus-gateway/Ephemerust/.git/
+2026-06-05T02:19:08.6502323Z [command]/usr/bin/git remote add origin https://github.com/IsomorphicAlgo/Ephemerust
+2026-06-05T02:19:08.6519402Z ##[endgroup]
+2026-06-05T02:19:08.6521612Z ##[group]Disabling automatic garbage collection
+2026-06-05T02:19:08.6523411Z [command]/usr/bin/git config --local gc.auto 0
+2026-06-05T02:19:08.6555602Z ##[endgroup]
+2026-06-05T02:19:08.6557117Z ##[group]Setting up auth
+2026-06-05T02:19:08.6560949Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-06-05T02:19:08.6595779Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-06-05T02:19:08.6840067Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-06-05T02:19:08.6877062Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-06-05T02:19:08.7134344Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-06-05T02:19:08.7173399Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-06-05T02:19:08.7430665Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-06-05T02:19:08.7467449Z ##[endgroup]
+2026-06-05T02:19:08.7469093Z ##[group]Determining the default branch
+2026-06-05T02:19:08.7471366Z Retrieving the default branch name
+2026-06-05T02:19:09.2006164Z Default branch 'master'
+2026-06-05T02:19:09.2009483Z ##[endgroup]
+2026-06-05T02:19:09.2012166Z ##[group]Fetching the repository
+2026-06-05T02:19:09.2016948Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +refs/heads/master:refs/remotes/origin/master
+2026-06-05T02:19:09.7652761Z From https://github.com/IsomorphicAlgo/Ephemerust
+2026-06-05T02:19:09.7655447Z  * [new branch]      master     -> origin/master
+2026-06-05T02:19:09.7679553Z ##[endgroup]
+2026-06-05T02:19:09.7682319Z ##[group]Determining the checkout info
+2026-06-05T02:19:09.7685042Z ##[endgroup]
+2026-06-05T02:19:09.7687400Z [command]/usr/bin/git sparse-checkout disable
+2026-06-05T02:19:09.7740153Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-06-05T02:19:09.7771737Z ##[group]Checking out the ref
+2026-06-05T02:19:09.7774849Z [command]/usr/bin/git checkout --progress --force -B master refs/remotes/origin/master
+2026-06-05T02:19:09.7854989Z Reset branch 'master'
+2026-06-05T02:19:09.7857541Z branch 'master' set up to track 'origin/master'.
+2026-06-05T02:19:09.7866519Z ##[endgroup]
+2026-06-05T02:19:09.7917617Z [command]/usr/bin/git log -1 --format=%H
+2026-06-05T02:19:09.7947295Z 8e15614808ab7d85f29f18ffd9e3ec553cec713b

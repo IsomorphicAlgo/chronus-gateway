@@ -10,7 +10,7 @@
 //! gates (Milestone 6), the NeXosim HIL workspace crate `chronus-hil-sim` (Milestone 7), and
 //! optional TOML file configuration ([`config::file`], Milestone 8). See `docs/BUILD_PLAN.md`.
 //! Post-M8 co-validation extensions are chartered in **`Methodology.md` D-016** and
-//! `docs/EXTENDED_COVALIDATION_PLAN.md` (**CV-0…CV-4**; **CV-1** link budget and **CV-2** pointing implemented; **Gate CV-2** pending before **CV-3**).
+//! `docs/EXTENDED_COVALIDATION_PLAN.md` (**CV-0…CV-4**; **CV-1…CV-3** implemented — synthetic HIL TM payload in [`hil_tm`]; **Gate CV-3** pending before **CV-4**).
 //!
 //! ## Standards & compliance
 //!
@@ -19,6 +19,7 @@
 
 pub mod ccsds;
 pub mod config;
+pub mod hil_tm;
 pub mod http;
 pub mod ingest;
 pub mod metrics;
@@ -27,6 +28,11 @@ pub mod state;
 pub mod validate;
 
 pub use ccsds::{encode_synthetic_tm, CcsdsError, TelemetryFrame};
+pub use hil_tm::{
+    decode_hil_tm_v1, encode_hil_tm_v1_payload, CCSDS_APID_MAX, DecodedHilTmV1,
+    DEFAULT_HIL_TM_V1_APID_MAX, DEFAULT_HIL_TM_V1_APID_MIN, HilTmV1DecodeError, HIL_TM_V1_MAGIC,
+    HIL_TM_V1_PAYLOAD_LEN, HIL_TM_V1_SCHEMA_VERSION,
+};
 pub use config::{
     load_effective_gateway_config, load_gateway_from_path, resolve_config_path, ConfigError,
     ConfigLoadError, IngestConfig, StationConfig, TleSource,

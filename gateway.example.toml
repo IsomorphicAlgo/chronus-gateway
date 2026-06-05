@@ -29,6 +29,10 @@ minimum_elevation_deg = 0.0
 # Pointing residual tolerance (CV-2 / T-POINT); optional — default 0.25°.
 # pointing_tolerance_deg = 0.25
 
+# Synthetic HIL TM v1 APID inclusive band (CV-3); optional — defaults 0x7B0 … 0x7BF.
+# hil_tm_v1_apid_min = 1968
+# hil_tm_v1_apid_max = 1983
+
 # Public reference ISS (ZARYA) element set — synthetic/public data only (see README / Methodology).
 tle_inline = """
 ISS (ZARYA)

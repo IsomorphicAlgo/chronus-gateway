@@ -1,0 +1,72 @@
+﻿2026-06-05T02:19:07.7515667Z ##[group]Run actions/checkout@v5
+2026-06-05T02:19:07.7516677Z with:
+2026-06-05T02:19:07.7517197Z   path: chronus-gateway
+2026-06-05T02:19:07.7517845Z   repository: IsomorphicAlgo/chronus-gateway
+2026-06-05T02:19:07.7522979Z   token: ***
+2026-06-05T02:19:07.7523487Z   ssh-strict: true
+2026-06-05T02:19:07.7523981Z   ssh-user: git
+2026-06-05T02:19:07.7524495Z   persist-credentials: true
+2026-06-05T02:19:07.7525052Z   clean: true
+2026-06-05T02:19:07.7525581Z   sparse-checkout-cone-mode: true
+2026-06-05T02:19:07.7526178Z   fetch-depth: 1
+2026-06-05T02:19:07.7526649Z   fetch-tags: false
+2026-06-05T02:19:07.7527152Z   show-progress: true
+2026-06-05T02:19:07.7527662Z   lfs: false
+2026-06-05T02:19:07.7528151Z   submodules: false
+2026-06-05T02:19:07.7528760Z   set-safe-directory: true
+2026-06-05T02:19:07.7529616Z ##[endgroup]
+2026-06-05T02:19:07.8521555Z Syncing repository: IsomorphicAlgo/chronus-gateway
+2026-06-05T02:19:07.8523671Z ##[group]Getting Git version info
+2026-06-05T02:19:07.8524868Z Working directory is '/home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway'
+2026-06-05T02:19:07.8526310Z [command]/usr/bin/git version
+2026-06-05T02:19:07.8588773Z git version 2.54.0
+2026-06-05T02:19:07.8641674Z ##[endgroup]
+2026-06-05T02:19:07.8655824Z Temporarily overriding HOME='/home/runner/work/_temp/71776345-9ffb-4529-91d9-15a2048c4b14' before making global git config changes
+2026-06-05T02:19:07.8657392Z Adding repository directory to the temporary git global config as a safe directory
+2026-06-05T02:19:07.8661501Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway
+2026-06-05T02:19:07.8711019Z ##[group]Initializing the repository
+2026-06-05T02:19:07.8716892Z [command]/usr/bin/git init /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway
+2026-06-05T02:19:07.8825099Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-06-05T02:19:07.8826655Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-06-05T02:19:07.8827794Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-06-05T02:19:07.8829079Z hint: call:
+2026-06-05T02:19:07.8829564Z hint:
+2026-06-05T02:19:07.8830725Z hint: 	git config --global init.defaultBranch <name>
+2026-06-05T02:19:07.8832310Z hint:
+2026-06-05T02:19:07.8833087Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-06-05T02:19:07.8834698Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-06-05T02:19:07.8835607Z hint:
+2026-06-05T02:19:07.8836115Z hint: 	git branch -m <name>
+2026-06-05T02:19:07.8836681Z hint:
+2026-06-05T02:19:07.8837702Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-06-05T02:19:07.8839321Z Initialized empty Git repository in /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/.git/
+2026-06-05T02:19:07.8842907Z [command]/usr/bin/git remote add origin https://github.com/IsomorphicAlgo/chronus-gateway
+2026-06-05T02:19:07.8884830Z ##[endgroup]
+2026-06-05T02:19:07.8885735Z ##[group]Disabling automatic garbage collection
+2026-06-05T02:19:07.8887919Z [command]/usr/bin/git config --local gc.auto 0
+2026-06-05T02:19:07.8916861Z ##[endgroup]
+2026-06-05T02:19:07.8917709Z ##[group]Setting up auth
+2026-06-05T02:19:07.8923361Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-06-05T02:19:07.8956403Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-06-05T02:19:07.9304264Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-06-05T02:19:07.9337812Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-06-05T02:19:07.9562970Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-06-05T02:19:07.9594796Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-06-05T02:19:07.9814390Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-06-05T02:19:07.9850685Z ##[endgroup]
+2026-06-05T02:19:07.9852722Z ##[group]Fetching the repository
+2026-06-05T02:19:07.9861901Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +9a66946608d93c07dd87b3861adf761655884cee:refs/remotes/origin/master
+2026-06-05T02:19:08.4651063Z From https://github.com/IsomorphicAlgo/chronus-gateway
+2026-06-05T02:19:08.4654154Z  * [new ref]         9a66946608d93c07dd87b3861adf761655884cee -> origin/master
+2026-06-05T02:19:08.4688314Z ##[endgroup]
+2026-06-05T02:19:08.4689770Z ##[group]Determining the checkout info
+2026-06-05T02:19:08.4691475Z ##[endgroup]
+2026-06-05T02:19:08.4695669Z [command]/usr/bin/git sparse-checkout disable
+2026-06-05T02:19:08.4740008Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-06-05T02:19:08.4768337Z ##[group]Checking out the ref
+2026-06-05T02:19:08.4771830Z [command]/usr/bin/git checkout --progress --force -B master refs/remotes/origin/master
+2026-06-05T02:19:08.4859843Z Reset branch 'master'
+2026-06-05T02:19:08.4863265Z branch 'master' set up to track 'origin/master'.
+2026-06-05T02:19:08.4872356Z ##[endgroup]
+2026-06-05T02:19:08.4913772Z [command]/usr/bin/git log -1 --format=%H
+2026-06-05T02:19:08.4937041Z 9a66946608d93c07dd87b3861adf761655884cee

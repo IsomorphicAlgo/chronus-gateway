@@ -73,8 +73,8 @@ cargo clippy --all-targets
 
 ### M3 — Propagator integration
 - [x] **Unit:** config validation (valid default; invalid lat/lon/freq/altitude; empty inline TLE;
-      missing TLE file) with specific errors (`default_station_is_valid`, `rejects_out_of_range_fields`,
-      `resolves_inline_tle_and_rejects_empty`, `missing_tle_file_is_reported`).
+      missing TLE file; **HIL TM v1** APID range) with specific errors (`default_station_is_valid`, `rejects_out_of_range_fields`,
+      `resolves_inline_tle_and_rejects_empty`, `missing_tle_file_is_reported`, `apid_allows_hil_tm_v1_respects_range`).
 - [x] **Deterministic:** fixed TLE + fixed instant → stable `TrackingState`, baseline-locked within
       tolerance (`from_station_is_deterministic_and_in_tolerance`).
 - [x] **Trait swap + throttle:** a counting mock propagator proves the seam and the
@@ -135,13 +135,18 @@ behavior change beyond documenting contracts.
       (`no_measured_rx_skips_link_budget_even_if_would_be_bad`, `nan_measured_rx_skips_link_no_panic`,
       `zero_range_skips_link_budget_no_flag`).
 - [x] **Config:** invalid `link_budget_tolerance_db` and non-finite `tx_power_dbm` rejected
-      (`rejects_out_of_range_fields`); invalid `pointing_tolerance_deg` rejected (**CV-2**).
+      (`rejects_out_of_range_fields`).
 
 ### CV-2 — Pointing residual vs **T-POINT** (great-circle, bit 3)
 - [x] **Unit:** `angular_separation_same_direction_near_zero`; `angular_separation_orthogonal_ninety_deg`.
 - [x] **In band / out of band:** measured (az, el) within **T-POINT** of computed → no bit 3 (`pointing_within_t_point_no_bit3`); separation strictly greater than tolerance → bit 3 (`pointing_exceeds_t_point_sets_bit3`).
 - [x] **Skip paths:** only one of az/el `Some` → no bit 3 (`pointing_only_azimuth_skips_no_bit3`); `pointing_tolerance_deg` not finite / not positive → pointing skipped (`non_finite_pointing_tolerance_skips_pointing`).
-- [x] **Config:** `StationConfig::pointing_tolerance_deg` default **0.25°**; optional TOML `station.pointing_tolerance_deg` (`gateway.example.toml`).
+- [x] **Config:** `StationConfig::pointing_tolerance_deg` default **0.25°**; optional TOML `station.pointing_tolerance_deg` (`gateway.example.toml`); invalid `pointing_tolerance_deg` rejected (`rejects_out_of_range_fields`).
+
+### CV-3 — Synthetic HIL TM v1 payload (`chronus.hil.tm.v1`)
+- [x] **Unit (`hil_tm`):** `golden_encode_then_decode_round_trip`; `truncated_payload_rejected`; `empty_payload_rejected`; `wrong_magic_rejected`; `wrong_version_rejected`; `non_zero_reserved_rejected`; `longer_slice_decodes_first_24_only`.
+- [x] **Config:** default APID band **0x7B0…0x7BF**; invalid range rejected; `apid_allows_hil_tm_v1_respects_range`.
+- [x] **Integration:** `chronus-hil-sim` HIL ingest smoke/soak decode v1 payloads on synthetic APIDs (`hil_ingest.rs`).
 
 ---
 
@@ -163,8 +168,8 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 ## Status / counts (keep current)
 | Layer | Count | Notes |
 |-------|-------|-------|
-| Unit tests | 45 | `ccsds` (8 incl. proptest) + `config` (12) + `propagator` (4) + `validate` (21). |
+| Unit tests | 53 | `ccsds` (8 incl. proptest) + `config` (13) + `hil_tm` (7) + `propagator` (4) + `validate` (21). |
 | Integration tests | 9 | `crates/gateway/tests/*.rs` (7) + `crates/chronus-hil-sim/tests/hil_ingest.rs` (2). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-03.*
+*Last updated: 2026-06-05.*

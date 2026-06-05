@@ -1,0 +1,215 @@
+﻿2026-06-05T02:28:19.7511536Z ##[group]Run cargo deny check
+2026-06-05T02:28:19.7511878Z [36;1mcargo deny check[0m
+2026-06-05T02:28:19.7537596Z shell: /usr/bin/bash -e {0}
+2026-06-05T02:28:19.7537841Z env:
+2026-06-05T02:28:19.7538037Z   CARGO_HOME: /home/runner/.cargo
+2026-06-05T02:28:19.7538295Z   CARGO_INCREMENTAL: 0
+2026-06-05T02:28:19.7538510Z   CARGO_TERM_COLOR: always
+2026-06-05T02:28:19.7538731Z ##[endgroup]
+2026-06-05T02:28:23.5072965Z [0m[1m[38;5;11mwarning[duplicate][0m[1m: found 2 duplicate entries for crate 'arbitrary-int'[0m
+2026-06-05T02:28:23.5074955Z    [0m[36m┌─[0m /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/Cargo.lock:10:1
+2026-06-05T02:28:23.5076019Z    [0m[36m│[0m  
+2026-06-05T02:28:23.5090019Z [0m[36m10[0m [0m[36m│[0m [0m[33m╭[0m [0m[33marbitrary-int 1.3.0 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5094917Z [0m[36m11[0m [0m[36m│[0m [0m[33m│[0m [0m[33marbitrary-int 2.1.1 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5096836Z    [0m[36m│[0m [0m[33m╰[0m[0m[33m─────────────────────────────────────────────────────────────────────────┘ lock entries[0m
+2026-06-05T02:28:23.5097881Z    [0m[36m│[0m  
+2026-06-05T02:28:23.5098497Z    [0m[36m├[0m arbitrary-int v1.3.0
+2026-06-05T02:28:23.5099143Z      └── bitbybit v1.4.0
+2026-06-05T02:28:23.5099719Z          └── spacepackets v0.17.0
+2026-06-05T02:28:23.5100391Z              └── chronus-gateway v0.0.0
+2026-06-05T02:28:23.5101064Z                  └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5102273Z    [0m[36m├[0m arbitrary-int v2.1.1
+2026-06-05T02:28:23.5103380Z      └── spacepackets v0.17.0
+2026-06-05T02:28:23.5103898Z          └── chronus-gateway v0.0.0
+2026-06-05T02:28:23.5104442Z              └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5104764Z 
+2026-06-05T02:28:23.5105331Z [0m[1m[38;5;11mwarning[license-not-encountered][0m[1m: license was not encountered[0m
+2026-06-05T02:28:23.5106563Z    [0m[36m┌─[0m /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/deny.toml:27:6
+2026-06-05T02:28:23.5107458Z    [0m[36m│[0m
+2026-06-05T02:28:23.5107981Z [0m[36m27[0m [0m[36m│[0m     "[0m[33m0BSD[0m",
+2026-06-05T02:28:23.5108766Z    [0m[36m│[0m      [0m[33m━━━━[0m [0m[33munmatched license allowance[0m
+2026-06-05T02:28:23.5109242Z 
+2026-06-05T02:28:23.5109784Z [0m[1m[38;5;11mwarning[license-not-encountered][0m[1m: license was not encountered[0m
+2026-06-05T02:28:23.5111029Z    [0m[36m┌─[0m /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/deny.toml:24:6
+2026-06-05T02:28:23.5112071Z    [0m[36m│[0m
+2026-06-05T02:28:23.5112684Z [0m[36m24[0m [0m[36m│[0m     "[0m[33mCC0-1.0[0m",
+2026-06-05T02:28:23.5113493Z    [0m[36m│[0m      [0m[33m━━━━━━━[0m [0m[33munmatched license allowance[0m
+2026-06-05T02:28:23.5113988Z 
+2026-06-05T02:28:23.5114528Z [0m[1m[38;5;11mwarning[license-not-encountered][0m[1m: license was not encountered[0m
+2026-06-05T02:28:23.5115722Z    [0m[36m┌─[0m /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/deny.toml:21:6
+2026-06-05T02:28:23.5117904Z    [0m[36m│[0m
+2026-06-05T02:28:23.5118438Z [0m[36m21[0m [0m[36m│[0m     "[0m[33mISC[0m",
+2026-06-05T02:28:23.5119262Z    [0m[36m│[0m      [0m[33m━━━[0m [0m[33munmatched license allowance[0m
+2026-06-05T02:28:23.5119808Z 
+2026-06-05T02:28:23.5120449Z [0m[1m[38;5;11mwarning[license-not-encountered][0m[1m: license was not encountered[0m
+2026-06-05T02:28:23.5122060Z    [0m[36m┌─[0m /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/deny.toml:25:6
+2026-06-05T02:28:23.5122953Z    [0m[36m│[0m
+2026-06-05T02:28:23.5123517Z [0m[36m25[0m [0m[36m│[0m     "[0m[33mMPL-2.0[0m",
+2026-06-05T02:28:23.5124417Z    [0m[36m│[0m      [0m[33m━━━━━━━[0m [0m[33munmatched license allowance[0m
+2026-06-05T02:28:23.5124927Z 
+2026-06-05T02:28:23.5125551Z [0m[1m[38;5;11mwarning[duplicate][0m[1m: found 2 duplicate entries for crate 'getrandom'[0m
+2026-06-05T02:28:23.5127252Z    [0m[36m┌─[0m /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/Cargo.lock:81:1
+2026-06-05T02:28:23.5128114Z    [0m[36m│[0m  
+2026-06-05T02:28:23.5129079Z [0m[36m81[0m [0m[36m│[0m [0m[33m╭[0m [0m[33mgetrandom 0.2.17 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5130605Z [0m[36m82[0m [0m[36m│[0m [0m[33m│[0m [0m[33mgetrandom 0.3.4 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5132647Z [0m[36m83[0m [0m[36m│[0m [0m[33m│[0m [0m[33mgetrandom 0.4.2 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5134150Z    [0m[36m│[0m [0m[33m╰[0m[0m[33m─────────────────────────────────────────────────────────────────────┘ lock entries[0m
+2026-06-05T02:28:23.5134984Z    [0m[36m│[0m  
+2026-06-05T02:28:23.5135408Z    [0m[36m├[0m getrandom v0.2.17
+2026-06-05T02:28:23.5135904Z      └── rand_core v0.6.4
+2026-06-05T02:28:23.5136392Z          ├── rand v0.8.6
+2026-06-05T02:28:23.5136877Z          │   └── tungstenite v0.24.0
+2026-06-05T02:28:23.5137482Z          │       └── tokio-tungstenite v0.24.0
+2026-06-05T02:28:23.5138082Z          │           ├── axum v0.7.9
+2026-06-05T02:28:23.5138595Z          │           │   └── chronus-gateway v0.0.0
+2026-06-05T02:28:23.5139232Z          │           │       └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5139886Z          │           └── (dev) chronus-gateway v0.0.0 (*)
+2026-06-05T02:28:23.5140515Z          └── rand_chacha v0.3.1
+2026-06-05T02:28:23.5140995Z              └── rand v0.8.6 (*)
+2026-06-05T02:28:23.5142164Z    [0m[36m├[0m getrandom v0.4.2
+2026-06-05T02:28:23.5142973Z      └── tempfile v3.27.0
+2026-06-05T02:28:23.5143466Z          ├── (dev) chronus-gateway v0.0.0
+2026-06-05T02:28:23.5144078Z          │   └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5144592Z          ├── proptest v1.11.0
+2026-06-05T02:28:23.5145115Z          │   └── (dev) chronus-gateway v0.0.0 (*)
+2026-06-05T02:28:23.5145672Z          ├── prost-build v0.14.3
+2026-06-05T02:28:23.5146221Z          │   └── tonic-prost-build v0.14.6
+2026-06-05T02:28:23.5146842Z          │       └── (build) nexosim v1.0.0
+2026-06-05T02:28:23.5147454Z          │           └── chronus-hil-sim v0.0.0 (*)
+2026-06-05T02:28:23.5148036Z          ├── rusty-fork v0.3.1
+2026-06-05T02:28:23.5148571Z          │   └── proptest v1.11.0 (*)
+2026-06-05T02:28:23.5149116Z          └── tonic-prost-build v0.14.6 (*)
+2026-06-05T02:28:23.5149443Z 
+2026-06-05T02:28:23.5150010Z [0m[1m[38;5;11mwarning[duplicate][0m[1m: found 2 duplicate entries for crate 'hashbrown'[0m
+2026-06-05T02:28:23.5151530Z    [0m[36m┌─[0m /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/Cargo.lock:85:1
+2026-06-05T02:28:23.5152541Z    [0m[36m│[0m  
+2026-06-05T02:28:23.5153542Z [0m[36m85[0m [0m[36m│[0m [0m[33m╭[0m [0m[33mhashbrown 0.15.5 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5155103Z [0m[36m86[0m [0m[36m│[0m [0m[33m│[0m [0m[33mhashbrown 0.17.1 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5156667Z    [0m[36m│[0m [0m[33m╰[0m[0m[33m──────────────────────────────────────────────────────────────────────┘ lock entries[0m
+2026-06-05T02:28:23.5157507Z    [0m[36m│[0m  
+2026-06-05T02:28:23.5157994Z    [0m[36m├[0m hashbrown v0.15.5
+2026-06-05T02:28:23.5158505Z      └── petgraph v0.8.3
+2026-06-05T02:28:23.5158974Z          └── prost-build v0.14.3
+2026-06-05T02:28:23.5159498Z              └── tonic-prost-build v0.14.6
+2026-06-05T02:28:23.5160105Z                  └── (build) nexosim v1.0.0
+2026-06-05T02:28:23.5160722Z                      └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5161536Z    [0m[36m├[0m hashbrown v0.17.1
+2026-06-05T02:28:23.5162040Z      └── indexmap v2.14.0
+2026-06-05T02:28:23.5162502Z          ├── petgraph v0.8.3
+2026-06-05T02:28:23.5162999Z          │   └── prost-build v0.14.3
+2026-06-05T02:28:23.5163550Z          │       └── tonic-prost-build v0.14.6
+2026-06-05T02:28:23.5164433Z          │           └── (build) nexosim v1.0.0
+2026-06-05T02:28:23.5165045Z          │               └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5165654Z          └── toml_edit v0.22.27
+2026-06-05T02:28:23.5166117Z              └── toml v0.8.23
+2026-06-05T02:28:23.5166603Z                  └── chronus-gateway v0.0.0
+2026-06-05T02:28:23.5167194Z                      └── chronus-hil-sim v0.0.0 (*)
+2026-06-05T02:28:23.5167546Z 
+2026-06-05T02:28:23.5168097Z [0m[1m[38;5;11mwarning[duplicate][0m[1m: found 2 duplicate entries for crate 'thiserror'[0m
+2026-06-05T02:28:23.5169403Z     [0m[36m┌─[0m /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/Cargo.lock:206:1
+2026-06-05T02:28:23.5170336Z     [0m[36m│[0m  
+2026-06-05T02:28:23.5171695Z [0m[36m206[0m [0m[36m│[0m [0m[33m╭[0m [0m[33mthiserror 1.0.69 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5173297Z [0m[36m207[0m [0m[36m│[0m [0m[33m│[0m [0m[33mthiserror 2.0.18 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5174807Z     [0m[36m│[0m [0m[33m╰[0m[0m[33m──────────────────────────────────────────────────────────────────────┘ lock entries[0m
+2026-06-05T02:28:23.5175617Z     [0m[36m│[0m  
+2026-06-05T02:28:23.5176085Z     [0m[36m├[0m thiserror v1.0.69
+2026-06-05T02:28:23.5176605Z       ├── chronus-gateway v0.0.0
+2026-06-05T02:28:23.5177103Z       │   └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5177601Z       ├── ephemerust v0.2.0
+2026-06-05T02:28:23.5178083Z       │   └── chronus-gateway v0.0.0 (*)
+2026-06-05T02:28:23.5178603Z       └── tungstenite v0.24.0
+2026-06-05T02:28:23.5179400Z           └── tokio-tungstenite v0.24.0
+2026-06-05T02:28:23.5179907Z               ├── axum v0.7.9
+2026-06-05T02:28:23.5180399Z               │   └── chronus-gateway v0.0.0 (*)
+2026-06-05T02:28:23.5180988Z               └── (dev) chronus-gateway v0.0.0 (*)
+2026-06-05T02:28:23.5181782Z     [0m[36m├[0m thiserror v2.0.18
+2026-06-05T02:28:23.5182306Z       └── spacepackets v0.17.0
+2026-06-05T02:28:23.5182826Z           └── chronus-gateway v0.0.0
+2026-06-05T02:28:23.5183359Z               └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5183674Z 
+2026-06-05T02:28:23.5184295Z [0m[1m[38;5;11mwarning[duplicate][0m[1m: found 2 duplicate entries for crate 'thiserror-impl'[0m
+2026-06-05T02:28:23.5185681Z     [0m[36m┌─[0m /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/Cargo.lock:208:1
+2026-06-05T02:28:23.5186561Z     [0m[36m│[0m  
+2026-06-05T02:28:23.5187603Z [0m[36m208[0m [0m[36m│[0m [0m[33m╭[0m [0m[33mthiserror-impl 1.0.69 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5189299Z [0m[36m209[0m [0m[36m│[0m [0m[33m│[0m [0m[33mthiserror-impl 2.0.18 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5190901Z     [0m[36m│[0m [0m[33m╰[0m[0m[33m───────────────────────────────────────────────────────────────────────────┘ lock entries[0m
+2026-06-05T02:28:23.5192225Z     [0m[36m│[0m  
+2026-06-05T02:28:23.5192691Z     [0m[36m├[0m thiserror-impl v1.0.69
+2026-06-05T02:28:23.5193223Z       └── thiserror v1.0.69
+2026-06-05T02:28:23.5193699Z           ├── chronus-gateway v0.0.0
+2026-06-05T02:28:23.5194246Z           │   └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5194766Z           ├── ephemerust v0.2.0
+2026-06-05T02:28:23.5195271Z           │   └── chronus-gateway v0.0.0 (*)
+2026-06-05T02:28:23.5195804Z           └── tungstenite v0.24.0
+2026-06-05T02:28:23.5196321Z               └── tokio-tungstenite v0.24.0
+2026-06-05T02:28:23.5196861Z                   ├── axum v0.7.9
+2026-06-05T02:28:23.5197427Z                   │   └── chronus-gateway v0.0.0 (*)
+2026-06-05T02:28:23.5198063Z                   └── (dev) chronus-gateway v0.0.0 (*)
+2026-06-05T02:28:23.5198740Z     [0m[36m├[0m thiserror-impl v2.0.18
+2026-06-05T02:28:23.5199273Z       └── thiserror v2.0.18
+2026-06-05T02:28:23.5199745Z           └── spacepackets v0.17.0
+2026-06-05T02:28:23.5200270Z               └── chronus-gateway v0.0.0
+2026-06-05T02:28:23.5200854Z                   └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5201531Z 
+2026-06-05T02:28:23.5202099Z [0m[1m[38;5;11mwarning[duplicate][0m[1m: found 2 duplicate entries for crate 'tower'[0m
+2026-06-05T02:28:23.5203454Z     [0m[36m┌─[0m /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/Cargo.lock:222:1
+2026-06-05T02:28:23.5204347Z     [0m[36m│[0m  
+2026-06-05T02:28:23.5205305Z [0m[36m222[0m [0m[36m│[0m [0m[33m╭[0m [0m[33mtower 0.4.13 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5206794Z [0m[36m223[0m [0m[36m│[0m [0m[33m│[0m [0m[33mtower 0.5.3 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5208489Z     [0m[36m│[0m [0m[33m╰[0m[0m[33m─────────────────────────────────────────────────────────────────┘ lock entries[0m
+2026-06-05T02:28:23.5209348Z     [0m[36m│[0m  
+2026-06-05T02:28:23.5209767Z     [0m[36m├[0m tower v0.4.13
+2026-06-05T02:28:23.5210299Z       └── (dev) chronus-gateway v0.0.0
+2026-06-05T02:28:23.5210868Z           └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5211687Z     [0m[36m├[0m tower v0.5.3
+2026-06-05T02:28:23.5212144Z       └── axum v0.7.9
+2026-06-05T02:28:23.5212580Z           └── chronus-gateway v0.0.0
+2026-06-05T02:28:23.5213111Z               └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5213459Z 
+2026-06-05T02:28:23.5214033Z [0m[1m[38;5;11mwarning[duplicate][0m[1m: found 2 duplicate entries for crate 'wit-bindgen'[0m
+2026-06-05T02:28:23.5215327Z     [0m[36m┌─[0m /home/runner/work/chronus-gateway/chronus-gateway/chronus-gateway/Cargo.lock:270:1
+2026-06-05T02:28:23.5216228Z     [0m[36m│[0m  
+2026-06-05T02:28:23.5217219Z [0m[36m270[0m [0m[36m│[0m [0m[33m╭[0m [0m[33mwit-bindgen 0.51.0 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5218808Z [0m[36m271[0m [0m[36m│[0m [0m[33m│[0m [0m[33mwit-bindgen 0.57.1 registry+https://github.com/rust-lang/crates.io-index[0m
+2026-06-05T02:28:23.5220336Z     [0m[36m│[0m [0m[33m╰[0m[0m[33m────────────────────────────────────────────────────────────────────────┘ lock entries[0m
+2026-06-05T02:28:23.5221378Z     [0m[36m│[0m  
+2026-06-05T02:28:23.5221826Z     [0m[36m├[0m wit-bindgen v0.51.0
+2026-06-05T02:28:23.5222403Z       └── wasip3 v0.4.0+wasi-0.3.0-rc-2026-01-06
+2026-06-05T02:28:23.5222954Z           └── getrandom v0.4.2
+2026-06-05T02:28:23.5223469Z               └── tempfile v3.27.0
+2026-06-05T02:28:23.5224019Z                   ├── (dev) chronus-gateway v0.0.0
+2026-06-05T02:28:23.5224623Z                   │   └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5225209Z                   ├── proptest v1.11.0
+2026-06-05T02:28:23.5225863Z                   │   └── (dev) chronus-gateway v0.0.0 (*)
+2026-06-05T02:28:23.5226467Z                   ├── prost-build v0.14.3
+2026-06-05T02:28:23.5227060Z                   │   └── tonic-prost-build v0.14.6
+2026-06-05T02:28:23.5227681Z                   │       └── (build) nexosim v1.0.0
+2026-06-05T02:28:23.5228599Z                   │           └── chronus-hil-sim v0.0.0 (*)
+2026-06-05T02:28:23.5229191Z                   ├── rusty-fork v0.3.1
+2026-06-05T02:28:23.5229741Z                   │   └── proptest v1.11.0 (*)
+2026-06-05T02:28:23.5230358Z                   └── tonic-prost-build v0.14.6 (*)
+2026-06-05T02:28:23.5230954Z     [0m[36m├[0m wit-bindgen v0.57.1
+2026-06-05T02:28:23.5231826Z       └── wasip2 v1.0.3+wasi-0.2.9
+2026-06-05T02:28:23.5232334Z           ├── getrandom v0.3.4
+2026-06-05T02:28:23.5232814Z           │   └── rand_core v0.9.5
+2026-06-05T02:28:23.5233298Z           │       ├── rand v0.9.4
+2026-06-05T02:28:23.5233873Z           │       │   └── proptest v1.11.0
+2026-06-05T02:28:23.5234490Z           │       │       └── (dev) chronus-gateway v0.0.0
+2026-06-05T02:28:23.5235143Z           │       │           └── chronus-hil-sim v0.0.0
+2026-06-05T02:28:23.5235767Z           │       ├── rand_chacha v0.9.0
+2026-06-05T02:28:23.5236323Z           │       │   └── proptest v1.11.0 (*)
+2026-06-05T02:28:23.5236910Z           │       └── rand_xorshift v0.4.0
+2026-06-05T02:28:23.5237462Z           │           └── proptest v1.11.0 (*)
+2026-06-05T02:28:23.5237996Z           └── getrandom v0.4.2
+2026-06-05T02:28:23.5238512Z               └── tempfile v3.27.0
+2026-06-05T02:28:23.5239063Z                   ├── (dev) chronus-gateway v0.0.0 (*)
+2026-06-05T02:28:23.5239633Z                   ├── proptest v1.11.0 (*)
+2026-06-05T02:28:23.5240170Z                   ├── prost-build v0.14.3
+2026-06-05T02:28:23.5240733Z                   │   └── tonic-prost-build v0.14.6
+2026-06-05T02:28:23.5241583Z                   │       └── (build) nexosim v1.0.0
+2026-06-05T02:28:23.5242463Z                   │           └── chronus-hil-sim v0.0.0 (*)
+2026-06-05T02:28:23.5243077Z                   ├── rusty-fork v0.3.1
+2026-06-05T02:28:23.5243685Z                   │   └── proptest v1.11.0 (*)
+2026-06-05T02:28:23.5244292Z                   └── tonic-prost-build v0.14.6 (*)
+2026-06-05T02:28:23.5244677Z 
+2026-06-05T02:28:23.6340058Z advisories [32mok[0m, bans [32mok[0m, licenses [32mok[0m, sources [32mok[0m

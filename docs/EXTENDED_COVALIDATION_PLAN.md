@@ -77,7 +77,7 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner sign-off required to adv
 
 **Test gate:** `cargo test` green; clippy clean.
 
-**Gate CV-2:** `[ ]` Owner approves — **only then** start CV-3.
+**Gate CV-2:** `[x]` Owner approved — **CV-3** implemented.
 
 ---
 
@@ -87,12 +87,12 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner sign-off required to adv
 
 **Deliverables**
 
-- [ ] **Schema `chronus.hil.tm.v1`** (or similar) — Magic/version byte(s), fixed widths, big-endian scalars, maximum size enforced against `payload_len`.
-- [ ] **Decoder module** — Returns `Option<DecodedHilV1>` or structured error; **no allocation** beyond small stack struct when possible.
-- [ ] **APID policy** — Either fixed synthetic APID band (documented) or configurable allowlist in `StationConfig`.
-- [ ] **Tests** — Truncated payload, wrong version, wrong magic — safe rejection; golden round-trip.
-- [ ] **HIL crate** — `chronus-hil-sim` emits the new layout (backward-compatible transition period optional: feature flag or separate APID).
-- [ ] **`TEST_PLAN.md` + `docs/HIL.md`** — Update recipes.
+- [x] **Schema `chronus.hil.tm.v1`** — Magic **`CHI1`**, version byte, 3 reserved bytes (must be zero), fixed 24-byte data field; big-endian `u32` + three `f32`; documented in `hil_tm` + **D-020**.
+- [x] **Decoder module** — `hil_tm::decode_hil_tm_v1` → `DecodedHilTmV1` / `HilTmV1DecodeError`; **no heap allocation** on decode.
+- [x] **APID policy** — `StationConfig::{hil_tm_v1_apid_min,hil_tm_v1_apid_max}` default **0x7B0…0x7BF**; `apid_allows_hil_tm_v1`; optional TOML keys.
+- [x] **Tests** — Truncated / bad magic / bad version / non-zero reserved / round-trip (`hil_tm`); HIL ingest decodes frames.
+- [x] **HIL crate** — `chronus-hil-sim` emits v1 via `encode_hil_tm_v1_payload` (replaces legacy 16-byte raw float blob).
+- [x] **`TEST_PLAN.md` + `docs/HIL.md`** — CV-3 subsection + HIL payload description.
 
 **Test gate:** Gateway + HIL tests green; decoder covered by unit + integration smoke.
 
@@ -137,7 +137,7 @@ CV-0 (charter) ──▶ CV-1 (link budget) ──▶ CV-2 (pointing)
 
 ## Integration notes (all CV milestones)
 
-- **Wiring:** Today the entrypoint uses `RfMetadata::default()` for distribution paths; each CV milestone should state how tests and (optionally) CLI/env supply synthetic metadata without blocking UDP ingest security.
+- **Wiring:** Distribution uses `RfMetadata::default()` unless a side-channel supplies ground metadata. **CV-3** defines `chronus.hil.tm.v1` in the TM data field for HIL; decode with `hil_tm::decode_hil_tm_v1` when `StationConfig::apid_allows_hil_tm_v1` matches.
 - **JSON / Open MCT:** Optional additive fields (`expected_rx_dbm`, …) only if needed; **bitfield remains the primary alarm surface** unless CV-0 chooses otherwise.
 - **Benchmarks:** Extend `parse_validate` bench if CV-3+ adds measurable hot-path work.
 
