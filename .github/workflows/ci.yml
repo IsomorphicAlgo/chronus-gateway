@@ -1,4 +1,8 @@
 # CI: tests, clippy, supply-chain gates. Ephemerust is checked out as a sibling (path dependency).
+#
+# Ephemerust must always be cloned from the upstream repo (IsomorphicAlgo/Ephemerust). Using
+# github.repository_owner would break fork PRs (e.g. contributor/Ephemerust does not exist).
+# cargo test exits with code 101 when tests fail; compile/link errors use other codes.
 name: CI
 
 on:
@@ -6,19 +10,23 @@ on:
     branches: [main, master]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout gateway
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: chronus-gateway
 
-      - name: Checkout Ephemerust (sibling for ../Ephemerust)
-        uses: actions/checkout@v4
+      # Path ../Ephemerust from chronus-gateway/ must exist at workspace root (see Cargo.toml).
+      - name: Checkout Ephemerust (upstream sibling)
+        uses: actions/checkout@v5
         with:
-          repository: ${{ github.repository_owner }}/Ephemerust
+          repository: IsomorphicAlgo/Ephemerust
           path: Ephemerust
 
       - name: Install Rust

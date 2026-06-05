@@ -135,7 +135,13 @@ behavior change beyond documenting contracts.
       (`no_measured_rx_skips_link_budget_even_if_would_be_bad`, `nan_measured_rx_skips_link_no_panic`,
       `zero_range_skips_link_budget_no_flag`).
 - [x] **Config:** invalid `link_budget_tolerance_db` and non-finite `tx_power_dbm` rejected
-      (`rejects_out_of_range_fields`).
+      (`rejects_out_of_range_fields`); invalid `pointing_tolerance_deg` rejected (**CV-2**).
+
+### CV-2 — Pointing residual vs **T-POINT** (great-circle, bit 3)
+- [x] **Unit:** `angular_separation_same_direction_near_zero`; `angular_separation_orthogonal_ninety_deg`.
+- [x] **In band / out of band:** measured (az, el) within **T-POINT** of computed → no bit 3 (`pointing_within_t_point_no_bit3`); separation strictly greater than tolerance → bit 3 (`pointing_exceeds_t_point_sets_bit3`).
+- [x] **Skip paths:** only one of az/el `Some` → no bit 3 (`pointing_only_azimuth_skips_no_bit3`); `pointing_tolerance_deg` not finite / not positive → pointing skipped (`non_finite_pointing_tolerance_skips_pointing`).
+- [x] **Config:** `StationConfig::pointing_tolerance_deg` default **0.25°**; optional TOML `station.pointing_tolerance_deg` (`gateway.example.toml`).
 
 ---
 
@@ -157,8 +163,8 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 ## Status / counts (keep current)
 | Layer | Count | Notes |
 |-------|-------|-------|
-| Unit tests | 39 | `ccsds` (8 incl. proptest) + `config` (12) + `propagator` (4) + `validate` (15). |
+| Unit tests | 45 | `ccsds` (8 incl. proptest) + `config` (12) + `propagator` (4) + `validate` (21). |
 | Integration tests | 9 | `crates/gateway/tests/*.rs` (7) + `crates/chronus-hil-sim/tests/hil_ingest.rs` (2). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-04.*
+*Last updated: 2026-06-03.*

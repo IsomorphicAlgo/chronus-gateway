@@ -34,7 +34,7 @@
 //! | 0 | `0x01` | Doppler anomaly — measured carrier differs from expected beyond tolerance. | **M4** |
 //! | 1 | `0x02` | Horizon / elevation — spacecraft is below the configured minimum elevation. | **M4** |
 //! | 2 | `0x04` | Link budget — measured vs predicted received power (**T-RSSI**, free-space v1). | **CV-1** |
-//! | 3 | `0x08` | Pointing residual — measured vs computed (az, el) exceeds **T-POINT**. | **CV-2** |
+//! | 3 | `0x08` | Pointing residual — measured vs computed (az, el) exceeds **T-POINT**. | **CV-2** (shipped) |
 //! | 4 | `0x10` | EPS / array current vs toy sun-angle model (**T-EPS**). | **CV-4** |
 //! | 5 | `0x20` | Thermal vs sun-angle proxy band (**T-THERMAL**). | **CV-4** |
 //! | 6–7 | `0x40`–`0x80` | Reserved. | — |
@@ -47,6 +47,12 @@
 //! distribution layer or a dedicated ingest side-channel.
 //!
 //! When [`RfMetadata::measured_rx_power_dbm`] is `None`, the link-budget check is **skipped** (no bit 2).
+//!
+//! ## Pointing residual (CV-2)
+//!
+//! When **both** [`RfMetadata::measured_azimuth_deg`] and [`RfMetadata::measured_elevation_deg`] are
+//! `Some`, compare the measured look direction to the propagator’s azimuth/elevation using the
+//! great-circle angle (**T-POINT** in `TEST_PLAN.md`). Anomaly sets bit 3 ([`FLAG_POINTING_ANOMALY`]).
 
 use std::f64::consts::PI;
 
@@ -66,18 +72,26 @@ pub const FLAG_BELOW_HORIZON: u8 = 0x02;
 pub const FLAG_LINK_BUDGET_ANOMALY: u8 = 0x04;
 /// Bit 2 — alias for [`FLAG_LINK_BUDGET_ANOMALY`] (legacy name).
 pub const FLAG_RSSI_RESERVED: u8 = FLAG_LINK_BUDGET_ANOMALY;
+/// Bit 3 — measured boresight (az/el) disagrees with computed look angles beyond **T-POINT** (**CV-2**).
+pub const FLAG_POINTING_ANOMALY: u8 = 0x08;
 
 /// Optional **ground / receiver-chain** measurements accompanying a frame (SDR or synthetic lab).
 ///
 /// Per **D-016**: carrier frequency for Doppler; optional **dBm** receive power for the link-budget
-/// check (**CV-1**). **CV-2** will add optional measured azimuth/elevation. Spacecraft-reported
-/// engineering scalars use the versioned CCSDS payload path (**CV-3** decode), not this struct.
+/// check (**CV-1**); optional **measured** azimuth/elevation (degrees) for the pointing check (**CV-2**).
+/// Spacecraft-reported engineering scalars use the versioned CCSDS payload path (**CV-3** decode),
+/// not this struct.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RfMetadata {
     /// Measured downlink carrier frequency (Hz). `None` skips the Doppler check.
     pub measured_carrier_hz: Option<f64>,
     /// Measured received power (dBm), synthetic contract. `None` skips the link-budget check.
     pub measured_rx_power_dbm: Option<f64>,
+    /// Measured antenna azimuth (degrees, clockwise from true north). **Both** this and
+    /// [`Self::measured_elevation_deg`] must be `Some` to run the pointing check.
+    pub measured_azimuth_deg: Option<f64>,
+    /// Measured antenna elevation (degrees above local horizon).
+    pub measured_elevation_deg: Option<f64>,
 }
 
 /// Station-side **synthetic** parameters for the free-space link-budget prediction (CV-1).
@@ -135,12 +149,56 @@ pub fn expected_rx_power_dbm(
     Some(tx_power_dbm + tx_gain_dbi + rx_gain_dbi - l_fs)
 }
 
+/// Great-circle separation between two look directions on the unit sphere (degrees).
+///
+/// Each direction uses **azimuth** clockwise from true north (degrees) and **elevation** above the
+/// local horizon (degrees), matching [`TrackingState`].
+///
+/// Returns `None` if any input is non-finite.
+#[must_use]
+pub fn angular_separation_deg(az1_deg: f64, el1_deg: f64, az2_deg: f64, el2_deg: f64) -> Option<f64> {
+    if !(az1_deg.is_finite()
+        && el1_deg.is_finite()
+        && az2_deg.is_finite()
+        && el2_deg.is_finite())
+    {
+        return None;
+    }
+    let u1 = az_el_to_enu_unit(az1_deg, el1_deg)?;
+    let u2 = az_el_to_enu_unit(az2_deg, el2_deg)?;
+    let dot = u1.0 * u2.0 + u1.1 * u2.1 + u1.2 * u2.2;
+    let clamped = dot.clamp(-1.0_f64, 1.0_f64);
+    let rad = clamped.acos();
+    Some(rad.to_degrees())
+}
+
+/// Local east–north–up unit vector from azimuth (° from north, clockwise) and elevation (°).
+fn az_el_to_enu_unit(az_deg: f64, el_deg: f64) -> Option<(f64, f64, f64)> {
+    let az = az_deg.to_radians();
+    let el = el_deg.to_radians();
+    let ce = el.cos();
+    if !ce.is_finite() {
+        return None;
+    }
+    let e = ce * az.sin();
+    let n = ce * az.cos();
+    let u = el.sin();
+    if !(e.is_finite() && n.is_finite() && u.is_finite()) {
+        return None;
+    }
+    Some((e, n, u))
+}
+
 /// Clears then sets [`TelemetryFrame::physics_flags`] from physics checks.
 ///
 /// Always resets flags to `0` first so repeated validation does not OR stale bits.
 /// Non-finite `TrackingState` fields skip checks that depend on them (no panic).
 ///
 /// Pass `link_budget: None` to skip the link-budget check entirely.
+///
+/// `pointing_tolerance_deg` is **T-POINT** (must be finite and `> 0`); when non-positive or
+/// non-finite, the pointing check is skipped.
+#[allow(clippy::too_many_arguments)] // M4 + CV-1 + CV-2 parameters; grouping would churn every call site.
 pub fn apply_physics_validation(
     frame: &mut TelemetryFrame,
     state: &TrackingState,
@@ -149,6 +207,7 @@ pub fn apply_physics_validation(
     doppler_tolerance_hz: f64,
     minimum_elevation_deg: f64,
     link_budget: Option<LinkBudgetStationParams>,
+    pointing_tolerance_deg: f64,
 ) {
     frame.physics_flags = 0;
 
@@ -193,6 +252,24 @@ pub fn apply_physics_validation(
             }
         }
     }
+
+    if pointing_tolerance_deg.is_finite() && pointing_tolerance_deg > 0.0 {
+        if let (Some(maz), Some(mel)) = (rf.measured_azimuth_deg, rf.measured_elevation_deg) {
+            if maz.is_finite()
+                && mel.is_finite()
+                && state.azimuth_deg.is_finite()
+                && state.elevation_deg.is_finite()
+            {
+                if let Some(sep) =
+                    angular_separation_deg(maz, mel, state.azimuth_deg, state.elevation_deg)
+                {
+                    if sep.is_finite() && sep > pointing_tolerance_deg {
+                        frame.physics_flags |= FLAG_POINTING_ANOMALY;
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -201,6 +278,9 @@ mod tests {
     use crate::propagator::TrackingState;
     use chrono::Utc;
     use std::net::SocketAddr;
+
+    /// Default **T-POINT** for tests (`TEST_PLAN.md`).
+    const T_POINT: f64 = 0.25;
 
     fn dummy_tm() -> TelemetryFrame {
         TelemetryFrame {
@@ -248,10 +328,12 @@ mod tests {
             RfMetadata {
                 measured_carrier_hz: Some(expected + 100.0), // +100 Hz < 150
                 measured_rx_power_dbm: None,
+                ..Default::default()
             },
             150.0,
             0.0,
             None,
+            T_POINT,
         );
         assert_eq!(tm.physics_flags & FLAG_DOPPLER_ANOMALY, 0);
         assert_eq!(tm.physics_flags & FLAG_BELOW_HORIZON, 0);
@@ -270,10 +352,12 @@ mod tests {
             RfMetadata {
                 measured_carrier_hz: Some(expected + 200.0), // > 150 Hz
                 measured_rx_power_dbm: None,
+                ..Default::default()
             },
             150.0,
             0.0,
             None,
+            T_POINT,
         );
         assert!(tm.physics_flags & FLAG_DOPPLER_ANOMALY != 0);
     }
@@ -290,6 +374,7 @@ mod tests {
             150.0,
             0.0,
             None,
+            T_POINT,
         );
         assert!(tm.physics_flags & FLAG_BELOW_HORIZON != 0);
         assert_eq!(tm.physics_flags & FLAG_DOPPLER_ANOMALY, 0);
@@ -299,7 +384,16 @@ mod tests {
     fn elevation_at_horizon_not_flagged_when_minimum_is_zero() {
         let mut tm = dummy_tm();
         let s = state(0.0, 0.0);
-        apply_physics_validation(&mut tm, &s, 437e6, RfMetadata::default(), 150.0, 0.0, None);
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            437e6,
+            RfMetadata::default(),
+            150.0,
+            0.0,
+            None,
+            T_POINT,
+        );
         assert_eq!(tm.physics_flags & FLAG_BELOW_HORIZON, 0);
     }
 
@@ -315,10 +409,12 @@ mod tests {
             RfMetadata {
                 measured_carrier_hz: Some(f0 + 500.0),
                 measured_rx_power_dbm: None,
+                ..Default::default()
             },
             150.0,
             0.0,
             None,
+            T_POINT,
         );
         assert_eq!(tm.physics_flags, FLAG_DOPPLER_ANOMALY | FLAG_BELOW_HORIZON);
     }
@@ -327,7 +423,16 @@ mod tests {
     fn no_measured_carrier_skips_doppler_even_if_would_be_bad() {
         let mut tm = dummy_tm();
         let s = state(30.0, 0.0);
-        apply_physics_validation(&mut tm, &s, 100e6, RfMetadata::default(), 150.0, 0.0, None);
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            100e6,
+            RfMetadata::default(),
+            150.0,
+            0.0,
+            None,
+            T_POINT,
+        );
         assert_eq!(tm.physics_flags, 0);
     }
 
@@ -343,10 +448,12 @@ mod tests {
             RfMetadata {
                 measured_carrier_hz: Some(f0 + 500.0),
                 measured_rx_power_dbm: None,
+                ..Default::default()
             },
             150.0,
             0.0,
             None,
+            T_POINT,
         );
         assert_eq!(tm.physics_flags, FLAG_DOPPLER_ANOMALY);
     }
@@ -362,10 +469,12 @@ mod tests {
             RfMetadata {
                 measured_carrier_hz: Some(f64::NAN),
                 measured_rx_power_dbm: None,
+                ..Default::default()
             },
             150.0,
             0.0,
             None,
+            T_POINT,
         );
         assert_eq!(tm.physics_flags, 0);
     }
@@ -402,10 +511,12 @@ mod tests {
             RfMetadata {
                 measured_carrier_hz: None,
                 measured_rx_power_dbm: Some(pred + 2.0), // within ±3 dB
+                ..Default::default()
             },
             150.0,
             0.0,
             Some(demo_lb()),
+            T_POINT,
         );
         assert_eq!(tm.physics_flags & FLAG_LINK_BUDGET_ANOMALY, 0);
     }
@@ -423,10 +534,12 @@ mod tests {
             RfMetadata {
                 measured_carrier_hz: None,
                 measured_rx_power_dbm: Some(pred + 5.0), // > 3 dB
+                ..Default::default()
             },
             150.0,
             0.0,
             Some(demo_lb()),
+            T_POINT,
         );
         assert!(tm.physics_flags & FLAG_LINK_BUDGET_ANOMALY != 0);
         assert_eq!(tm.physics_flags & FLAG_DOPPLER_ANOMALY, 0);
@@ -444,6 +557,7 @@ mod tests {
             150.0,
             0.0,
             Some(demo_lb()),
+            T_POINT,
         );
         assert_eq!(tm.physics_flags, 0);
     }
@@ -459,10 +573,12 @@ mod tests {
             RfMetadata {
                 measured_carrier_hz: None,
                 measured_rx_power_dbm: Some(f64::NAN),
+                ..Default::default()
             },
             150.0,
             0.0,
             Some(demo_lb()),
+            T_POINT,
         );
         assert_eq!(tm.physics_flags & FLAG_LINK_BUDGET_ANOMALY, 0);
     }
@@ -483,11 +599,133 @@ mod tests {
             RfMetadata {
                 measured_carrier_hz: None,
                 measured_rx_power_dbm: Some(-120.0),
+                ..Default::default()
             },
             150.0,
             0.0,
             Some(demo_lb()),
+            T_POINT,
         );
         assert_eq!(tm.physics_flags & FLAG_LINK_BUDGET_ANOMALY, 0);
+    }
+
+    #[test]
+    fn angular_separation_same_direction_near_zero() {
+        let sep = angular_separation_deg(90.0, 45.0, 90.0, 45.0).expect("sep");
+        assert!(sep < 1e-9, "sep={sep}");
+    }
+
+    #[test]
+    fn angular_separation_orthogonal_ninety_deg() {
+        let sep = angular_separation_deg(0.0, 0.0, 90.0, 0.0).expect("sep");
+        assert!((sep - 90.0).abs() < 1e-6, "sep={sep}");
+    }
+
+    #[test]
+    fn pointing_within_t_point_no_bit3() {
+        let mut tm = dummy_tm();
+        let s = TrackingState {
+            azimuth_deg: 90.0,
+            elevation_deg: 45.0,
+            range_km: 4000.0,
+            range_rate_km_s: 0.0,
+        };
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            437e6,
+            RfMetadata {
+                measured_carrier_hz: None,
+                measured_rx_power_dbm: None,
+                measured_azimuth_deg: Some(90.1),
+                measured_elevation_deg: Some(45.0),
+            },
+            150.0,
+            0.0,
+            None,
+            T_POINT,
+        );
+        assert_eq!(tm.physics_flags & FLAG_POINTING_ANOMALY, 0);
+    }
+
+    #[test]
+    fn pointing_exceeds_t_point_sets_bit3() {
+        let mut tm = dummy_tm();
+        let s = TrackingState {
+            azimuth_deg: 90.0,
+            elevation_deg: 45.0,
+            range_km: 4000.0,
+            range_rate_km_s: 0.0,
+        };
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            437e6,
+            RfMetadata {
+                measured_carrier_hz: None,
+                measured_rx_power_dbm: None,
+                measured_azimuth_deg: Some(92.0),
+                measured_elevation_deg: Some(45.0),
+            },
+            150.0,
+            0.0,
+            None,
+            T_POINT,
+        );
+        assert!(tm.physics_flags & FLAG_POINTING_ANOMALY != 0);
+    }
+
+    #[test]
+    fn pointing_only_azimuth_skips_no_bit3() {
+        let mut tm = dummy_tm();
+        let s = TrackingState {
+            azimuth_deg: 90.0,
+            elevation_deg: 45.0,
+            range_km: 4000.0,
+            range_rate_km_s: 0.0,
+        };
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            437e6,
+            RfMetadata {
+                measured_carrier_hz: None,
+                measured_rx_power_dbm: None,
+                measured_azimuth_deg: Some(200.0),
+                measured_elevation_deg: None,
+            },
+            150.0,
+            0.0,
+            None,
+            T_POINT,
+        );
+        assert_eq!(tm.physics_flags & FLAG_POINTING_ANOMALY, 0);
+    }
+
+    #[test]
+    fn non_finite_pointing_tolerance_skips_pointing() {
+        let mut tm = dummy_tm();
+        let s = TrackingState {
+            azimuth_deg: 90.0,
+            elevation_deg: 45.0,
+            range_km: 4000.0,
+            range_rate_km_s: 0.0,
+        };
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            437e6,
+            RfMetadata {
+                measured_carrier_hz: None,
+                measured_rx_power_dbm: None,
+                measured_azimuth_deg: Some(200.0),
+                measured_elevation_deg: Some(45.0),
+            },
+            150.0,
+            0.0,
+            None,
+            0.0,
+        );
+        assert_eq!(tm.physics_flags & FLAG_POINTING_ANOMALY, 0);
     }
 }

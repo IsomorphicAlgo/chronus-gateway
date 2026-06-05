@@ -26,6 +26,8 @@ minimum_elevation_deg = 0.0
 # tx_gain_dbi = 2.0
 # rx_gain_dbi = 5.0
 # link_budget_tolerance_db = 3.0
+# Pointing residual tolerance (CV-2 / T-POINT); optional — default 0.25°.
+# pointing_tolerance_deg = 0.25
 
 # Public reference ISS (ZARYA) element set — synthetic/public data only (see README / Methodology).
 tle_inline = """

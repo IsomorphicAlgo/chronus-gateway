@@ -6,9 +6,9 @@ silently rewrite history (mark superseded entries). Required reading + maintenan
 contributor expectations in `README.md` (keep this file current when decisions change).
 
 > Status: **M1–M8** complete. **CV-0** charter is documented in
-> [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md) and **D-016**.
-> **Gate CV-0** is approved; **CV-1** (free-space link budget, bit 2) is **implemented** — **Gate CV-1**
-> pending owner sign-off before **CV-2**.
+> [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md) and **D-016**; **Gate CV-0** is approved.
+> **Gate CV-1** is approved; **CV-2** (pointing residual, bit 3) is **implemented** — **Gate CV-2**
+> pending owner sign-off before **CV-3**.
 
 ---
 
@@ -59,6 +59,7 @@ vs WGS84 geodetic). Adequate for foundation/look-angle/Doppler work; revisit pre
 `EPHEMERUST_INTEGRATION_PLAN.md`. If third-party builds ever matter, switch to a pinned git `rev`
 or a crates.io version (and update this entry).
 **Reproducibility:** `0.x` crate — pin intentionally and bump deliberately on breaking minors.
+**CI:** `.github/workflows/ci.yml` always clones **`IsomorphicAlgo/Ephemerust`** (not `github.repository_owner`) into a sibling directory so fork pull requests still resolve `../Ephemerust`; `actions/checkout@v5` avoids deprecated Node 20 runners for the checkout action.
 
 ### D-006 — MSRV 1.88 (advisory), no forced toolchain pin yet
 **Decision:** Set `rust-version = "1.88"` in `[workspace.package]` to match Ephemerust's MSRV;
@@ -204,7 +205,7 @@ config only (TLE files remain subject to `max_datagram_size` on the UDP path, un
 ### D-016 — Extended co-validation charter (CV-0; `physics_flags`, `RfMetadata`, tolerances)
 **Decision:** Freeze contracts for post-M4 co-validation work (**CV-1…CV-4** in
 [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md)). This entry **supplements**
-D-012; it does not change shipped Doppler/elevation behavior. **CV-1** implements bit 2 per this charter.
+D-012; it does not change shipped Doppler/elevation behavior. **CV-1** implements bit 2; **CV-2** implements bit 3 per this charter.
 
 **`physics_flags` (u8) — bit assignment**
 
@@ -213,7 +214,7 @@ D-012; it does not change shipped Doppler/elevation behavior. **CV-1** implement
 | 0 | `0x01` | Doppler anomaly (`FLAG_DOPPLER_ANOMALY`) | M4 (shipped) |
 | 1 | `0x02` | Below minimum elevation (`FLAG_BELOW_HORIZON`) | M4 (shipped) |
 | 2 | `0x04` | Link budget: measured received power vs **free-space** prediction; anomaly if \(\|P_{rx,\mathrm{meas}} - P_{rx,\mathrm{pred}}\| >\) **T-RSSI** | CV-1 (**shipped**) |
-| 3 | `0x08` | Pointing: great-circle separation between measured and computed (az, el) \(>\) **T-POINT** | CV-2 |
+| 3 | `0x08` | Pointing: great-circle separation between measured and computed (az, el) \(>\) **T-POINT** | CV-2 (**shipped**) |
 | 4 | `0x10` | EPS / array current vs toy model from sun geometry + decoded TM | CV-4 |
 | 5 | `0x20` | Thermal scalar vs crude sun-angle proxy band (**T-THERMAL**) | CV-4 |
 | 6–7 | `0x40`–`0x80` | **Reserved** — do not assign without updating this table and `TEST_PLAN.md` | — |
@@ -253,6 +254,17 @@ when `RfMetadata::measured_rx_power_dbm` is `Some` and outside **T-RSSI** (see `
 bounded and NaN-safe.
 **Tested by:** `validate` link-budget unit tests and `config` validation for new station fields.
 
+### D-018 — Antenna pointing residual co-validation (CV-2)
+**Decision:** Extend `RfMetadata` with optional `measured_azimuth_deg` / `measured_elevation_deg`; add
+`validate::angular_separation_deg` (ENU unit vectors, great-circle angle). `apply_physics_validation`
+takes `pointing_tolerance_deg` (**T-POINT**, default **0.25°** from `StationConfig`); when both
+measured angles are `Some` and finite, set bit 3 (`FLAG_POINTING_ANOMALY`) if separation **strictly exceeds**
+the tolerance. Skip when either angle is missing, non-finite, or tolerance is not finite and positive.
+**Why:** Encoder vs computed boresight check from the design roadmap without SPICE-grade attitude;
+matches `TrackingState` azimuth (clockwise from north) / elevation (above horizon) convention.
+**Tested by:** `validate` unit tests (`angular_separation_*`, pointing in/out of band, skip paths) and
+`config` validation for `pointing_tolerance_deg`.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -277,4 +289,4 @@ External works this project builds on or is inspired by (keep current; attribute
 
 ---
 
-*Last updated: 2026-06-04.*
+*Last updated: 2026-06-03.*

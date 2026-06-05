@@ -69,6 +69,7 @@ fn bench_apply_physics_validation(c: &mut Criterion) {
                 150.0,
                 0.0,
                 Some(lb),
+                0.25,
             );
             black_box(t.physics_flags);
         })

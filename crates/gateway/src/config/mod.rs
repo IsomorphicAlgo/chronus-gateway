@@ -103,6 +103,9 @@ pub struct StationConfig {
     /// Maximum allowed \|measured − predicted\| received power for the link-budget check (dB).
     /// Default **3 dB** — see `TEST_PLAN.md` (**T-RSSI**) and `Methodology.md` D-016.
     pub link_budget_tolerance_db: f64,
+    /// Great-circle angular tolerance (degrees) for measured vs computed azimuth/elevation (**CV-2** / **T-POINT**).
+    /// Default **0.25°** — see `TEST_PLAN.md` and `Methodology.md` D-016.
+    pub pointing_tolerance_deg: f64,
 }
 
 impl Default for StationConfig {
@@ -121,6 +124,7 @@ impl Default for StationConfig {
             tx_gain_dbi: 2.0,
             rx_gain_dbi: 5.0,
             link_budget_tolerance_db: 3.0,
+            pointing_tolerance_deg: 0.25,
         }
     }
 }
@@ -152,6 +156,9 @@ pub enum ConfigError {
     /// Link-budget tolerance (dB) is not a finite value greater than zero.
     #[error("link budget tolerance {0} dB is invalid (expected a finite value > 0)")]
     InvalidLinkBudgetTolerance(f64),
+    /// Pointing tolerance (degrees) is not a finite value greater than zero (**T-POINT** / CV-2).
+    #[error("pointing tolerance {0}° is invalid (expected a finite value > 0)")]
+    InvalidPointingTolerance(f64),
     /// A link-budget power or gain field is non-finite.
     #[error("link budget field `{field}` is invalid (expected a finite value)")]
     InvalidLinkBudgetField {
@@ -226,6 +233,11 @@ impl StationConfig {
         if !self.link_budget_tolerance_db.is_finite() || self.link_budget_tolerance_db <= 0.0 {
             return Err(ConfigError::InvalidLinkBudgetTolerance(
                 self.link_budget_tolerance_db,
+            ));
+        }
+        if !self.pointing_tolerance_deg.is_finite() || self.pointing_tolerance_deg <= 0.0 {
+            return Err(ConfigError::InvalidPointingTolerance(
+                self.pointing_tolerance_deg,
             ));
         }
         Ok(())
@@ -332,6 +344,15 @@ mod tests {
                 field: "tx_power_dbm",
                 ..
             })
+        ));
+
+        let bad_point = StationConfig {
+            pointing_tolerance_deg: 0.0,
+            ..Default::default()
+        };
+        assert!(matches!(
+            bad_point.validate(),
+            Err(ConfigError::InvalidPointingTolerance(_))
         ));
     }
 

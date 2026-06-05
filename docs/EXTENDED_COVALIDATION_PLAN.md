@@ -34,7 +34,7 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner sign-off required to adv
 | 0 | `0x01` | Doppler anomaly | M4 (shipped) |
 | 1 | `0x02` | Below minimum elevation | M4 (shipped) |
 | 2 | `0x04` | Link budget / received power vs free-space prediction | CV-1 |
-| 3 | `0x08` | Pointing residual (measured vs computed az/el, **T-POINT**) | CV-2 |
+| 3 | `0x08` | Pointing residual (measured vs computed az/el, **T-POINT**) | CV-2 (shipped) |
 | 4 | `0x10` | EPS / array current vs toy sun model (**T-EPS**) | CV-4 |
 | 5 | `0x20` | Thermal vs sun-angle proxy (**T-THERMAL**) | CV-4 |
 | 6–7 | `0x40`–`0x80` | Reserved | — |
@@ -59,7 +59,7 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner sign-off required to adv
 
 **Test gate:** `cargo test` green; `cargo clippy --all-targets` clean.
 
-**Gate CV-1:** `[ ]` Owner approves milestone — **only then** start **CV-2**. *(Implementation landed; governance sign-off pending.)*
+**Gate CV-1:** `[x]` Owner approved milestone — **CV-2** implemented.
 
 ---
 
@@ -69,11 +69,11 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner sign-off required to adv
 
 **Deliverables**
 
-- [ ] **`RfMetadata`** — Optional `measured_azimuth_deg`, `measured_elevation_deg` (synthetic servo / tracking receiver).
-- [ ] **Angular separation** — Spherical geometry helper (unit-tested independently of propagator).
-- [ ] **`physics_flags`** — New bit (e.g. bit 3) per CV-0 charter.
-- [ ] **Tests** — Below threshold, above threshold, horizon edge cases, non-finite skip; `TEST_PLAN.md` **CV-2**.
-- [ ] **Docs** — `validate` module table + README one-liner.
+- [x] **`RfMetadata`** — Optional `measured_azimuth_deg`, `measured_elevation_deg` (synthetic servo / tracking receiver).
+- [x] **Angular separation** — Spherical geometry helper (unit-tested independently of propagator).
+- [x] **`physics_flags`** — Bit 3 per CV-0 charter (`FLAG_POINTING_ANOMALY`).
+- [x] **Tests** — Below threshold, above threshold, partial measurements skip, zero tolerance skip; `TEST_PLAN.md` **CV-2**.
+- [x] **Docs** — `validate` module table + README + **D-018** in `Methodology.md`; optional `station.pointing_tolerance_deg` in TOML.
 
 **Test gate:** `cargo test` green; clippy clean.
 

@@ -42,7 +42,7 @@ pub struct OpenMctRealtimeMessageV1 {
     pub apid: u16,
     pub seq_count: u16,
     pub received_at: chrono::DateTime<chrono::Utc>,
-    /// Bitfield per D-016 / `validate` module docs (M4 + planned CV-1…CV-4).
+    /// Bitfield per D-016 / `validate` module docs (M4 + CV-1 + CV-2; CV-3…CV-4 planned).
     pub physics_flags: u8,
     pub source: String,
     pub elevation_deg: Option<f64>,
@@ -215,6 +215,7 @@ fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
             station.doppler_tolerance_hz,
             station.minimum_elevation_deg,
             link_budget,
+            station.pointing_tolerance_deg,
         );
     }
 

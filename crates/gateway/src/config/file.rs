@@ -109,6 +109,8 @@ struct StationToml {
     rx_gain_dbi: Option<f64>,
     #[serde(default)]
     link_budget_tolerance_db: Option<f64>,
+    #[serde(default)]
+    pointing_tolerance_deg: Option<f64>,
     tle_inline: Option<String>,
     tle_file: Option<PathBuf>,
 }
@@ -139,6 +141,9 @@ impl TryFrom<StationToml> for StationConfig {
             link_budget_tolerance_db: t
                 .link_budget_tolerance_db
                 .unwrap_or(def.link_budget_tolerance_db),
+            pointing_tolerance_deg: t
+                .pointing_tolerance_deg
+                .unwrap_or(def.pointing_tolerance_deg),
         })
     }
 }
