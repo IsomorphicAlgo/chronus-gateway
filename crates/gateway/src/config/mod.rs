@@ -91,6 +91,18 @@ pub struct StationConfig {
     /// [`FLAG_BELOW_HORIZON`](crate::validate::FLAG_BELOW_HORIZON). Default `0` = at or above the
     /// mathematical horizon is OK; negative values allow a refraction / mask margin.
     pub minimum_elevation_deg: f64,
+
+    /// Synthetic **spacecraft transmit** power at the feed before the transmit antenna (dBm).
+    /// Used only for the free-space **link-budget** check (CV-1 / **T-RSSI**); not calibrated to
+    /// any real mission.
+    pub tx_power_dbm: f64,
+    /// Transmit antenna gain (dBi), synthetic default.
+    pub tx_gain_dbi: f64,
+    /// Receive antenna gain at the ground station (dBi), synthetic default.
+    pub rx_gain_dbi: f64,
+    /// Maximum allowed \|measured − predicted\| received power for the link-budget check (dB).
+    /// Default **3 dB** — see `TEST_PLAN.md` (**T-RSSI**) and `Methodology.md` D-016.
+    pub link_budget_tolerance_db: f64,
 }
 
 impl Default for StationConfig {
@@ -104,6 +116,11 @@ impl Default for StationConfig {
             min_recompute_interval_ms: 10,
             doppler_tolerance_hz: 150.0,
             minimum_elevation_deg: 0.0,
+            // Synthetic demo link: ~1 W transmit + modest gains — not a real spacecraft EIRP.
+            tx_power_dbm: 30.0,
+            tx_gain_dbi: 2.0,
+            rx_gain_dbi: 5.0,
+            link_budget_tolerance_db: 3.0,
         }
     }
 }
@@ -132,6 +149,17 @@ pub enum ConfigError {
     /// Minimum elevation threshold is non-finite or outside `[-90, 90]`.
     #[error("minimum elevation {0}° is invalid (expected a finite value in [-90, 90])")]
     InvalidMinimumElevation(f64),
+    /// Link-budget tolerance (dB) is not a finite value greater than zero.
+    #[error("link budget tolerance {0} dB is invalid (expected a finite value > 0)")]
+    InvalidLinkBudgetTolerance(f64),
+    /// A link-budget power or gain field is non-finite.
+    #[error("link budget field `{field}` is invalid (expected a finite value)")]
+    InvalidLinkBudgetField {
+        /// Which field failed validation.
+        field: &'static str,
+        /// The offending value.
+        value: f64,
+    },
     /// A TLE file could not be read.
     #[error("failed to read TLE file {path}: {source}")]
     TleRead {
@@ -176,6 +204,29 @@ impl StationConfig {
             if text.trim().is_empty() {
                 return Err(ConfigError::EmptyTle);
             }
+        }
+        if !self.tx_power_dbm.is_finite() {
+            return Err(ConfigError::InvalidLinkBudgetField {
+                field: "tx_power_dbm",
+                value: self.tx_power_dbm,
+            });
+        }
+        if !self.tx_gain_dbi.is_finite() {
+            return Err(ConfigError::InvalidLinkBudgetField {
+                field: "tx_gain_dbi",
+                value: self.tx_gain_dbi,
+            });
+        }
+        if !self.rx_gain_dbi.is_finite() {
+            return Err(ConfigError::InvalidLinkBudgetField {
+                field: "rx_gain_dbi",
+                value: self.rx_gain_dbi,
+            });
+        }
+        if !self.link_budget_tolerance_db.is_finite() || self.link_budget_tolerance_db <= 0.0 {
+            return Err(ConfigError::InvalidLinkBudgetTolerance(
+                self.link_budget_tolerance_db,
+            ));
         }
         Ok(())
     }
@@ -260,6 +311,27 @@ mod tests {
         assert!(matches!(
             bad_el_thresh.validate(),
             Err(ConfigError::InvalidMinimumElevation(_))
+        ));
+
+        let bad_link_tol = StationConfig {
+            link_budget_tolerance_db: 0.0,
+            ..Default::default()
+        };
+        assert!(matches!(
+            bad_link_tol.validate(),
+            Err(ConfigError::InvalidLinkBudgetTolerance(_))
+        ));
+
+        let nan_tx = StationConfig {
+            tx_power_dbm: f64::NAN,
+            ..Default::default()
+        };
+        assert!(matches!(
+            nan_tx.validate(),
+            Err(ConfigError::InvalidLinkBudgetField {
+                field: "tx_power_dbm",
+                ..
+            })
         ));
     }
 

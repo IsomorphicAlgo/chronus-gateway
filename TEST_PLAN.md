@@ -128,6 +128,15 @@ behavior change beyond documenting contracts.
 
 **Gate CV-0:** `[x]` **Owner approval** obtained — **CV-1** implementation may proceed (see extension plan).
 
+### CV-1 — Link budget (free-space, **T-RSSI**)
+- [x] **Unit:** `free_space_path_loss_matches_manual`; in-band / out-of-band vs **T-RSSI**
+      (`link_budget_in_band_no_flag_t_rssi`, `link_budget_out_of_band_sets_bit2`).
+- [x] **Skip paths:** no measured Rx; NaN measured; zero range — no bit 2
+      (`no_measured_rx_skips_link_budget_even_if_would_be_bad`, `nan_measured_rx_skips_link_no_panic`,
+      `zero_range_skips_link_budget_no_flag`).
+- [x] **Config:** invalid `link_budget_tolerance_db` and non-finite `tx_power_dbm` rejected
+      (`rejects_out_of_range_fields`).
+
 ---
 
 ## Tolerance Register (justify every number)
@@ -138,7 +147,7 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | T-DOPPLER | Carrier Δf deviation | ±150 Hz | **Locked (M4 / OD-C).** PDF atmospheric/ionospheric drift band; Ephemerust `range_rate_km_s` is validated to ~0.25 km/s vs central difference — at 437.5 MHz that is sub-kHz from propagation math, so ±150 Hz is conservative for physics-only error. |
 | T-ELEVATION | Minimum elevation for valid TM | Configurable (`minimum_elevation_deg`, default **0°**) | Flag when `elevation_deg < threshold` (strict inequality). Default: at or above mathematical horizon passes; use negative threshold for refraction margin. |
 | T-RANGERATE | Range-rate vs numerical | 0.25 km/s | Matches Ephemerust's central-difference check (reused convention). |
-| T-RSSI | \(\|P_{rx,\mathrm{meas}} - P_{rx,\mathrm{pred}}\|\) on **free-space** link budget | **±3 dB** | **Charter (CV-0 / D-016).** Matches design-paper margin for a **synthetic** dBm contract. **Caveat:** v1 prediction is **free-space only** (no rain, ionosphere, cable, or pointing loss folded into \(P_{rx,\mathrm{pred}}\)); measured values must use the same calibration fiction in tests/HIL. Revisit after CV-1 if a richer budget is justified. |
+| T-RSSI | \(\|P_{rx,\mathrm{meas}} - P_{rx,\mathrm{pred}}\|\) on **free-space** link budget | **±3 dB** | **Locked for v1 (CV-1 / D-017).** Matches design-paper margin for a **synthetic** dBm contract. **Caveat:** prediction is **free-space only** (no rain, ionosphere, cable, or pointing loss in \(P_{rx,\mathrm{pred}}\)); measured values must use the same calibration fiction in tests/HIL. Revisit if a richer budget is justified. |
 | T-POINT | Great-circle angular separation between measured \((Az,El)\) and computed boresight | **0.25°** | **Charter (CV-0 / D-016).** Design-paper encoder vs computed residual; implementation in CV-2 uses spherical geometry. Revisit if station mount flex or refraction dominates in a given demo. |
 | T-EPS | Array current vs toy \(I_{\max}\cos\theta\) model (illumination + optional eclipse clamp) | **±10%** of \(I_{\max}\) near full sun | **Provisional (CV-0).** Placeholder for **CV-4** toy EPS check; rebaseline when sun model + decoded TM layout are fixed (Ephemerust-style numeric cross-check in tests). |
 | T-THERMAL | Panel or bus temperature vs crude band tied to sun-angle proxy | **±10 K** vs model midpoint | **Provisional (CV-0).** Placeholder for **CV-4** demo thermal band — **not** flight thermal analysis; tighten or replace when HIL emits self-consistent synthetic physics. |
@@ -148,8 +157,8 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 ## Status / counts (keep current)
 | Layer | Count | Notes |
 |-------|-------|-------|
-| Unit tests | 33 | `ccsds` (8 incl. proptest) + `config` (12) + `propagator` (4) + `validate` (9). |
+| Unit tests | 39 | `ccsds` (8 incl. proptest) + `config` (12) + `propagator` (4) + `validate` (15). |
 | Integration tests | 9 | `crates/gateway/tests/*.rs` (7) + `crates/chronus-hil-sim/tests/hil_ingest.rs` (2). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-03.*
+*Last updated: 2026-06-04.*

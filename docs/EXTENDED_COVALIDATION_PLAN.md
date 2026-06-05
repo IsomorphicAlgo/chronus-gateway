@@ -43,23 +43,23 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner sign-off required to adv
 
 ---
 
-## CV-1 — Link budget / RSSI co-validation (free-space, ±3 dB)
+## CV-1 — Link budget / RSSI co-validation (free-space, ±3 dB) — **implemented**
 
 **Objective:** Compute expected received power from station + range + nominal frequency; compare to optional measured power; set **bit 2** on anomaly.
 
 **Deliverables**
 
-- [ ] **Physics** — Free-space path loss from `TrackingState::range_km` and wavelength from `nominal_carrier_hz`; combine with configurable `P_tx`, `G_tx`, `G_rx` (dBm / dBi, synthetic defaults).
-- [ ] **`RfMetadata`** — Optional measured receive power (dBm) with clear naming (e.g. `measured_rx_power_dbm`).
-- [ ] **`StationConfig` / TOML** — New optional section or fields; merge + validate + `gateway.example.toml` + file unit tests.
-- [ ] **`apply_physics_validation`** — Skip when inputs missing or non-finite; never panic on untrusted floats.
-- [ ] **Rename / document bit 2** — Treat `FLAG_RSSI_RESERVED` as the live **link-budget anomaly** flag (keep const name for API stability **or** add alias + deprecation note in one release).
-- [ ] **Tests** — Golden numeric cases + edge (zero/negative range skip); update `TEST_PLAN.md` M4 / new subsection **CV-1**.
-- [ ] **`Methodology.md`** — Rationale for free-space-only v1.
+- [x] **Physics** — Free-space path loss from `TrackingState::range_km` and wavelength from `nominal_carrier_hz`; combine with configurable `P_tx`, `G_tx`, `G_rx` (dBm / dBi, synthetic defaults).
+- [x] **`RfMetadata`** — Optional measured receive power (dBm) with clear naming (`measured_rx_power_dbm`).
+- [x] **`StationConfig` / TOML** — New optional fields; merge + validate + `gateway.example.toml` + `config` unit tests.
+- [x] **`apply_physics_validation`** — Skip when inputs missing or non-finite; never panic on untrusted floats.
+- [x] **Rename / document bit 2** — `FLAG_LINK_BUDGET_ANOMALY` + legacy `FLAG_RSSI_RESERVED` alias.
+- [x] **Tests** — Golden / in-band / out-of-band / NaN / zero-range; `TEST_PLAN.md` **CV-1**.
+- [x] **`Methodology.md`** — **D-017**; free-space-only v1 rationale in `validate` module docs.
 
-**Test gate:** `cargo test` green; new unit tests for link-budget pass/fail; `cargo clippy --all-targets` clean.
+**Test gate:** `cargo test` green; `cargo clippy --all-targets` clean.
 
-**Gate CV-1:** `[ ]` Owner approves behavior + tolerances — **only then** start CV-2.
+**Gate CV-1:** `[ ]` Owner approves milestone — **only then** start **CV-2**. *(Implementation landed; governance sign-off pending.)*
 
 ---
 

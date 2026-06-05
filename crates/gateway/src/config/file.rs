@@ -101,6 +101,14 @@ struct StationToml {
     min_recompute_interval_ms: u64,
     doppler_tolerance_hz: f64,
     minimum_elevation_deg: f64,
+    #[serde(default)]
+    tx_power_dbm: Option<f64>,
+    #[serde(default)]
+    tx_gain_dbi: Option<f64>,
+    #[serde(default)]
+    rx_gain_dbi: Option<f64>,
+    #[serde(default)]
+    link_budget_tolerance_db: Option<f64>,
     tle_inline: Option<String>,
     tle_file: Option<PathBuf>,
 }
@@ -115,6 +123,7 @@ impl TryFrom<StationToml> for StationConfig {
             (Some(text), None) => TleSource::Inline(text.clone()),
             (None, Some(path)) => TleSource::File(path.clone()),
         };
+        let def = StationConfig::default();
         Ok(StationConfig {
             latitude_deg: t.latitude_deg,
             longitude_deg: t.longitude_deg,
@@ -124,6 +133,12 @@ impl TryFrom<StationToml> for StationConfig {
             min_recompute_interval_ms: t.min_recompute_interval_ms,
             doppler_tolerance_hz: t.doppler_tolerance_hz,
             minimum_elevation_deg: t.minimum_elevation_deg,
+            tx_power_dbm: t.tx_power_dbm.unwrap_or(def.tx_power_dbm),
+            tx_gain_dbi: t.tx_gain_dbi.unwrap_or(def.tx_gain_dbi),
+            rx_gain_dbi: t.rx_gain_dbi.unwrap_or(def.rx_gain_dbi),
+            link_budget_tolerance_db: t
+                .link_budget_tolerance_db
+                .unwrap_or(def.link_budget_tolerance_db),
         })
     }
 }

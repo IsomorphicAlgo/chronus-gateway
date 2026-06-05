@@ -28,7 +28,7 @@ use crate::ingest::RawFrame;
 use crate::metrics::GatewayMetricsSnapshot;
 use crate::propagator::TrackingState;
 use crate::state::SharedGateway;
-use crate::validate::{apply_physics_validation, RfMetadata};
+use crate::validate::{apply_physics_validation, LinkBudgetStationParams, RfMetadata};
 
 /// JSON envelope for each WebSocket text message (one line per telemetry frame).
 ///
@@ -201,6 +201,12 @@ fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
         .and_then(|t| t.tracking_state(tm.received_at).ok());
 
     if let Some(s) = physics.as_ref() {
+        let link_budget = Some(LinkBudgetStationParams {
+            tx_power_dbm: station.tx_power_dbm,
+            tx_gain_dbi: station.tx_gain_dbi,
+            rx_gain_dbi: station.rx_gain_dbi,
+            tolerance_db: station.link_budget_tolerance_db,
+        });
         apply_physics_validation(
             &mut tm,
             s,
@@ -208,6 +214,7 @@ fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
             RfMetadata::default(),
             station.doppler_tolerance_hz,
             station.minimum_elevation_deg,
+            link_budget,
         );
     }
 

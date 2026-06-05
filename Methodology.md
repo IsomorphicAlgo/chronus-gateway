@@ -7,7 +7,8 @@ contributor expectations in `README.md` (keep this file current when decisions c
 
 > Status: **M1–M8** complete. **CV-0** charter is documented in
 > [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md) and **D-016**.
-> **Gate CV-0** is approved; **CV-1** may proceed under the extension plan.
+> **Gate CV-0** is approved; **CV-1** (free-space link budget, bit 2) is **implemented** — **Gate CV-1**
+> pending owner sign-off before **CV-2**.
 
 ---
 
@@ -146,9 +147,12 @@ state, counting-mock trait-swap + throttle).
   Default tolerance **150 Hz** on `StationConfig` (`T-DOPPLER` in `TEST_PLAN.md`).
 - **Elevation:** if `elevation_deg < minimum_elevation_deg`, set bit 1. Default threshold **0°**
   (strict: below mathematical horizon is anomalous). Negative thresholds allow a refraction mask.
-- **Bit 2:** reserved for RSSI / link budget (`FLAG_RSSI_RESERVED`); not set in this milestone.
-  **Charter:** final semantics and mask assignment for bits 2–7 are **D-016** / CV-0
-  ([`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md)); CV-1 activates bit 2.
+- **Bit 2 (link budget, CV-1 / D-017):** optional `RfMetadata::measured_rx_power_dbm` (dBm) vs
+  free-space \(P_{rx,\mathrm{pred}}\) from `StationConfig` synthetic `tx_power_dbm`, `tx_gain_dbi`,
+  `rx_gain_dbi`, slant range, and carrier wavelength; if `|P_{rx,\mathrm{meas}} - P_{rx,\mathrm{pred}}| >`
+  `link_budget_tolerance_db` (default **3 dB**, **T-RSSI**), set **`FLAG_LINK_BUDGET_ANOMALY`**
+  (same value as legacy **`FLAG_RSSI_RESERVED`**). `None` measured power skips the check.
+  **Charter:** bits 3–7 remain per **D-016** / [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md).
 - **`RfMetadata::measured_carrier_hz == None`:** Doppler check skipped (no bit 0); production SDR
   wiring comes with M5 or a side channel.
 **Why OD-C is closed:** Ephemerust documents `range_rate_km_s` to ~0.25 km/s vs a 1 s central
@@ -157,8 +161,8 @@ alone. The ±150 Hz band is therefore dominated by atmosphere, receiver chain, a
 not SGP4 truncation at the teaching-grade arcminute level (D-004).
 **`TelemetryFrame`:** `raw` and `payload_len` are `pub(crate)` so `validate` unit tests can build
 minimal frames without exposing internals on the public API.
-**Tested by:** nine `validate` unit tests (in/out-of-band Doppler, horizon, combined flags, NaN-safe
-skip, formula identity).
+**Tested by:** `validate` unit tests (Doppler, horizon, link budget / **T-RSSI**, combined flags,
+NaN-safe skips, formula identity); see also **D-017**.
 
 ### D-013 — Web distribution stack + Open MCT JSON contract (Milestone 5; resolves OD-B)
 **Decision:** Use **Axum** (`axum` 0.7 with `ws`) + `tower-http` tracing for HTTP and WebSocket.
@@ -200,7 +204,7 @@ config only (TLE files remain subject to `max_datagram_size` on the UDP path, un
 ### D-016 — Extended co-validation charter (CV-0; `physics_flags`, `RfMetadata`, tolerances)
 **Decision:** Freeze contracts for post-M4 co-validation work (**CV-1…CV-4** in
 [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md)). This entry **supplements**
-D-012; it does not change shipped Doppler/elevation behavior until CV milestones land.
+D-012; it does not change shipped Doppler/elevation behavior. **CV-1** implements bit 2 per this charter.
 
 **`physics_flags` (u8) — bit assignment**
 
@@ -208,7 +212,7 @@ D-012; it does not change shipped Doppler/elevation behavior until CV milestones
 |-----|------|-----------|-----------|
 | 0 | `0x01` | Doppler anomaly (`FLAG_DOPPLER_ANOMALY`) | M4 (shipped) |
 | 1 | `0x02` | Below minimum elevation (`FLAG_BELOW_HORIZON`) | M4 (shipped) |
-| 2 | `0x04` | Link budget: measured received power vs **free-space** prediction; anomaly if \(\|P_{rx,\mathrm{meas}} - P_{rx,\mathrm{pred}}\| >\) **T-RSSI** | CV-1 |
+| 2 | `0x04` | Link budget: measured received power vs **free-space** prediction; anomaly if \(\|P_{rx,\mathrm{meas}} - P_{rx,\mathrm{pred}}\| >\) **T-RSSI** | CV-1 (**shipped**) |
 | 3 | `0x08` | Pointing: great-circle separation between measured and computed (az, el) \(>\) **T-POINT** | CV-2 |
 | 4 | `0x10` | EPS / array current vs toy model from sun geometry + decoded TM | CV-4 |
 | 5 | `0x20` | Thermal scalar vs crude sun-angle proxy band (**T-THERMAL**) | CV-4 |
@@ -240,6 +244,15 @@ alongside the existing `physics_flags` for one release cycle; do **not** repurpo
 **Why:** Unblocks implementation without thrashing Open MCT JSON or the stable bitfield; keeps ITAR/EAR
 posture (no real mission parameters) while matching the design paper’s roadmap in controlled slices.
 
+### D-017 — Free-space link budget co-validation (CV-1)
+**Decision:** Implement `validate::free_space_path_loss_db`, `validate::expected_rx_power_dbm`, and extend
+`apply_physics_validation` with `Option<LinkBudgetStationParams>` (in `validate`) built from `StationConfig`
+(`tx_power_dbm`, `tx_gain_dbi`, `rx_gain_dbi`, `link_budget_tolerance_db`; synthetic defaults). Set bit 2
+when `RfMetadata::measured_rx_power_dbm` is `Some` and outside **T-RSSI** (see `TEST_PLAN.md`).
+**Why:** Delivers the chartered CV-1 slice without atmosphere or cable models (v1); keeps the hot path
+bounded and NaN-safe.
+**Tested by:** `validate` link-budget unit tests and `config` validation for new station fields.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -264,4 +277,4 @@ External works this project builds on or is inspired by (keep current; attribute
 
 ---
 
-*Last updated: 2026-06-03.*
+*Last updated: 2026-06-04.*

@@ -21,6 +21,12 @@ min_recompute_interval_ms = 10
 doppler_tolerance_hz = 150.0
 minimum_elevation_deg = 0.0
 
+# Synthetic link-budget parameters (CV-1 / T-RSSI); optional — omitted keys use defaults.
+# tx_power_dbm = 30.0
+# tx_gain_dbi = 2.0
+# rx_gain_dbi = 5.0
+# link_budget_tolerance_db = 3.0
+
 # Public reference ISS (ZARYA) element set — synthetic/public data only (see README / Methodology).
 tle_inline = """
 ISS (ZARYA)

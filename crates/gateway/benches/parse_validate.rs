@@ -7,7 +7,7 @@ use chrono::Utc;
 use chronus_gateway::ccsds::{self, CCSDS_PRIMARY_HEADER_LEN};
 use chronus_gateway::ingest::RawFrame;
 use chronus_gateway::propagator::TrackingState;
-use chronus_gateway::validate::{apply_physics_validation, RfMetadata};
+use chronus_gateway::validate::{apply_physics_validation, LinkBudgetStationParams, RfMetadata};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn tm_bytes(apid: u16, seq: u16, payload: &[u8]) -> Vec<u8> {
@@ -52,6 +52,12 @@ fn bench_apply_physics_validation(c: &mut Criterion) {
         range_rate_km_s: -7.2,
     };
     let nominal = 437_500_000.0_f64;
+    let lb = LinkBudgetStationParams {
+        tx_power_dbm: 30.0,
+        tx_gain_dbi: 2.0,
+        rx_gain_dbi: 5.0,
+        tolerance_db: 3.0,
+    };
     c.bench_function("apply_physics_validation", |b| {
         b.iter(|| {
             let mut t = tm.clone();
@@ -62,6 +68,7 @@ fn bench_apply_physics_validation(c: &mut Criterion) {
                 RfMetadata::default(),
                 150.0,
                 0.0,
+                Some(lb),
             );
             black_box(t.physics_flags);
         })

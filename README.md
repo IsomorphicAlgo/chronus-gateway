@@ -59,7 +59,7 @@ chronus-gateway/
 │   │   ├── config/         Ingest + station types; TOML file loader (`file.rs`, M8)
 │   │   ├── ingest.rs       Asynchronous UDP ingestion loop (RawFrame, stats, shutdown)
 │   │   ├── ccsds.rs        CCSDS Space Packet parsing (TelemetryFrame, validation)
-│   │   ├── validate.rs     Physics–Telemetry Co-Validation (Doppler, elevation, physics_flags)
+│   │   ├── validate.rs     Physics–Telemetry Co-Validation (Doppler, elevation, link budget, `physics_flags`)
 │   │   ├── propagator.rs   OrbitalPropagator trait + Ephemerust-backed implementation
 │   │   ├── http.rs         Axum router: `/health`, metrics, Open MCT WebSocket
 │   │   ├── metrics.rs      Gateway / WebSocket counters (M6)
