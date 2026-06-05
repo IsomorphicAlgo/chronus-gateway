@@ -14,7 +14,7 @@ measured RF and signal parameters disagree with the physics.
 > **Status:** Roadmap through **Milestone 8** is implemented: M1–M7 as before, plus optional **TOML**
 > configuration (`--config` / `CHRONUS_GATEWAY_CONFIG`, `[gateway.example.toml](gateway.example.toml)`).
 > NeXosim HIL notes: `[docs/HIL.md](docs/HIL.md)`.
-> Post-M8 **extended co-validation** (link budget, pointing, subsystem checks): `[docs/EXTENDED_COVALIDATION_PLAN.md](docs/EXTENDED_COVALIDATION_PLAN.md)` — approval-gated **CV-0…CV-4**. **CV-0** charter is in **`Methodology.md` D-016** and `TEST_PLAN.md` (tolerance rows **T-RSSI**, **T-POINT**, **T-EPS**, **T-THERMAL**); **Gate CV-0** is approved — **CV-1** may proceed. See `[BUILD_PLAN.md](BUILD_PLAN.md)`.
+> Post-M8 **extended co-validation** (link budget, pointing, subsystem checks): `[docs/EXTENDED_COVALIDATION_PLAN.md](docs/EXTENDED_COVALIDATION_PLAN.md)` — approval-gated **CV-0…CV-4**. **CV-0** charter is in **`Methodology.md` D-016** and `TEST_PLAN.md` (tolerance rows **T-RSSI**, **T-POINT**, **T-EPS**, **T-THERMAL**); **Gate CV-0** is approved — **CV-1** may proceed. See `[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)`.
 
 ---
 
@@ -73,9 +73,10 @@ chronus-gateway/
 │   ├── src/main.rs        CLI: `[DEST] [FRAMES]` (default `127.0.0.1:7301`, `100`)
 │   └── tests/hil_ingest.rs Milestone 7 smoke + soak vs real `ingest::run`
 ├── docs/
+│   ├── BUILD_PLAN.md       Iterative, stage-gated implementation roadmap
+│   ├── EXTENDED_COVALIDATION_PLAN.md  Post-M8 co-validation milestones (CV-0…CV-4)
 │   └── HIL.md              Manual profiling recipe (gateway metrics)
 ├── Methodology.md          Decision log: the reasoning behind major choices
-├── BUILD_PLAN.md           Iterative, stage-gated implementation roadmap
 └── TEST_PLAN.md            Companion test plan and tolerance register
 ```
 
@@ -115,7 +116,8 @@ Testing is a first-class deliverable. The project follows a layered strategy —
 integration tests over loopback UDP and in-process WebSockets, NeXosim HIL tests in
 `chronus-hil-sim`, doctests, and physics
 co-validation tests with explicitly documented tolerances — enforced at every milestone's stage
-gate. The full strategy and per-milestone test matrix are defined in `[TEST_PLAN.md](TEST_PLAN.md)`.
+gate. The roadmap lives in `[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)`; the full strategy and
+per-milestone test matrix are in `[TEST_PLAN.md](TEST_PLAN.md)`.
 
 ---
 

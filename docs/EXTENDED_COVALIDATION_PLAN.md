@@ -1,6 +1,6 @@
 # Extended Physics–Telemetry Co-Validation — Iterative, Approval-Gated Plan
 
-Companion to [`BUILD_PLAN.md`](../BUILD_PLAN.md) (Milestones M0–M8 **complete**). This document defines **follow-on** work to implement the broader validation ideas from the design paper: link budget / RSSI, antenna pointing residual, and synthetic subsystem checks (EPS / thermal vs sun geometry).
+Companion to [`BUILD_PLAN.md`](BUILD_PLAN.md) (Milestones M0–M8 **complete**). This document defines **follow-on** work to implement the broader validation ideas from the design paper: link budget / RSSI, antenna pointing residual, and synthetic subsystem checks (EPS / thermal vs sun geometry).
 
 **Governance (same as the main roadmap):**
 
@@ -147,7 +147,7 @@ CV-0 (charter) ──▶ CV-1 (link budget) ──▶ CV-2 (pointing)
 
 - Atmospheric / rain fade models, multipath, polarization.
 - Full ECSS PUS / CUC secondary-header parsing for production spacecraft.
-- Nyx-backed high-fidelity ephemeris (remains separate `BUILD_PLAN` / propagator backlog).
+- Nyx-backed high-fidelity ephemeris (remains separate `BUILD_PLAN.md` / propagator backlog in this folder).
 - CelesTrak / Space-Track auto TLE fetch (existing config backlog).
 
 ---

@@ -8,7 +8,7 @@
 //! [`validate`] Physics–Telemetry Co-Validation engine (Milestone 4), and Axum HTTP + WebSocket
 //! distribution with Open MCT–shaped JSON ([`http`], Milestone 5), observability / benches / CI
 //! gates (Milestone 6), the NeXosim HIL workspace crate `chronus-hil-sim` (Milestone 7), and
-//! optional TOML file configuration ([`config::file`], Milestone 8). See `BUILD_PLAN.md`.
+//! optional TOML file configuration ([`config::file`], Milestone 8). See `docs/BUILD_PLAN.md`.
 //! Post-M8 co-validation extensions are chartered in **`Methodology.md` D-016** and
 //! `docs/EXTENDED_COVALIDATION_PLAN.md` (**CV-0…CV-4**; **Gate CV-0** approved; **CV-1** may proceed).
 //!

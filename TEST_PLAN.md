@@ -1,6 +1,6 @@
 # ChronusGateway-RS — Iterative Test Plan
 
-The testing companion to `BUILD_PLAN.md`. It encodes the **Ephemerust testing standard**
+The testing companion to [`docs/BUILD_PLAN.md`](docs/BUILD_PLAN.md). It encodes the **Ephemerust testing standard**
 required by the project's stage-gate protocol: layered tests, documented physics tolerances, deterministic and
 offline, enforced at every stage gate.
 
