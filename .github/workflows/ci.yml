@@ -47,8 +47,9 @@ jobs:
         working-directory: chronus-gateway
         run: cargo clippy --all-targets -- -D warnings
 
+      # Pin a crates.io version that exists (--locked uses the published lockfile). 0.21.3 was never released.
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked --version 0.21.3
+        run: cargo install cargo-audit --locked --version 0.22.1
 
       - name: cargo audit
         working-directory: chronus-gateway
