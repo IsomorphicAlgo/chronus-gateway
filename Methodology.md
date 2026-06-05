@@ -10,6 +10,7 @@ contributor expectations in `README.md` (keep this file current when decisions c
 > **Gate CV-2** is approved; **CV-3** (synthetic HIL TM v1 payload + decoder + APID policy) is **implemented** — **Gate CV-3** approved.
 > **CV-4** (HIL subsystem vs toy Sun proxy) is **implemented** — **Gate CV-4** approved.
 > **CV-5** (HIL ADCS body-rate envelope) is **implemented** — **Gate CV-5** pending owner sign-off.
+> **Showcase track (S0–S4):** roadmap and manual acceptance in [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) + [`docs/Demo_Test.md`](docs/Demo_Test.md); **Gate S-0** approved (2026-06-04).
 
 ---
 
@@ -301,6 +302,35 @@ Toy nadir-fixed illumination: `max(0, −û_sat·û_sun)` with a **spherical W
 **Why:** Uses the existing third HIL scalar for a minimal ADCS sanity flag without expanding the v1 payload; keeps the check independent of the Sun proxy (**CV-4**).
 **Tested by:** `validate::hil_cv5_*`, `config::rejects_invalid_hil_cv4_tolerance` (includes invalid body-rate ceiling).
 
+### D-023 — Operator user guide (`docs/USER_GUIDE.md`)
+**Decision:** Maintain a **user-facing** guide separate from `README.md` (contributor/onboarding
+focus) and from `BUILD_PLAN.md` / `TEST_PLAN.md` (stage-gate and QA contracts). The guide opens with
+a **plain-language** introduction: UDP datagram as one telemetry frame, **CCSDS header as envelope**
+vs **data field as letter**, split between **payload bytes**, optional **`RfMetadata`** (ground
+measurements), and **orbit/station-derived physics**; **Starlink** only as a **public mental model**
+for “dense proprietary TM,” explicitly **not** what Chronus decodes; **synthetic `chronus.hil.tm.v1`**
+called out as a bounded demo. Subsequent sections are to track the same plan files so documentation
+does not fork from tested behavior.
+**Why:** Gives integrators and mission-style readers a single entry point without reading the crate
+graph first; keeps ITAR/EAR posture clear (synthetic examples, public TLEs).
+**Credit:** Guide tone and analogies authored for this repository (AI-assisted draft; owner review).
+
+**Update (2026-06-05):** `docs/USER_GUIDE.md` expanded with **First run** (defaults, TOML, two-terminal
+HIL smoke, health/metrics URLs) and **`physics_flags`** (bit table in operator language, `RfMetadata`
+skip behavior, pointer to **T-\*** register).
+
+### D-024 — Showcase & demo roadmap (`docs/SHOWCASE_PLAN.md`, `docs/Demo_Test.md`)
+**Decision:** Track **demo/delivery** work (Docker/Compose spine, Open MCT or SPA dashboard, replay,
+optional curated public fixtures) in **`docs/SHOWCASE_PLAN.md`** with **owner-gated** stages **S0–S4**
+(same “do not chain milestones” discipline as `BUILD_PLAN` / `EXTENDED_COVALIDATION_PLAN`). Manual and
+semi-automated acceptance lives in **`docs/Demo_Test.md`**. High-level checkboxes and counts hook into
+**`TEST_PLAN.md`** under **Showcase tracks** — **not** mixed into M/CV automated test sections beyond
+references.
+**Why:** Separates **product correctness** (`cargo test`) from **showcase readiness** (reproducible
+operator path, visuals, compliance evidence) without diluting physics gates.
+**Compliance:** Synthetic-first demos; external fixtures only with provenance and owner sign-off per
+**`AGENTS.md`**.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -325,4 +355,4 @@ External works this project builds on or is inspired by (keep current; attribute
 
 ---
 
-*Last updated: 2026-06-03.*
+*Last updated: 2026-06-04.*

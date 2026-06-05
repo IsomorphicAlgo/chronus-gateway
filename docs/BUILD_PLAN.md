@@ -209,4 +209,6 @@ unit tests in `config/file.rs`.
 
 **Extended co-validation (post-M8):** link budget / RSSI, antenna pointing residual, synthetic HIL TM payload (**CV-3**), subsystem vs Sun proxy (**CV-4**), and HIL body-rate envelope (**CV-5**) are tracked under **[`EXTENDED_COVALIDATION_PLAN.md`](EXTENDED_COVALIDATION_PLAN.md)** — same stage-gate rules; **owner approval required between CV milestones** (do not chain). **CV-0** charter is documented (**`../Methodology.md` D-016**, `../TEST_PLAN.md`, `validate` docs); **Gate CV-0** is **approved**; **CV-1…CV-5** are implemented per that plan.
 
-*Last updated: 2026-06-05.*
+**Showcase & demos (orthogonal to M/CV):** one-command demos, Open MCT or SPA dashboard, replay, and optional public fixtures — **[`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md)** with gates **S0–S4** and manual acceptance **[`Demo_Test.md`](Demo_Test.md)**; checklist hooks in **[`../TEST_PLAN.md`](../TEST_PLAN.md#showcase-tracks)**.
+
+*Last updated: 2026-06-04.*
