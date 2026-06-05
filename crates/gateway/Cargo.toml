@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "ChronusGateway-RS: an asynchronous, physics-validated TMTC ground-station gateway in Rust"
+# Showcase/demo assets must live at workspace root (`demo/`), not here — defensive if paths appear
+# inside this crate directory (`Methodology.md` D-025).
+exclude = ["demo", "showcase"]
 
 [dependencies]
 tokio.workspace = true

@@ -7,6 +7,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "NeXosim HIL driver: synthetic spacecraft telemetry as CCSDS TM over UDP (Milestone 7)"
+exclude = ["demo", "showcase"]
 
 [[bin]]
 name = "chronus-hil-sim"

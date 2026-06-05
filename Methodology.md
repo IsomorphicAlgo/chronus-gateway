@@ -331,6 +331,17 @@ operator path, visuals, compliance evidence) without diluting physics gates.
 **Compliance:** Synthetic-first demos; external fixtures only with provenance and owner sign-off per
 **`AGENTS.md`**.
 
+### D-025 — crates.io package vs showcase materials
+**Decision:** Treat **crates.io** as shipping **library/binary source only** inside each member’s
+**crate root** (`crates/gateway/`, `crates/chronus-hil-sim/`). Showcase and booth assets (Compose,
+Open MCT bridge, SPA, large fixtures) live at **workspace root** (e.g. `demo/`) or in a **separate
+download** (GitHub Release zip or sibling repo) — never required inside the published tarball. Both
+publishable crates set **`[package] exclude = ["demo", "showcase"]`** so those directory names are
+dropped if mistakenly created under the crate folder.
+**Why:** `cargo publish` only packages the crate directory; keeping demos out of `crates/*` avoids
+bloat, accidental IP drift, and confusion for dependents who only need the gateway API/binary.
+**Companion:** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) → *Crates.io vs showcase distribution*.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -355,4 +366,4 @@ External works this project builds on or is inspired by (keep current; attribute
 
 ---
 
-*Last updated: 2026-06-04.*
+*Last updated: 2026-06-05.*

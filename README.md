@@ -73,6 +73,7 @@ chronus-gateway/
 │   ├── src/lib.rs          `SpacecraftDemo` + UDP bridge + `run_nexosim_udp_hil`
 │   ├── src/main.rs        CLI: `[DEST] [FRAMES]` (default `127.0.0.1:7301`, `100`)
 │   └── tests/hil_ingest.rs Milestone 7 smoke + soak vs real `ingest::run`
+├── demo/                   Compose + dashboard sources (S1+); **not** shipped inside crates.io packages
 ├── docs/
 │   ├── USER_GUIDE.md       Operator guide (intro, first run, `physics_flags`; grows with plans)
 │   ├── BUILD_PLAN.md       Iterative, stage-gated implementation roadmap
@@ -83,6 +84,14 @@ chronus-gateway/
 ├── Methodology.md          Decision log: the reasoning behind major choices
 └── TEST_PLAN.md            Companion test plan and tolerance register
 ```
+
+### crates.io packages vs this repository
+
+Publishing **`chronus-gateway`** (and **`chronus-hil-sim`**) to [crates.io](https://crates.io) uploads **only**
+the source tree under `crates/<name>/` — not `docs/`, `demo/`, or the root `README.md`. Showcase
+materials should stay under **`demo/`** (or a **GitHub Release zip** / sibling repo) so dependents
+who `cargo add chronus-gateway` get a **lean library/binary** without demo assets. Policy and
+`exclude` guards: [`Methodology.md`](Methodology.md) **D-025**, [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md).
 
 ---
 
