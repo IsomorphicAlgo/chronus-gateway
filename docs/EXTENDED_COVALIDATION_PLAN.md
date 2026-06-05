@@ -35,8 +35,8 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner sign-off required to adv
 | 1 | `0x02` | Below minimum elevation | M4 (shipped) |
 | 2 | `0x04` | Link budget / received power vs free-space prediction | CV-1 |
 | 3 | `0x08` | Pointing residual (measured vs computed az/el, **T-POINT**) | CV-2 (shipped) |
-| 4 | `0x10` | EPS / array current vs toy sun model (**T-EPS**) | CV-4 |
-| 5 | `0x20` | Thermal vs sun-angle proxy (**T-THERMAL**) | CV-4 |
+| 4 | `0x10` | EPS / bus voltage vs toy sun model (**T-EPS**) | CV-4 (**shipped**) |
+| 5 | `0x20` | Thermal vs sun-angle proxy (**T-THERMAL**) | CV-4 (**shipped**) |
 | 6–7 | `0x40`–`0x80` | Reserved | — |
 
 **CV-3** does not consume a dedicated flag bit; it delivers the **payload decode** contract that **CV-4** depends on.
@@ -96,7 +96,7 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner sign-off required to adv
 
 **Test gate:** Gateway + HIL tests green; decoder covered by unit + integration smoke.
 
-**Gate CV-3:** `[ ]` Owner approves payload layout frozen for sim — **only then** start CV-4.
+**Gate CV-3:** `[x]` Owner approved payload layout frozen for sim — **CV-4** implemented.
 
 ---
 
@@ -106,14 +106,14 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner sign-off required to adv
 
 **Deliverables**
 
-- [ ] **Propagator / state seam** — Expose minimum extra state (e.g. ECI position or sun–satellite angle) needed for sun geometry, without breaking `OrbitalPropagator` consumers — design approved in CV-0/Methodology (extension to `TrackingState` vs new trait method).
-- [ ] **Sun geometry** — Documented approximate algorithm (literature-cited); deterministic tests with fixed time/TLE.
-- [ ] **Toy models** — e.g. expected array current ∝ `I_max * max(0, cos(theta))` with eclipse clamp; thermal bound vs sun angle band (document tolerances **T-EPS**, **T-THERMAL**).
-- [ ] **`apply_physics_validation` (or submodule)** — New bits per charter; skip when attitude or required fields absent.
-- [ ] **NeXosim alignment** — Sim produces self-consistent “good” passes; optional “fault injection” for tests only.
-- [ ] **Tests** — Physics co-validation style: tolerances justified in `TEST_PLAN.md`.
+- [x] **Propagator / state seam** — `TrackingState::nadir_sun_illum_cos` + `nadir_sun_illumination_cos` (Ephemerust SGP4 + Sun direction + toy eclipse).
+- [x] **Sun geometry** — Documented in `Methodology.md` **D-021**; deterministic unit test `nadir_sun_illumination_cos_is_deterministic`.
+- [x] **Toy models** — Linear voltage / thermal maps vs illumination; **T-EPS** / **T-THERMAL** in `TEST_PLAN.md`.
+- [x] **`apply_physics_validation`** — Bits 4–5; skip when decode missing, APID not HIL, or illumination non-finite.
+- [x] **NeXosim alignment** — `chronus-hil-sim` uses shared illumination + default `StationConfig` endpoints.
+- [x] **Tests** — `validate::hil_cv4_*`, config tolerance validation; tolerances in `TEST_PLAN.md`.
 
-**Test gate:** Full `cargo test`; extended register in `TEST_PLAN.md`; no new warnings.
+**Test gate:** Full `cargo test`; extended register in `TEST_PLAN.md`; `cargo clippy --all-targets -- -D warnings` clean.
 
 **Gate CV-4:** `[ ]` Owner approves milestone complete; decide whether to fold summary into `BUILD_PLAN.md` as “M9 portfolio” or keep this doc as the canonical extension roadmap.
 
@@ -137,7 +137,7 @@ CV-0 (charter) ──▶ CV-1 (link budget) ──▶ CV-2 (pointing)
 
 ## Integration notes (all CV milestones)
 
-- **Wiring:** Distribution uses `RfMetadata::default()` unless a side-channel supplies ground metadata. **CV-3** defines `chronus.hil.tm.v1` in the TM data field for HIL; decode with `hil_tm::decode_hil_tm_v1` when `StationConfig::apid_allows_hil_tm_v1` matches.
+- **Wiring:** Distribution uses `RfMetadata::default()` unless a side-channel supplies ground metadata. **CV-3** defines `chronus.hil.tm.v1` in the TM data field for HIL; the WebSocket/Open MCT path decodes with `hil_tm::decode_hil_tm_v1` when `StationConfig::apid_allows_hil_tm_v1` matches, then runs **CV-4** subsystem checks (`apply_physics_validation` with `HilSubsystemCvParams::from_station`).
 - **JSON / Open MCT:** Optional additive fields (`expected_rx_dbm`, …) only if needed; **bitfield remains the primary alarm surface** unless CV-0 chooses otherwise.
 - **Benchmarks:** Extend `parse_validate` bench if CV-3+ adds measurable hot-path work.
 
@@ -152,4 +152,4 @@ CV-0 (charter) ──▶ CV-1 (link budget) ──▶ CV-2 (pointing)
 
 ---
 
-*Document version: 2026-06-03 (CV-0 charter drafted). Maintainer: update checkboxes and gates as milestones land.*
+*Document version: 2026-06-03 (CV-4 implemented; Gate CV-4 pending). Maintainer: update checkboxes and gates as milestones land.*

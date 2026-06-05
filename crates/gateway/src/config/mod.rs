@@ -113,6 +113,19 @@ pub struct StationConfig {
     pub hil_tm_v1_apid_min: u16,
     /// Inclusive upper bound (must be ≥ `hil_tm_v1_apid_min` and ≤ **0x7FF**).
     pub hil_tm_v1_apid_max: u16,
+
+    /// **CV-4:** model bus voltage at full toy Sun illumination, volts (synthetic).
+    pub hil_eps_voltage_full_sun_v: f64,
+    /// **CV-4:** model bus voltage at zero illumination, volts.
+    pub hil_eps_voltage_eclipse_v: f64,
+    /// **CV-4:** model panel temperature at full illumination, °C.
+    pub hil_thermal_c_full_sun: f64,
+    /// **CV-4:** model panel temperature at eclipse, °C.
+    pub hil_thermal_c_eclipse: f64,
+    /// **T-EPS:** relative tolerance on the voltage span (default **0.1** = ±10 %).
+    pub hil_eps_relative_tolerance: f64,
+    /// **T-THERMAL:** absolute temperature band, kelvin (default **10**).
+    pub hil_thermal_absolute_tolerance_k: f64,
 }
 
 impl Default for StationConfig {
@@ -134,6 +147,12 @@ impl Default for StationConfig {
             pointing_tolerance_deg: 0.25,
             hil_tm_v1_apid_min: DEFAULT_HIL_TM_V1_APID_MIN,
             hil_tm_v1_apid_max: DEFAULT_HIL_TM_V1_APID_MAX,
+            hil_eps_voltage_full_sun_v: 28.0,
+            hil_eps_voltage_eclipse_v: 24.0,
+            hil_thermal_c_full_sun: 32.0,
+            hil_thermal_c_eclipse: 12.0,
+            hil_eps_relative_tolerance: 0.1,
+            hil_thermal_absolute_tolerance_k: 10.0,
         }
     }
 }
@@ -173,6 +192,24 @@ pub enum ConfigError {
         "HIL TM v1 APID range {min:#x}..={max:#x} is invalid (expected min <= max and both <= {apid_max:#x})"
     )]
     InvalidHilTmV1ApidRange { min: u16, max: u16, apid_max: u16 },
+    /// HIL CV-4 EPS relative tolerance is not finite or not in `(0, 1]`.
+    #[error(
+        "HIL EPS relative tolerance {0} is invalid (expected a finite value in (0, 1])"
+    )]
+    InvalidHilEpsRelativeTolerance(f64),
+    /// HIL CV-4 thermal absolute tolerance is not a finite positive value.
+    #[error(
+        "HIL thermal absolute tolerance {0} K is invalid (expected a finite value > 0)"
+    )]
+    InvalidHilThermalTolerance(f64),
+    /// A HIL CV-4 voltage or temperature endpoint is non-finite.
+    #[error("HIL CV-4 field `{field}` is invalid (expected a finite value)")]
+    InvalidHilSubsystemField {
+        /// Which field failed validation.
+        field: &'static str,
+        /// The offending value.
+        value: f64,
+    },
     /// A link-budget power or gain field is non-finite.
     #[error("link budget field `{field}` is invalid (expected a finite value)")]
     InvalidLinkBudgetField {
@@ -263,6 +300,31 @@ impl StationConfig {
                 max: self.hil_tm_v1_apid_max,
                 apid_max: CCSDS_APID_MAX,
             });
+        }
+        for (field, v) in [
+            ("hil_eps_voltage_full_sun_v", self.hil_eps_voltage_full_sun_v),
+            ("hil_eps_voltage_eclipse_v", self.hil_eps_voltage_eclipse_v),
+            ("hil_thermal_c_full_sun", self.hil_thermal_c_full_sun),
+            ("hil_thermal_c_eclipse", self.hil_thermal_c_eclipse),
+        ] {
+            if !v.is_finite() {
+                return Err(ConfigError::InvalidHilSubsystemField { field, value: v });
+            }
+        }
+        if !self.hil_eps_relative_tolerance.is_finite()
+            || self.hil_eps_relative_tolerance <= 0.0
+            || self.hil_eps_relative_tolerance > 1.0
+        {
+            return Err(ConfigError::InvalidHilEpsRelativeTolerance(
+                self.hil_eps_relative_tolerance,
+            ));
+        }
+        if !self.hil_thermal_absolute_tolerance_k.is_finite()
+            || self.hil_thermal_absolute_tolerance_k <= 0.0
+        {
+            return Err(ConfigError::InvalidHilThermalTolerance(
+                self.hil_thermal_absolute_tolerance_k,
+            ));
         }
         Ok(())
     }
@@ -413,6 +475,27 @@ mod tests {
         assert!(s.apid_allows_hil_tm_v1(0x7BF));
         assert!(!s.apid_allows_hil_tm_v1(0x7C0));
         assert!(!s.apid_allows_hil_tm_v1(0x100));
+    }
+
+    #[test]
+    fn rejects_invalid_hil_cv4_tolerance() {
+        let bad_eps = StationConfig {
+            hil_eps_relative_tolerance: 1.5,
+            ..Default::default()
+        };
+        assert!(matches!(
+            bad_eps.validate(),
+            Err(ConfigError::InvalidHilEpsRelativeTolerance(_))
+        ));
+
+        let bad_th = StationConfig {
+            hil_thermal_absolute_tolerance_k: 0.0,
+            ..Default::default()
+        };
+        assert!(matches!(
+            bad_th.validate(),
+            Err(ConfigError::InvalidHilThermalTolerance(_))
+        ));
     }
 
     #[test]

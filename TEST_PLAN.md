@@ -148,6 +148,13 @@ behavior change beyond documenting contracts.
 - [x] **Config:** default APID band **0x7B0…0x7BF**; invalid range rejected; `apid_allows_hil_tm_v1_respects_range`.
 - [x] **Integration:** `chronus-hil-sim` HIL ingest smoke/soak decode v1 payloads on synthetic APIDs (`hil_ingest.rs`).
 
+### CV-4 — HIL subsystem vs toy Sun proxy (bits 4–5)
+- [x] **Propagator:** `nadir_sun_illumination_cos_is_deterministic`; `TrackingState::nadir_sun_illum_cos` populated by `EphemerustPropagator`.
+- [x] **Validate:** `hil_cv4_voltage_and_thermal_in_band`, `hil_cv4_bad_voltage_sets_bit4`, `hil_cv4_bad_thermal_sets_bit5`, `hil_cv4_skips_when_illum_non_finite`.
+- [x] **Config:** CV-4 voltage/temperature endpoints + tolerances on `StationConfig`; invalid EPS relative tolerance / thermal tolerance rejected (`rejects_invalid_hil_cv4_tolerance`).
+- [x] **Distribution:** WebSocket path decodes HIL v1 on allowed APIDs and passes `HilSubsystemCvParams` from station (**D-021**).
+- [x] **HIL sim:** `chronus-hil-sim` uses Ephemerust + gateway `nadir_sun_illumination_cos` with the same linear maps as default station endpoints.
+
 ---
 
 ## Tolerance Register (justify every number)
@@ -160,16 +167,16 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | T-RANGERATE | Range-rate vs numerical | 0.25 km/s | Matches Ephemerust's central-difference check (reused convention). |
 | T-RSSI | \(\|P_{rx,\mathrm{meas}} - P_{rx,\mathrm{pred}}\|\) on **free-space** link budget | **±3 dB** | **Locked for v1 (CV-1 / D-017).** Matches design-paper margin for a **synthetic** dBm contract. **Caveat:** prediction is **free-space only** (no rain, ionosphere, cable, or pointing loss in \(P_{rx,\mathrm{pred}}\)); measured values must use the same calibration fiction in tests/HIL. Revisit if a richer budget is justified. |
 | T-POINT | Great-circle angular separation between measured \((Az,El)\) and computed boresight | **0.25°** | **Charter (CV-0 / D-016).** Design-paper encoder vs computed residual; implementation in CV-2 uses spherical geometry. Revisit if station mount flex or refraction dominates in a given demo. |
-| T-EPS | Array current vs toy \(I_{\max}\cos\theta\) model (illumination + optional eclipse clamp) | **±10%** of \(I_{\max}\) near full sun | **Provisional (CV-0).** Placeholder for **CV-4** toy EPS check; rebaseline when sun model + decoded TM layout are fixed (Ephemerust-style numeric cross-check in tests). |
-| T-THERMAL | Panel or bus temperature vs crude band tied to sun-angle proxy | **±10 K** vs model midpoint | **Provisional (CV-0).** Placeholder for **CV-4** demo thermal band — **not** flight thermal analysis; tighten or replace when HIL emits self-consistent synthetic physics. |
+| T-EPS | Decoded HIL bus voltage vs linear map from toy Sun illumination | **±10 %** of configured voltage span (default **24–28 V**) | **Locked (CV-4 / D-021).** Proxy for “array current” in the CV-0 charter: the v1 payload carries **abstract bus voltage (V)**; tolerance applies to \(\|V_{\mathrm{meas}}-V_{\mathrm{pred}}\|\) with \(V_{\mathrm{pred}} = V_{\mathrm{ecl}} + (V_{\mathrm{sun}}-V_{\mathrm{ecl}})\,\texttt{nadir\_sun\_illum\_cos}\). Revisit if the payload adds a true current scalar. |
+| T-THERMAL | Decoded HIL panel °C vs the same illumination linear map | **±10 K** | **Locked (CV-4 / D-021).** Not flight thermal analysis; `chronus-hil-sim` emits self-consistent demo values. |
 
 ---
 
 ## Status / counts (keep current)
 | Layer | Count | Notes |
 |-------|-------|-------|
-| Unit tests | 53 | `ccsds` (8 incl. proptest) + `config` (13) + `hil_tm` (7) + `propagator` (4) + `validate` (21). |
+| Unit tests | 59 | `ccsds` + `config` + `hil_tm` + `propagator` + `validate` (`cargo test -p chronus-gateway --lib` count). |
 | Integration tests | 9 | `crates/gateway/tests/*.rs` (7) + `crates/chronus-hil-sim/tests/hil_ingest.rs` (2). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 
-*Last updated: 2026-06-05.*
+*Last updated: 2026-06-03.*

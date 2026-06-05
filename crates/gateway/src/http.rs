@@ -28,7 +28,8 @@ use crate::ingest::RawFrame;
 use crate::metrics::GatewayMetricsSnapshot;
 use crate::propagator::TrackingState;
 use crate::state::SharedGateway;
-use crate::validate::{apply_physics_validation, LinkBudgetStationParams, RfMetadata};
+use crate::hil_tm::decode_hil_tm_v1;
+use crate::validate::{apply_physics_validation, HilSubsystemCvParams, LinkBudgetStationParams, RfMetadata};
 
 /// JSON envelope for each WebSocket text message (one line per telemetry frame).
 ///
@@ -42,7 +43,7 @@ pub struct OpenMctRealtimeMessageV1 {
     pub apid: u16,
     pub seq_count: u16,
     pub received_at: chrono::DateTime<chrono::Utc>,
-    /// Bitfield per D-016 / `validate` module docs (M4 + CV-1 + CV-2; CV-3…CV-4 planned).
+    /// Bitfield per D-016 / `validate` module docs (M4 + CV-1…CV-4 shipped for chartered bits).
     pub physics_flags: u8,
     pub source: String,
     pub elevation_deg: Option<f64>,
@@ -207,6 +208,12 @@ fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
             rx_gain_dbi: station.rx_gain_dbi,
             tolerance_db: station.link_budget_tolerance_db,
         });
+        let hil_tm = if station.apid_allows_hil_tm_v1(tm.apid) {
+            decode_hil_tm_v1(tm.payload()).ok()
+        } else {
+            None
+        };
+        let hil_cv = Some(HilSubsystemCvParams::from_station(station));
         apply_physics_validation(
             &mut tm,
             s,
@@ -216,6 +223,8 @@ fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
             station.minimum_elevation_deg,
             link_budget,
             station.pointing_tolerance_deg,
+            hil_tm,
+            hil_cv,
         );
     }
 

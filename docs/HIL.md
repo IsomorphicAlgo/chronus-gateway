@@ -10,6 +10,10 @@ The NeXosim driver packs each `TelemSample` (`crates/chronus-hil-sim/src/lib.rs`
 
 Decode on the gateway side with `decode_hil_tm_v1` on `tm.payload()` after CCSDS parse. **APID policy:** synthetic HIL frames are expected on APIDs in the inclusive range configured as `StationConfig::hil_tm_v1_apid_min` … `hil_tm_v1_apid_max` (defaults **0x7B0…0x7BF**; see `gateway.example.toml` optional keys).
 
+## CV-4 self-consistency (NeXosim)
+
+The simulator advances a synthetic UTC clock from **`2020-07-12T21:00:00Z`** at **1 ms** per frame (see `SpacecraftDemo` in `crates/chronus-hil-sim/src/lib.rs`), evaluates `chronus_gateway::nadir_sun_illumination_cos` with the **same public ISS TLE** as `StationConfig::default`, and fills `eps_bus_voltage_v` / `thermal_panel_c` with the **same linear maps** as the gateway’s default `StationConfig` CV-4 endpoints. When you connect Open MCT to the WebSocket path with the default station, HIL frames on APIDs **0x7B0…0x7BF** should therefore keep **physics_flags** bits **4–5** clear unless the gateway TLE or CV-4 tunables are intentionally diverged.
+
 ## Smoke (automated)
 
 Integration tests in `crates/chronus-hil-sim/tests/hil_ingest.rs`:
@@ -29,4 +33,4 @@ All telemetry is **synthetic** (public demo / compliance posture; see repository
 
 **Credit:** [NeXosim](https://github.com/asynchronics/nexosim) — MIT OR Apache-2.0.
 
-*Last updated: 2026-06-05.*
+*Last updated: 2026-06-03.*

@@ -7,8 +7,8 @@ contributor expectations in `README.md` (keep this file current when decisions c
 
 > Status: **M1–M8** complete. **CV-0** charter is documented in
 > [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md) and **D-016**; **Gate CV-0** is approved.
-> **Gate CV-2** is approved; **CV-3** (synthetic HIL TM v1 payload + decoder + APID policy) is **implemented** — **Gate CV-3**
-> pending owner sign-off before **CV-4**.
+> **Gate CV-2** is approved; **CV-3** (synthetic HIL TM v1 payload + decoder + APID policy) is **implemented** — **Gate CV-3** approved.
+> **CV-4** (HIL subsystem vs toy Sun proxy) is **implemented** — **Gate CV-4** pending owner sign-off.
 
 ---
 
@@ -206,7 +206,7 @@ config only (TLE files remain subject to `max_datagram_size` on the UDP path, un
 ### D-016 — Extended co-validation charter (CV-0; `physics_flags`, `RfMetadata`, tolerances)
 **Decision:** Freeze contracts for post-M4 co-validation work (**CV-1…CV-4** in
 [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md)). This entry **supplements**
-D-012; it does not change shipped Doppler/elevation behavior. **CV-1** implements bit 2; **CV-2** implements bit 3 per this charter.
+D-012; it does not change shipped Doppler/elevation behavior. **CV-1** implements bit 2; **CV-2** implements bit 3; **CV-4** implements bits 4–5 per this charter.
 
 **`physics_flags` (u8) — bit assignment**
 
@@ -216,8 +216,8 @@ D-012; it does not change shipped Doppler/elevation behavior. **CV-1** implement
 | 1 | `0x02` | Below minimum elevation (`FLAG_BELOW_HORIZON`) | M4 (shipped) |
 | 2 | `0x04` | Link budget: measured received power vs **free-space** prediction; anomaly if \(\|P_{rx,\mathrm{meas}} - P_{rx,\mathrm{pred}}\| >\) **T-RSSI** | CV-1 (**shipped**) |
 | 3 | `0x08` | Pointing: great-circle separation between measured and computed (az, el) \(>\) **T-POINT** | CV-2 (**shipped**) |
-| 4 | `0x10` | EPS / array current vs toy model from sun geometry + decoded TM | CV-4 |
-| 5 | `0x20` | Thermal scalar vs crude sun-angle proxy band (**T-THERMAL**) | CV-4 |
+| 4 | `0x10` | EPS: decoded **abstract bus voltage (V)** vs toy linear map from Sun illumination + decoded TM (`FLAG_EPS_SUBSYSTEM_ANOMALY`) | CV-4 (**shipped**) |
+| 5 | `0x20` | Thermal: decoded **panel °C** vs toy band from same illumination proxy (`FLAG_THERMAL_SUBSYSTEM_ANOMALY`) | CV-4 (**shipped**) |
 | 6–7 | `0x40`–`0x80` | **Reserved** — do not assign without updating this table and `TEST_PLAN.md` | — |
 
 If more than eight independent alarms are needed, add a **new** JSON field (e.g. `physics_flags_v2: u16`)
@@ -286,6 +286,14 @@ arbitrary TM.
 **Tested by:** `hil_tm` unit tests (truncation, magic, version, reserved, round-trip) + `config`
 validation + `chronus-hil-sim` integration decode on the ingest path.
 
+### D-021 — Subsystem toy co-validation vs Sun proxy (**CV-4**)
+**Decision:** Extend `TrackingState` with `nadir_sun_illum_cos` ∈ \([0,1]\) ∪ \{NaN\}, computed in
+`propagator` from SGP4 TEME position (via Ephemerust `propagate`) and the crate’s low-precision geocentric Sun direction
+(`celestial::calculate_position` for `CelestialObject::Sun` — equator-of-date, **not** SPICE fidelity).
+Toy nadir-fixed illumination: `max(0, −û_sat·û_sun)` with a **spherical WGS84 equatorial** ray–sphere test to zero the factor in Earth occultation. Expected HIL `eps_bus_voltage_v` and `thermal_panel_c` are linear in that factor using tunable `StationConfig` endpoints; **T-EPS** is enforced as ±10 % of the configured voltage span, **T-THERMAL** as ±10 K (`FLAG_EPS_SUBSYSTEM_ANOMALY`, `FLAG_THERMAL_SUBSYSTEM_ANOMALY`). WebSocket distribution decodes **chronus.hil.tm.v1** when the APID is in the HIL band and passes decoded values into `apply_physics_validation`. `chronus-hil-sim` recomputes the same factor and linear maps so synthetic passes stay self-consistent.
+**Why:** Implements the CV-4 extension charter as a bounded, NaN-safe demo without flight hardware semantics.
+**Tested by:** `propagator::nadir_sun_illumination_cos_is_deterministic`, `validate::hil_cv4_*`, `config::rejects_invalid_hil_cv4_tolerance`, existing HIL ingest tests.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -299,7 +307,7 @@ External works this project builds on or is inspired by (keep current; attribute
 
 | Work | Role here | Source / License |
 |------|-----------|------------------|
-| **Ephemerust** (owner) | SGP4 propagation, look-angles, range-rate | local sibling crate, MIT |
+| **Ephemerust** (owner) | SGP4 propagation, look-angles, range-rate, low-precision Sun position (**CV-4** illumination) | local sibling crate, MIT |
 | `sgp4` crate | Underlying SGP4/SDP4 numerics (via Ephemerust) | crates.io |
 | `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
@@ -310,4 +318,4 @@ External works this project builds on or is inspired by (keep current; attribute
 
 ---
 
-*Last updated: 2026-06-05.*
+*Last updated: 2026-06-03.*

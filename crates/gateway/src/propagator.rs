@@ -9,14 +9,23 @@
 //! Keeping the network and validation pipelines behind this seam is what lets a future
 //! high-fidelity backend (e.g. `nyx-space`) drop in without a rewrite. See `Methodology.md`
 //! → "Trait-based astrodynamics (Ephemerust now, nyx-space later)".
+//!
+//! **CV-4:** [`TrackingState::nadir_sun_illum_cos`] is a **toy** nadir-fixed solar-array
+//! illumination factor in \([0, 1]\) from geocentric TEME geometry + Ephemerust’s low-precision
+//! Sun vector ([`nadir_sun_illumination_cos`]). Non-physics backends should set this to `NaN` so
+//! subsystem checks are skipped.
 
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use ephemerust::{look_angles, ObserverLocation, Tle};
+use ephemerust::celestial::{calculate_position, CelestialObject};
+use ephemerust::{look_angles, propagate, ObserverLocation, Tle};
 
 use crate::config::StationConfig;
+
+/// WGS84 equatorial Earth radius (km); occultation uses a **spherical** Earth (CV-4 toy).
+const EARTH_EQUATORIAL_RADIUS_KM: f64 = 6378.137;
 
 /// Topocentric tracking state of a spacecraft relative to a fixed ground station.
 ///
@@ -32,6 +41,8 @@ pub struct TrackingState {
     pub range_km: f64,
     /// Line-of-sight range rate in km/s (negative = approaching).
     pub range_rate_km_s: f64,
+    /// Toy nadir-array Sun illumination in \([0, 1]\); `NaN` = unavailable (**CV-4**).
+    pub nadir_sun_illum_cos: f64,
 }
 
 /// Decoupling boundary between the gateway and any astrodynamics backend.
@@ -41,6 +52,86 @@ pub struct TrackingState {
 pub trait OrbitalPropagator: Send + Sync {
     /// Computes the station-relative tracking state at `time`.
     fn tracking_state(&self, time: DateTime<Utc>) -> Result<TrackingState>;
+}
+
+/// Unit vector in **geocentric equatorial** coordinates (TEME-as-inertial) from right ascension
+/// (hours) and declination (degrees), matching Ephemerust’s Sun pipeline conventions.
+fn equatorial_dir_from_ra_dec_hours(ra_hours: f64, dec_deg: f64) -> Option<[f64; 3]> {
+    if !(ra_hours.is_finite() && dec_deg.is_finite()) {
+        return None;
+    }
+    let ra_rad = ra_hours * (std::f64::consts::PI / 12.0);
+    let dec_rad = dec_deg.to_radians();
+    let cd = dec_rad.cos();
+    let sd = dec_rad.sin();
+    let (sr, cr) = ra_rad.sin_cos();
+    let x = cd * cr;
+    let y = cd * sr;
+    let z = sd;
+    if x.is_finite() && y.is_finite() && z.is_finite() {
+        Some([x, y, z])
+    } else {
+        None
+    }
+}
+
+/// `true` if the half-line **sat → Sun** (direction `u_sun`, geocentric, unit) first intersects the
+/// solid Earth sphere before reaching open space — toy cylindrical / ray–sphere umbra (**CV-4**).
+fn sun_ray_intersects_earth_sphere(r_sat_km: [f64; 3], u_sun: [f64; 3]) -> bool {
+    let rd = r_sat_km[0] * u_sun[0] + r_sat_km[1] * u_sun[1] + r_sat_km[2] * u_sun[2];
+    let r2 = r_sat_km[0] * r_sat_km[0] + r_sat_km[1] * r_sat_km[1] + r_sat_km[2] * r_sat_km[2];
+    if r2 < EARTH_EQUATORIAL_RADIUS_KM * EARTH_EQUATORIAL_RADIUS_KM * 0.99 {
+        // Inside or grazing the Earth interior — treat as no Sun for the toy model.
+        return true;
+    }
+    let c = r2 - EARTH_EQUATORIAL_RADIUS_KM * EARTH_EQUATORIAL_RADIUS_KM;
+    let disc = rd * rd - c;
+    if disc <= 0.0 {
+        return false;
+    }
+    let s = disc.sqrt();
+    let t0 = -rd - s;
+    let t1 = -rd + s;
+    let mut t_hit = f64::INFINITY;
+    for t in [t0, t1] {
+        if t > 1e-6 {
+            t_hit = t_hit.min(t);
+        }
+    }
+    t_hit.is_finite() && t_hit < f64::INFINITY
+}
+
+/// Nadir-fixed solar-array illumination factor for **subsystem co-validation (CV-4)**.
+///
+/// Uses SGP4 [`propagate`] position in **TEME** (km) and Ephemerust’s low-precision geocentric Sun
+/// direction from [`calculate_position`](ephemerust::celestial::calculate_position) (see
+/// `Methodology.md` **D-021**). Combines:
+///
+/// 1. **Terminator / panel normal:** `max(0, −û_sat · û_sun)` with `û_sat` the geocentric satellite
+///    radial (nadir normal ≈ **−**`û_sat` for a nadir-pointing panel).
+/// 2. **Toy eclipse:** zero illumination if the Sun ray from the satellite intersects the Earth
+///    sphere (spherical WGS84 equatorial radius).
+///
+/// This is **not** flight-array or umbra-penumbra fidelity; it exists for deterministic HIL
+/// cross-checks only.
+#[must_use]
+pub fn nadir_sun_illumination_cos(tle: &Tle, time: DateTime<Utc>) -> Option<f64> {
+    let state = propagate(tle, time).ok()?;
+    let r = state.position_km;
+    let r2 = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
+    let rn = r2.sqrt();
+    if !(rn.is_finite() && rn > 1.0) {
+        return None;
+    }
+    let ra_dec = calculate_position(CelestialObject::Sun, time).ok()?;
+    let u_sun = equatorial_dir_from_ra_dec_hours(ra_dec.ra, ra_dec.dec)?;
+    let u_sat = [r[0] / rn, r[1] / rn, r[2] / rn];
+    let dot = u_sat[0] * u_sun[0] + u_sat[1] * u_sun[1] + u_sat[2] * u_sun[2];
+    let mut illum = (-dot).clamp(0.0, 1.0);
+    if sun_ray_intersects_earth_sphere(r, u_sun) {
+        illum = 0.0;
+    }
+    Some(illum)
 }
 
 /// Default SGP4 backend, driven by the `ephemerust` crate.
@@ -149,11 +240,15 @@ impl OrbitalPropagator for EphemerustPropagator {
             elevation: self.altitude_m,
         };
         let la = look_angles(&self.tle, time, observer)?;
+        let nadir_sun_illum_cos = nadir_sun_illumination_cos(&self.tle, time)
+            .filter(|x| x.is_finite())
+            .unwrap_or(f64::NAN);
         Ok(TrackingState {
             azimuth_deg: la.azimuth_deg,
             elevation_deg: la.elevation_deg,
             range_km: la.range_km,
             range_rate_km_s: la.range_rate_km_s,
+            nadir_sun_illum_cos,
         })
     }
 }
@@ -178,6 +273,13 @@ mod tests {
         let prop = EphemerustPropagator::new(ISS_TLE, 35.0, -116.0, 1000.0).expect("valid TLE");
         let s = prop.tracking_state(epoch()).expect("propagation succeeds");
 
+        assert!(
+            s.nadir_sun_illum_cos.is_finite()
+                && s.nadir_sun_illum_cos >= 0.0
+                && s.nadir_sun_illum_cos <= 1.0,
+            "illum = {}",
+            s.nadir_sun_illum_cos
+        );
         assert!(
             s.range_km.is_finite() && s.range_km > 0.0,
             "range_km = {}",
@@ -265,6 +367,7 @@ mod tests {
             elevation_deg: 20.0,
             range_km: 30.0,
             range_rate_km_s: 0.5,
+            nadir_sun_illum_cos: f64::NAN,
         };
         let counting = Arc::new(CountingPropagator {
             calls: AtomicU64::new(0),
@@ -290,5 +393,19 @@ mod tests {
             .tracking_state(t0 + chrono::Duration::milliseconds(200))
             .expect("recompute");
         assert_eq!(counting.calls.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn nadir_sun_illumination_cos_is_deterministic() {
+        let tle = Tle::parse(
+            "1 25544U 98067A   20194.88612269 -.00002218  00000-0 -31515-4 0  9992\n\
+             2 25544  51.6461 221.2784 0001413  89.1723 280.4612 15.49507896236008",
+        )
+        .expect("parse");
+        let t = epoch();
+        let a = nadir_sun_illumination_cos(&tle, t).expect("illum");
+        let b = nadir_sun_illumination_cos(&tle, t).expect("illum again");
+        assert_eq!(a, b);
+        assert!((0.0..=1.0).contains(&a), "a={a}");
     }
 }

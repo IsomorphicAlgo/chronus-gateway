@@ -115,6 +115,18 @@ struct StationToml {
     hil_tm_v1_apid_min: Option<u16>,
     #[serde(default)]
     hil_tm_v1_apid_max: Option<u16>,
+    #[serde(default)]
+    hil_eps_voltage_full_sun_v: Option<f64>,
+    #[serde(default)]
+    hil_eps_voltage_eclipse_v: Option<f64>,
+    #[serde(default)]
+    hil_thermal_c_full_sun: Option<f64>,
+    #[serde(default)]
+    hil_thermal_c_eclipse: Option<f64>,
+    #[serde(default)]
+    hil_eps_relative_tolerance: Option<f64>,
+    #[serde(default)]
+    hil_thermal_absolute_tolerance_k: Option<f64>,
     tle_inline: Option<String>,
     tle_file: Option<PathBuf>,
 }
@@ -150,6 +162,24 @@ impl TryFrom<StationToml> for StationConfig {
                 .unwrap_or(def.pointing_tolerance_deg),
             hil_tm_v1_apid_min: t.hil_tm_v1_apid_min.unwrap_or(def.hil_tm_v1_apid_min),
             hil_tm_v1_apid_max: t.hil_tm_v1_apid_max.unwrap_or(def.hil_tm_v1_apid_max),
+            hil_eps_voltage_full_sun_v: t
+                .hil_eps_voltage_full_sun_v
+                .unwrap_or(def.hil_eps_voltage_full_sun_v),
+            hil_eps_voltage_eclipse_v: t
+                .hil_eps_voltage_eclipse_v
+                .unwrap_or(def.hil_eps_voltage_eclipse_v),
+            hil_thermal_c_full_sun: t
+                .hil_thermal_c_full_sun
+                .unwrap_or(def.hil_thermal_c_full_sun),
+            hil_thermal_c_eclipse: t
+                .hil_thermal_c_eclipse
+                .unwrap_or(def.hil_thermal_c_eclipse),
+            hil_eps_relative_tolerance: t
+                .hil_eps_relative_tolerance
+                .unwrap_or(def.hil_eps_relative_tolerance),
+            hil_thermal_absolute_tolerance_k: t
+                .hil_thermal_absolute_tolerance_k
+                .unwrap_or(def.hil_thermal_absolute_tolerance_k),
         })
     }
 }

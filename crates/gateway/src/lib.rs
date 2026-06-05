@@ -10,7 +10,7 @@
 //! gates (Milestone 6), the NeXosim HIL workspace crate `chronus-hil-sim` (Milestone 7), and
 //! optional TOML file configuration ([`config::file`], Milestone 8). See `docs/BUILD_PLAN.md`.
 //! Post-M8 co-validation extensions are chartered in **`Methodology.md` D-016** and
-//! `docs/EXTENDED_COVALIDATION_PLAN.md` (**CV-0…CV-4**; **CV-1…CV-3** implemented — synthetic HIL TM payload in [`hil_tm`]; **Gate CV-3** pending before **CV-4**).
+//! `docs/EXTENDED_COVALIDATION_PLAN.md` (**CV-0…CV-4**; **CV-1…CV-4** implemented — synthetic HIL TM in [`hil_tm`], subsystem toy checks vs Sun proxy in [`validate`] / [`propagator`]).
 //!
 //! ## Standards & compliance
 //!
@@ -38,12 +38,16 @@ pub use config::{
     ConfigLoadError, IngestConfig, StationConfig, TleSource,
 };
 pub use ingest::{IngestStats, RawFrame};
-pub use propagator::{EphemerustPropagator, OrbitalPropagator, TrackingProvider, TrackingState};
+pub use propagator::{
+    nadir_sun_illumination_cos, EphemerustPropagator, OrbitalPropagator, TrackingProvider,
+    TrackingState,
+};
 pub use validate::{
     angular_separation_deg, apply_physics_validation, expected_carrier_hz, expected_rx_power_dbm,
-    free_space_path_loss_db, LinkBudgetStationParams, RfMetadata, FLAG_BELOW_HORIZON,
-    FLAG_DOPPLER_ANOMALY, FLAG_LINK_BUDGET_ANOMALY, FLAG_POINTING_ANOMALY, FLAG_RSSI_RESERVED,
-    SPEED_OF_LIGHT_M_S,
+    free_space_path_loss_db, HilSubsystemCvParams, LinkBudgetStationParams, RfMetadata,
+    FLAG_BELOW_HORIZON, FLAG_DOPPLER_ANOMALY, FLAG_EPS_SUBSYSTEM_ANOMALY,
+    FLAG_LINK_BUDGET_ANOMALY, FLAG_POINTING_ANOMALY, FLAG_RSSI_RESERVED,
+    FLAG_THERMAL_SUBSYSTEM_ANOMALY, SPEED_OF_LIGHT_M_S,
 };
 
 pub use http::{router, OpenMctRealtimeMessageV1};

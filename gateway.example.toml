@@ -33,6 +33,14 @@ minimum_elevation_deg = 0.0
 # hil_tm_v1_apid_min = 1968
 # hil_tm_v1_apid_max = 1983
 
+# CV-4 toy subsystem maps (optional — defaults match `StationConfig::default` / NeXosim driver).
+# hil_eps_voltage_full_sun_v = 28.0
+# hil_eps_voltage_eclipse_v = 24.0
+# hil_thermal_c_full_sun = 32.0
+# hil_thermal_c_eclipse = 12.0
+# hil_eps_relative_tolerance = 0.1
+# hil_thermal_absolute_tolerance_k = 10.0
+
 # Public reference ISS (ZARYA) element set — synthetic/public data only (see README / Methodology).
 tle_inline = """
 ISS (ZARYA)

@@ -23,6 +23,14 @@
 //! v1 — see **T-RSSI** in `TEST_PLAN.md`). Station-side **synthetic** `P_tx`, `G_tx`, and `G_rx`
 //! come from [`LinkBudgetStationParams`]. Anomaly sets bit 2 ([`FLAG_LINK_BUDGET_ANOMALY`]).
 //!
+//! ## HIL subsystem toy checks (**CV-4**)
+//!
+//! When a frame carries decoded [`crate::hil_tm::DecodedHilTmV1`] and [`HilSubsystemCvParams`] is
+//! supplied, expected **bus voltage** and **panel temperature** are linear maps of
+//! [`crate::propagator::TrackingState::nadir_sun_illum_cos`] (see `Methodology.md` **D-021**).
+//! Checks are **skipped** when illumination is non-finite, decode fails, or tolerances are invalid
+//! — never panic on untrusted floats.
+//!
 //! ## `physics_flags` bitfield (stable contract)
 //!
 //! Shipped (M4) and planned extended co-validation bits are **chartered** in `Methodology.md`
@@ -35,8 +43,8 @@
 //! | 1 | `0x02` | Horizon / elevation — spacecraft is below the configured minimum elevation. | **M4** |
 //! | 2 | `0x04` | Link budget — measured vs predicted received power (**T-RSSI**, free-space v1). | **CV-1** |
 //! | 3 | `0x08` | Pointing residual — measured vs computed (az, el) exceeds **T-POINT**. | **CV-2** (shipped) |
-//! | 4 | `0x10` | EPS / array current vs toy sun-angle model (**T-EPS**). | **CV-4** |
-//! | 5 | `0x20` | Thermal vs sun-angle proxy band (**T-THERMAL**). | **CV-4** |
+//! | 4 | `0x10` | EPS / bus voltage vs toy sun-angle model (**T-EPS**). | **CV-4** (shipped) |
+//! | 5 | `0x20` | Thermal vs sun-angle proxy band (**T-THERMAL**). | **CV-4** (shipped) |
 //! | 6–7 | `0x40`–`0x80` | Reserved. | — |
 //!
 //! If more than eight flags are needed, add `physics_flags_v2` (or similar) to the Open MCT JSON
@@ -57,6 +65,7 @@
 use std::f64::consts::PI;
 
 use crate::ccsds::TelemetryFrame;
+use crate::hil_tm::DecodedHilTmV1;
 use crate::propagator::TrackingState;
 
 /// Speed of light in vacuum (m/s); CODATA-compatible constant for Doppler arithmetic.
@@ -74,6 +83,10 @@ pub const FLAG_LINK_BUDGET_ANOMALY: u8 = 0x04;
 pub const FLAG_RSSI_RESERVED: u8 = FLAG_LINK_BUDGET_ANOMALY;
 /// Bit 3 — measured boresight (az/el) disagrees with computed look angles beyond **T-POINT** (**CV-2**).
 pub const FLAG_POINTING_ANOMALY: u8 = 0x08;
+/// Bit 4 — decoded HIL bus voltage inconsistent with toy sun-illumination model (**CV-4** / **T-EPS**).
+pub const FLAG_EPS_SUBSYSTEM_ANOMALY: u8 = 0x10;
+/// Bit 5 — decoded HIL panel temperature outside toy thermal band (**CV-4** / **T-THERMAL**).
+pub const FLAG_THERMAL_SUBSYSTEM_ANOMALY: u8 = 0x20;
 
 /// Optional **ground / receiver-chain** measurements accompanying a frame (SDR or synthetic lab).
 ///
@@ -105,6 +118,40 @@ pub struct LinkBudgetStationParams {
     pub rx_gain_dbi: f64,
     /// Acceptable \|measured − predicted\| received power (dB); typically **T-RSSI** (3 dB).
     pub tolerance_db: f64,
+}
+
+/// Tunables for **CV-4** HIL subsystem cross-checks (synthetic demo only).
+///
+/// Built from [`crate::config::StationConfig`] at the HTTP/WebSocket distribution layer.
+#[derive(Debug, Clone, Copy)]
+pub struct HilSubsystemCvParams {
+    /// Model bus voltage at full toy illumination (`nadir_sun_illum_cos` = 1), volts.
+    pub hil_eps_voltage_full_sun_v: f64,
+    /// Model bus voltage at zero illumination, volts.
+    pub hil_eps_voltage_eclipse_v: f64,
+    /// Panel temperature at full illumination, °C.
+    pub hil_thermal_c_full_sun: f64,
+    /// Panel temperature at zero illumination, °C.
+    pub hil_thermal_c_eclipse: f64,
+    /// **T-EPS:** allowed relative deviation vs the voltage span (e.g. `0.1` = ±10 % of span).
+    pub hil_eps_relative_tolerance: f64,
+    /// **T-THERMAL:** allowed ± deviation from the linear thermal model, kelvin (°C numerically).
+    pub hil_thermal_absolute_tolerance_k: f64,
+}
+
+impl HilSubsystemCvParams {
+    /// Copies CV-4 fields from a validated [`crate::config::StationConfig`].
+    #[must_use]
+    pub fn from_station(station: &crate::config::StationConfig) -> Self {
+        Self {
+            hil_eps_voltage_full_sun_v: station.hil_eps_voltage_full_sun_v,
+            hil_eps_voltage_eclipse_v: station.hil_eps_voltage_eclipse_v,
+            hil_thermal_c_full_sun: station.hil_thermal_c_full_sun,
+            hil_thermal_c_eclipse: station.hil_thermal_c_eclipse,
+            hil_eps_relative_tolerance: station.hil_eps_relative_tolerance,
+            hil_thermal_absolute_tolerance_k: station.hil_thermal_absolute_tolerance_k,
+        }
+    }
 }
 
 /// Expected received carrier (Hz) from nominal transmit frequency and line-of-sight range rate.
@@ -198,7 +245,7 @@ fn az_el_to_enu_unit(az_deg: f64, el_deg: f64) -> Option<(f64, f64, f64)> {
 ///
 /// `pointing_tolerance_deg` is **T-POINT** (must be finite and `> 0`); when non-positive or
 /// non-finite, the pointing check is skipped.
-#[allow(clippy::too_many_arguments)] // M4 + CV-1 + CV-2 parameters; grouping would churn every call site.
+#[allow(clippy::too_many_arguments)] // M4 + CV-1…CV-4 parameters; grouping would churn every call site.
 pub fn apply_physics_validation(
     frame: &mut TelemetryFrame,
     state: &TrackingState,
@@ -208,6 +255,8 @@ pub fn apply_physics_validation(
     minimum_elevation_deg: f64,
     link_budget: Option<LinkBudgetStationParams>,
     pointing_tolerance_deg: f64,
+    hil_tm: Option<DecodedHilTmV1>,
+    hil_subsystem: Option<HilSubsystemCvParams>,
 ) {
     frame.physics_flags = 0;
 
@@ -270,6 +319,45 @@ pub fn apply_physics_validation(
             }
         }
     }
+
+    // CV-4 — decoded HIL scalars vs toy sun proxy (skip unless all inputs finite and params valid).
+    if let (Some(hil), Some(p)) = (hil_tm, hil_subsystem) {
+        let illum = state.nadir_sun_illum_cos;
+        if illum.is_finite() && (0.0..=1.0).contains(&illum) {
+            if p.hil_eps_relative_tolerance.is_finite()
+                && p.hil_eps_relative_tolerance > 0.0
+                && p.hil_eps_voltage_full_sun_v.is_finite()
+                && p.hil_eps_voltage_eclipse_v.is_finite()
+            {
+                let v_exp = p.hil_eps_voltage_eclipse_v
+                    + (p.hil_eps_voltage_full_sun_v - p.hil_eps_voltage_eclipse_v) * illum;
+                if v_exp.is_finite() {
+                    let span = (p.hil_eps_voltage_full_sun_v - p.hil_eps_voltage_eclipse_v).abs();
+                    let tol_v = (p.hil_eps_relative_tolerance * span.max(1e-6)).max(1e-6);
+                    let v_meas = hil.eps_bus_voltage_v as f64;
+                    if v_meas.is_finite() && (v_meas - v_exp).abs() > tol_v {
+                        frame.physics_flags |= FLAG_EPS_SUBSYSTEM_ANOMALY;
+                    }
+                }
+            }
+
+            if p.hil_thermal_absolute_tolerance_k.is_finite()
+                && p.hil_thermal_absolute_tolerance_k > 0.0
+                && p.hil_thermal_c_full_sun.is_finite()
+                && p.hil_thermal_c_eclipse.is_finite()
+            {
+                let t_exp = p.hil_thermal_c_eclipse
+                    + (p.hil_thermal_c_full_sun - p.hil_thermal_c_eclipse) * illum;
+                if t_exp.is_finite() {
+                    let tol_t = p.hil_thermal_absolute_tolerance_k;
+                    let t_meas = hil.thermal_panel_c as f64;
+                    if t_meas.is_finite() && (t_meas - t_exp).abs() > tol_t {
+                        frame.physics_flags |= FLAG_THERMAL_SUBSYSTEM_ANOMALY;
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -301,6 +389,7 @@ mod tests {
             elevation_deg: el_deg,
             range_km: 4000.0,
             range_rate_km_s,
+            nadir_sun_illum_cos: f64::NAN,
         }
     }
 
@@ -334,6 +423,8 @@ mod tests {
             0.0,
             None,
             T_POINT,
+            None,
+            None,
         );
         assert_eq!(tm.physics_flags & FLAG_DOPPLER_ANOMALY, 0);
         assert_eq!(tm.physics_flags & FLAG_BELOW_HORIZON, 0);
@@ -358,6 +449,8 @@ mod tests {
             0.0,
             None,
             T_POINT,
+            None,
+            None,
         );
         assert!(tm.physics_flags & FLAG_DOPPLER_ANOMALY != 0);
     }
@@ -375,6 +468,8 @@ mod tests {
             0.0,
             None,
             T_POINT,
+            None,
+            None,
         );
         assert!(tm.physics_flags & FLAG_BELOW_HORIZON != 0);
         assert_eq!(tm.physics_flags & FLAG_DOPPLER_ANOMALY, 0);
@@ -393,6 +488,8 @@ mod tests {
             0.0,
             None,
             T_POINT,
+            None,
+            None,
         );
         assert_eq!(tm.physics_flags & FLAG_BELOW_HORIZON, 0);
     }
@@ -415,6 +512,8 @@ mod tests {
             0.0,
             None,
             T_POINT,
+            None,
+            None,
         );
         assert_eq!(tm.physics_flags, FLAG_DOPPLER_ANOMALY | FLAG_BELOW_HORIZON);
     }
@@ -432,6 +531,8 @@ mod tests {
             0.0,
             None,
             T_POINT,
+            None,
+            None,
         );
         assert_eq!(tm.physics_flags, 0);
     }
@@ -454,6 +555,8 @@ mod tests {
             0.0,
             None,
             T_POINT,
+            None,
+            None,
         );
         assert_eq!(tm.physics_flags, FLAG_DOPPLER_ANOMALY);
     }
@@ -475,6 +578,8 @@ mod tests {
             0.0,
             None,
             T_POINT,
+            None,
+            None,
         );
         assert_eq!(tm.physics_flags, 0);
     }
@@ -517,6 +622,8 @@ mod tests {
             0.0,
             Some(demo_lb()),
             T_POINT,
+            None,
+            None,
         );
         assert_eq!(tm.physics_flags & FLAG_LINK_BUDGET_ANOMALY, 0);
     }
@@ -540,6 +647,8 @@ mod tests {
             0.0,
             Some(demo_lb()),
             T_POINT,
+            None,
+            None,
         );
         assert!(tm.physics_flags & FLAG_LINK_BUDGET_ANOMALY != 0);
         assert_eq!(tm.physics_flags & FLAG_DOPPLER_ANOMALY, 0);
@@ -558,6 +667,8 @@ mod tests {
             0.0,
             Some(demo_lb()),
             T_POINT,
+            None,
+            None,
         );
         assert_eq!(tm.physics_flags, 0);
     }
@@ -579,6 +690,8 @@ mod tests {
             0.0,
             Some(demo_lb()),
             T_POINT,
+            None,
+            None,
         );
         assert_eq!(tm.physics_flags & FLAG_LINK_BUDGET_ANOMALY, 0);
     }
@@ -591,6 +704,7 @@ mod tests {
             elevation_deg: 45.0,
             range_km: 0.0,
             range_rate_km_s: 0.0,
+            nadir_sun_illum_cos: f64::NAN,
         };
         apply_physics_validation(
             &mut tm,
@@ -605,6 +719,8 @@ mod tests {
             0.0,
             Some(demo_lb()),
             T_POINT,
+            None,
+            None,
         );
         assert_eq!(tm.physics_flags & FLAG_LINK_BUDGET_ANOMALY, 0);
     }
@@ -629,6 +745,7 @@ mod tests {
             elevation_deg: 45.0,
             range_km: 4000.0,
             range_rate_km_s: 0.0,
+            nadir_sun_illum_cos: f64::NAN,
         };
         apply_physics_validation(
             &mut tm,
@@ -644,6 +761,8 @@ mod tests {
             0.0,
             None,
             T_POINT,
+            None,
+            None,
         );
         assert_eq!(tm.physics_flags & FLAG_POINTING_ANOMALY, 0);
     }
@@ -656,6 +775,7 @@ mod tests {
             elevation_deg: 45.0,
             range_km: 4000.0,
             range_rate_km_s: 0.0,
+            nadir_sun_illum_cos: f64::NAN,
         };
         apply_physics_validation(
             &mut tm,
@@ -671,6 +791,8 @@ mod tests {
             0.0,
             None,
             T_POINT,
+            None,
+            None,
         );
         assert!(tm.physics_flags & FLAG_POINTING_ANOMALY != 0);
     }
@@ -683,6 +805,7 @@ mod tests {
             elevation_deg: 45.0,
             range_km: 4000.0,
             range_rate_km_s: 0.0,
+            nadir_sun_illum_cos: f64::NAN,
         };
         apply_physics_validation(
             &mut tm,
@@ -698,6 +821,8 @@ mod tests {
             0.0,
             None,
             T_POINT,
+            None,
+            None,
         );
         assert_eq!(tm.physics_flags & FLAG_POINTING_ANOMALY, 0);
     }
@@ -710,6 +835,7 @@ mod tests {
             elevation_deg: 45.0,
             range_km: 4000.0,
             range_rate_km_s: 0.0,
+            nadir_sun_illum_cos: f64::NAN,
         };
         apply_physics_validation(
             &mut tm,
@@ -725,7 +851,179 @@ mod tests {
             0.0,
             None,
             0.0,
+            None,
+            None,
         );
         assert_eq!(tm.physics_flags & FLAG_POINTING_ANOMALY, 0);
+    }
+
+    #[test]
+    fn hil_cv4_voltage_and_thermal_in_band() {
+        let mut tm = dummy_tm();
+        let illum = 0.8125_f64;
+        let p = HilSubsystemCvParams {
+            hil_eps_voltage_full_sun_v: 28.0,
+            hil_eps_voltage_eclipse_v: 24.0,
+            hil_thermal_c_full_sun: 32.0,
+            hil_thermal_c_eclipse: 12.0,
+            hil_eps_relative_tolerance: 0.11,
+            hil_thermal_absolute_tolerance_k: 10.0,
+        };
+        let v_exp = 24.0 + (28.0 - 24.0) * illum;
+        let t_exp = 12.0 + (32.0 - 12.0) * illum;
+        let hil = crate::hil_tm::DecodedHilTmV1 {
+            seq: 1,
+            eps_bus_voltage_v: v_exp as f32,
+            thermal_panel_c: t_exp as f32,
+            body_rate_deg_s: 0.0,
+        };
+        let s = TrackingState {
+            azimuth_deg: 0.0,
+            elevation_deg: 45.0,
+            range_km: 4000.0,
+            range_rate_km_s: 0.0,
+            nadir_sun_illum_cos: illum,
+        };
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            437e6,
+            RfMetadata::default(),
+            150.0,
+            0.0,
+            None,
+            T_POINT,
+            Some(hil),
+            Some(p),
+        );
+        assert_eq!(
+            tm.physics_flags & (FLAG_EPS_SUBSYSTEM_ANOMALY | FLAG_THERMAL_SUBSYSTEM_ANOMALY),
+            0
+        );
+    }
+
+    #[test]
+    fn hil_cv4_bad_voltage_sets_bit4() {
+        let mut tm = dummy_tm();
+        let illum = 0.5_f64;
+        let p = HilSubsystemCvParams {
+            hil_eps_voltage_full_sun_v: 28.0,
+            hil_eps_voltage_eclipse_v: 24.0,
+            hil_thermal_c_full_sun: 32.0,
+            hil_thermal_c_eclipse: 12.0,
+            hil_eps_relative_tolerance: 0.1,
+            hil_thermal_absolute_tolerance_k: 10.0,
+        };
+        let v_ok = 24.0 + (28.0 - 24.0) * illum;
+        let t_ok = 12.0 + (32.0 - 12.0) * illum;
+        let hil = crate::hil_tm::DecodedHilTmV1 {
+            seq: 0,
+            eps_bus_voltage_v: (v_ok + 1.0) as f32,
+            thermal_panel_c: t_ok as f32,
+            body_rate_deg_s: 0.0,
+        };
+        let s = TrackingState {
+            azimuth_deg: 0.0,
+            elevation_deg: 45.0,
+            range_km: 4000.0,
+            range_rate_km_s: 0.0,
+            nadir_sun_illum_cos: illum,
+        };
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            437e6,
+            RfMetadata::default(),
+            150.0,
+            0.0,
+            None,
+            T_POINT,
+            Some(hil),
+            Some(p),
+        );
+        assert!(tm.physics_flags & FLAG_EPS_SUBSYSTEM_ANOMALY != 0);
+        assert_eq!(tm.physics_flags & FLAG_THERMAL_SUBSYSTEM_ANOMALY, 0);
+    }
+
+    #[test]
+    fn hil_cv4_bad_thermal_sets_bit5() {
+        let mut tm = dummy_tm();
+        let illum = 0.25_f64;
+        let p = HilSubsystemCvParams {
+            hil_eps_voltage_full_sun_v: 28.0,
+            hil_eps_voltage_eclipse_v: 24.0,
+            hil_thermal_c_full_sun: 32.0,
+            hil_thermal_c_eclipse: 12.0,
+            hil_eps_relative_tolerance: 0.1,
+            hil_thermal_absolute_tolerance_k: 10.0,
+        };
+        let v_ok = 24.0 + (28.0 - 24.0) * illum;
+        let t_ok = 12.0 + (32.0 - 12.0) * illum;
+        let hil = crate::hil_tm::DecodedHilTmV1 {
+            seq: 0,
+            eps_bus_voltage_v: v_ok as f32,
+            thermal_panel_c: (t_ok + 15.0) as f32,
+            body_rate_deg_s: 0.0,
+        };
+        let s = TrackingState {
+            azimuth_deg: 0.0,
+            elevation_deg: 45.0,
+            range_km: 4000.0,
+            range_rate_km_s: 0.0,
+            nadir_sun_illum_cos: illum,
+        };
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            437e6,
+            RfMetadata::default(),
+            150.0,
+            0.0,
+            None,
+            T_POINT,
+            Some(hil),
+            Some(p),
+        );
+        assert_eq!(tm.physics_flags & FLAG_EPS_SUBSYSTEM_ANOMALY, 0);
+        assert!(tm.physics_flags & FLAG_THERMAL_SUBSYSTEM_ANOMALY != 0);
+    }
+
+    #[test]
+    fn hil_cv4_skips_when_illum_non_finite() {
+        let mut tm = dummy_tm();
+        let p = HilSubsystemCvParams {
+            hil_eps_voltage_full_sun_v: 28.0,
+            hil_eps_voltage_eclipse_v: 24.0,
+            hil_thermal_c_full_sun: 32.0,
+            hil_thermal_c_eclipse: 12.0,
+            hil_eps_relative_tolerance: 0.1,
+            hil_thermal_absolute_tolerance_k: 10.0,
+        };
+        let hil = crate::hil_tm::DecodedHilTmV1 {
+            seq: 0,
+            eps_bus_voltage_v: 999.0,
+            thermal_panel_c: 999.0,
+            body_rate_deg_s: 0.0,
+        };
+        let s = TrackingState {
+            azimuth_deg: 0.0,
+            elevation_deg: 45.0,
+            range_km: 4000.0,
+            range_rate_km_s: 0.0,
+            nadir_sun_illum_cos: f64::NAN,
+        };
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            437e6,
+            RfMetadata::default(),
+            150.0,
+            0.0,
+            None,
+            T_POINT,
+            Some(hil),
+            Some(p),
+        );
+        assert_eq!(tm.physics_flags & (FLAG_EPS_SUBSYSTEM_ANOMALY | FLAG_THERMAL_SUBSYSTEM_ANOMALY), 0);
     }
 }

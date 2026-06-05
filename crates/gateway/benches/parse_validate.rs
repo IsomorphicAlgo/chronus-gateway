@@ -50,6 +50,7 @@ fn bench_apply_physics_validation(c: &mut Criterion) {
         elevation_deg: 45.0,
         range_km: 450.0,
         range_rate_km_s: -7.2,
+        nadir_sun_illum_cos: f64::NAN,
     };
     let nominal = 437_500_000.0_f64;
     let lb = LinkBudgetStationParams {
@@ -70,6 +71,8 @@ fn bench_apply_physics_validation(c: &mut Criterion) {
                 0.0,
                 Some(lb),
                 0.25,
+                None,
+                None,
             );
             black_box(t.physics_flags);
         })

@@ -373,7 +373,9 @@ name = "chronus-hil-sim"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "chronus-gateway",
+ "ephemerust",
  "nexosim",
  "serde",
  "tokio",
