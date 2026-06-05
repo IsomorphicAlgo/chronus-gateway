@@ -127,6 +127,8 @@ struct StationToml {
     hil_eps_relative_tolerance: Option<f64>,
     #[serde(default)]
     hil_thermal_absolute_tolerance_k: Option<f64>,
+    #[serde(default)]
+    hil_body_rate_max_abs_deg_s: Option<f64>,
     tle_inline: Option<String>,
     tle_file: Option<PathBuf>,
 }
@@ -180,6 +182,9 @@ impl TryFrom<StationToml> for StationConfig {
             hil_thermal_absolute_tolerance_k: t
                 .hil_thermal_absolute_tolerance_k
                 .unwrap_or(def.hil_thermal_absolute_tolerance_k),
+            hil_body_rate_max_abs_deg_s: t
+                .hil_body_rate_max_abs_deg_s
+                .unwrap_or(def.hil_body_rate_max_abs_deg_s),
         })
     }
 }

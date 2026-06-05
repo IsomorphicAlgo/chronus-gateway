@@ -126,6 +126,8 @@ pub struct StationConfig {
     pub hil_eps_relative_tolerance: f64,
     /// **T-THERMAL:** absolute temperature band, kelvin (default **10**).
     pub hil_thermal_absolute_tolerance_k: f64,
+    /// **CV-5 / T-BODYRATE:** maximum allowed magnitude of HIL v1 `body_rate_deg_s` (deg/s).
+    pub hil_body_rate_max_abs_deg_s: f64,
 }
 
 impl Default for StationConfig {
@@ -153,6 +155,7 @@ impl Default for StationConfig {
             hil_thermal_c_eclipse: 12.0,
             hil_eps_relative_tolerance: 0.1,
             hil_thermal_absolute_tolerance_k: 10.0,
+            hil_body_rate_max_abs_deg_s: 5.0,
         }
     }
 }
@@ -187,6 +190,14 @@ pub enum ConfigError {
     /// Pointing tolerance (degrees) is not a finite value greater than zero (**T-POINT** / CV-2).
     #[error("pointing tolerance {0}° is invalid (expected a finite value > 0)")]
     InvalidPointingTolerance(f64),
+    /// A link-budget numeric field is non-finite (**CV-1**).
+    #[error("link budget field `{field}` is invalid (expected a finite value)")]
+    InvalidLinkBudgetField {
+        /// Which field failed validation.
+        field: &'static str,
+        /// The offending value.
+        value: f64,
+    },
     /// HIL TM v1 synthetic APID range is empty or outside the 11-bit CCSDS APID space.
     #[error(
         "HIL TM v1 APID range {min:#x}..={max:#x} is invalid (expected min <= max and both <= {apid_max:#x})"
@@ -210,14 +221,11 @@ pub enum ConfigError {
         /// The offending value.
         value: f64,
     },
-    /// A link-budget power or gain field is non-finite.
-    #[error("link budget field `{field}` is invalid (expected a finite value)")]
-    InvalidLinkBudgetField {
-        /// Which field failed validation.
-        field: &'static str,
-        /// The offending value.
-        value: f64,
-    },
+    /// HIL CV-5 body-rate ceiling (deg/s) is not a finite positive value.
+    #[error(
+        "HIL body-rate ceiling {0} deg/s is invalid (expected a finite value > 0)"
+    )]
+    InvalidHilBodyRateMaxAbs(f64),
     /// A TLE file could not be read.
     #[error("failed to read TLE file {path}: {source}")]
     TleRead {
@@ -324,6 +332,11 @@ impl StationConfig {
         {
             return Err(ConfigError::InvalidHilThermalTolerance(
                 self.hil_thermal_absolute_tolerance_k,
+            ));
+        }
+        if !self.hil_body_rate_max_abs_deg_s.is_finite() || self.hil_body_rate_max_abs_deg_s <= 0.0 {
+            return Err(ConfigError::InvalidHilBodyRateMaxAbs(
+                self.hil_body_rate_max_abs_deg_s,
             ));
         }
         Ok(())
@@ -495,6 +508,15 @@ mod tests {
         assert!(matches!(
             bad_th.validate(),
             Err(ConfigError::InvalidHilThermalTolerance(_))
+        ));
+
+        let bad_br = StationConfig {
+            hil_body_rate_max_abs_deg_s: 0.0,
+            ..Default::default()
+        };
+        assert!(matches!(
+            bad_br.validate(),
+            Err(ConfigError::InvalidHilBodyRateMaxAbs(_))
         ));
     }
 

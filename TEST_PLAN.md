@@ -117,12 +117,12 @@ cargo clippy --all-targets
 Charter lives in **`docs/EXTENDED_COVALIDATION_PLAN.md`** and **`Methodology.md` D-016**. No code
 behavior change beyond documenting contracts.
 
-- [x] **`physics_flags` bit map** — bits 2–5 assigned to CV-1 / CV-2 / CV-4; bits 6–7 reserved;
+- [x] **`physics_flags` bit map** — bits 2–5 per CV-1 / CV-2 / CV-4; bit 6 (**CV-5**); bit 7 reserved;
   JSON evolution policy if \(>8\) alarms (`physics_flags_v2`).
 - [x] **RfMetadata vs payload** — ground-chain measurements on `RfMetadata`; spacecraft scalars via
   versioned synthetic CCSDS payload decode after **CV-3**.
-- [x] **Tolerance register** — **T-RSSI**, **T-POINT**, **T-EPS**, **T-THERMAL** rows below (charter
-  values; rebaseline when models land in CV-1 / CV-2 / CV-4).
+- [x] **Tolerance register** — **T-RSSI**, **T-POINT**, **T-EPS**, **T-THERMAL**, **T-BODYRATE** rows below (charter
+  values; rebaseline when models land in CV-1 / CV-2 / CV-4 / CV-5).
 - [x] **Explicit deferrals** — listed under D-016 (atmosphere, full PUS, SPICE-grade ephemeris,
   uncalibrated hardware RSSI).
 
@@ -155,6 +155,11 @@ behavior change beyond documenting contracts.
 - [x] **Distribution:** WebSocket path decodes HIL v1 on allowed APIDs and passes `HilSubsystemCvParams` from station (**D-021**).
 - [x] **HIL sim:** `chronus-hil-sim` uses Ephemerust + gateway `nadir_sun_illumination_cos` with the same linear maps as default station endpoints.
 
+### CV-5 — HIL ADCS body-rate envelope (bit 6, **T-BODYRATE**)
+- [x] **Validate:** `hil_cv5_body_rate_within_ceiling_no_bit6`, `hil_cv5_body_rate_exceeds_ceiling_sets_bit6`, `hil_cv5_skips_when_body_rate_non_finite`, `hil_cv5_skips_when_max_not_positive`.
+- [x] **Config:** `hil_body_rate_max_abs_deg_s` on `StationConfig` (default **5** deg/s); invalid ceiling in `rejects_invalid_hil_cv4_tolerance`; optional TOML `station.hil_body_rate_max_abs_deg_s`.
+- [x] **Distribution:** same WebSocket HIL decode path as CV-4 (**D-022**).
+
 ---
 
 ## Tolerance Register (justify every number)
@@ -169,13 +174,14 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | T-POINT | Great-circle angular separation between measured \((Az,El)\) and computed boresight | **0.25°** | **Charter (CV-0 / D-016).** Design-paper encoder vs computed residual; implementation in CV-2 uses spherical geometry. Revisit if station mount flex or refraction dominates in a given demo. |
 | T-EPS | Decoded HIL bus voltage vs linear map from toy Sun illumination | **±10 %** of configured voltage span (default **24–28 V**) | **Locked (CV-4 / D-021).** Proxy for “array current” in the CV-0 charter: the v1 payload carries **abstract bus voltage (V)**; tolerance applies to \(\|V_{\mathrm{meas}}-V_{\mathrm{pred}}\|\) with \(V_{\mathrm{pred}} = V_{\mathrm{ecl}} + (V_{\mathrm{sun}}-V_{\mathrm{ecl}})\,\texttt{nadir\_sun\_illum\_cos}\). Revisit if the payload adds a true current scalar. |
 | T-THERMAL | Decoded HIL panel °C vs the same illumination linear map | **±10 K** | **Locked (CV-4 / D-021).** Not flight thermal analysis; `chronus-hil-sim` emits self-consistent demo values. |
+| T-BODYRATE | Decoded HIL \|`body_rate_deg_s`\| vs configured ceiling | **≤ `hil_body_rate_max_abs_deg_s`** (default **5 deg/s**) | **Locked (CV-5 / D-022).** Envelope only — not a gyro bias or noise model; skip when rate or ceiling is non-finite / ceiling non-positive. |
 
 ---
 
 ## Status / counts (keep current)
 | Layer | Count | Notes |
 |-------|-------|-------|
-| Unit tests | 59 | `ccsds` + `config` + `hil_tm` + `propagator` + `validate` (`cargo test -p chronus-gateway --lib` count). |
+| Unit tests | 63 | `ccsds` + `config` + `hil_tm` + `propagator` + `validate` (`cargo test -p chronus-gateway --lib` count). |
 | Integration tests | 9 | `crates/gateway/tests/*.rs` (7) + `crates/chronus-hil-sim/tests/hil_ingest.rs` (2). |
 | Doctests | 1 | `EphemerustPropagator::new`. |
 

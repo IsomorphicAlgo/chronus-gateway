@@ -8,7 +8,8 @@ contributor expectations in `README.md` (keep this file current when decisions c
 > Status: **M1–M8** complete. **CV-0** charter is documented in
 > [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md) and **D-016**; **Gate CV-0** is approved.
 > **Gate CV-2** is approved; **CV-3** (synthetic HIL TM v1 payload + decoder + APID policy) is **implemented** — **Gate CV-3** approved.
-> **CV-4** (HIL subsystem vs toy Sun proxy) is **implemented** — **Gate CV-4** pending owner sign-off.
+> **CV-4** (HIL subsystem vs toy Sun proxy) is **implemented** — **Gate CV-4** approved.
+> **CV-5** (HIL ADCS body-rate envelope) is **implemented** — **Gate CV-5** pending owner sign-off.
 
 ---
 
@@ -204,9 +205,9 @@ config only (TLE files remain subject to `max_datagram_size` on the UDP path, un
 **Tested by:** `config::file` unit tests (parse, merge, ambiguous TLE, bad addr, missing file).
 
 ### D-016 — Extended co-validation charter (CV-0; `physics_flags`, `RfMetadata`, tolerances)
-**Decision:** Freeze contracts for post-M4 co-validation work (**CV-1…CV-4** in
+**Decision:** Freeze contracts for post-M4 co-validation work (**CV-1…CV-5** in
 [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md)). This entry **supplements**
-D-012; it does not change shipped Doppler/elevation behavior. **CV-1** implements bit 2; **CV-2** implements bit 3; **CV-4** implements bits 4–5 per this charter.
+D-012; it does not change shipped Doppler/elevation behavior. **CV-1** implements bit 2; **CV-2** implements bit 3; **CV-4** implements bits 4–5; **CV-5** implements bit 6 per this charter.
 
 **`physics_flags` (u8) — bit assignment**
 
@@ -218,7 +219,8 @@ D-012; it does not change shipped Doppler/elevation behavior. **CV-1** implement
 | 3 | `0x08` | Pointing: great-circle separation between measured and computed (az, el) \(>\) **T-POINT** | CV-2 (**shipped**) |
 | 4 | `0x10` | EPS: decoded **abstract bus voltage (V)** vs toy linear map from Sun illumination + decoded TM (`FLAG_EPS_SUBSYSTEM_ANOMALY`) | CV-4 (**shipped**) |
 | 5 | `0x20` | Thermal: decoded **panel °C** vs toy band from same illumination proxy (`FLAG_THERMAL_SUBSYSTEM_ANOMALY`) | CV-4 (**shipped**) |
-| 6–7 | `0x40`–`0x80` | **Reserved** — do not assign without updating this table and `TEST_PLAN.md` | — |
+| 6 | `0x40` | ADCS: HIL v1 \|`body_rate_deg_s`\| exceeds **T-BODYRATE** (`FLAG_ADCS_BODY_RATE_ANOMALY`) | CV-5 (**shipped**) |
+| 7 | `0x80` | **Reserved** — do not assign without updating this table and `TEST_PLAN.md` | — |
 
 If more than eight independent alarms are needed, add a **new** JSON field (e.g. `physics_flags_v2: u16`)
 alongside the existing `physics_flags` for one release cycle; do **not** repurpose bits 6–7 silently.
@@ -293,6 +295,11 @@ validation + `chronus-hil-sim` integration decode on the ingest path.
 Toy nadir-fixed illumination: `max(0, −û_sat·û_sun)` with a **spherical WGS84 equatorial** ray–sphere test to zero the factor in Earth occultation. Expected HIL `eps_bus_voltage_v` and `thermal_panel_c` are linear in that factor using tunable `StationConfig` endpoints; **T-EPS** is enforced as ±10 % of the configured voltage span, **T-THERMAL** as ±10 K (`FLAG_EPS_SUBSYSTEM_ANOMALY`, `FLAG_THERMAL_SUBSYSTEM_ANOMALY`). WebSocket distribution decodes **chronus.hil.tm.v1** when the APID is in the HIL band and passes decoded values into `apply_physics_validation`. `chronus-hil-sim` recomputes the same factor and linear maps so synthetic passes stay self-consistent.
 **Why:** Implements the CV-4 extension charter as a bounded, NaN-safe demo without flight hardware semantics.
 **Tested by:** `propagator::nadir_sun_illumination_cos_is_deterministic`, `validate::hil_cv4_*`, `config::rejects_invalid_hil_cv4_tolerance`, existing HIL ingest tests.
+
+### D-022 — HIL ADCS body-rate envelope (**CV-5**)
+**Decision:** When **chronus.hil.tm.v1** is decoded on an allowed APID, compare \|`body_rate_deg_s`\| to a finite positive ceiling **`hil_body_rate_max_abs_deg_s`** on `StationConfig` (default **5 deg/s**, synthetic demo). Anomaly sets **`physics_flags` bit 6** (`FLAG_ADCS_BODY_RATE_ANOMALY`). Skip when the ceiling is non-finite or non-positive, or when the reported rate is non-finite — no propagator cross-check in v1 (not a gyro calibration claim).
+**Why:** Uses the existing third HIL scalar for a minimal ADCS sanity flag without expanding the v1 payload; keeps the check independent of the Sun proxy (**CV-4**).
+**Tested by:** `validate::hil_cv5_*`, `config::rejects_invalid_hil_cv4_tolerance` (includes invalid body-rate ceiling).
 
 ---
 

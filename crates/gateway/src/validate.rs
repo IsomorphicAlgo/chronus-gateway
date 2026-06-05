@@ -23,13 +23,14 @@
 //! v1 — see **T-RSSI** in `TEST_PLAN.md`). Station-side **synthetic** `P_tx`, `G_tx`, and `G_rx`
 //! come from [`LinkBudgetStationParams`]. Anomaly sets bit 2 ([`FLAG_LINK_BUDGET_ANOMALY`]).
 //!
-//! ## HIL subsystem toy checks (**CV-4**)
+//! ## HIL subsystem toy checks (**CV-4** / **CV-5**)
 //!
 //! When a frame carries decoded [`crate::hil_tm::DecodedHilTmV1`] and [`HilSubsystemCvParams`] is
 //! supplied, expected **bus voltage** and **panel temperature** are linear maps of
-//! [`crate::propagator::TrackingState::nadir_sun_illum_cos`] (see `Methodology.md` **D-021**).
-//! Checks are **skipped** when illumination is non-finite, decode fails, or tolerances are invalid
-//! — never panic on untrusted floats.
+//! [`crate::propagator::TrackingState::nadir_sun_illum_cos`] (see `Methodology.md` **D-021**, **CV-4**).
+//! **`body_rate_deg_s`** is checked against a configurable absolute ceiling (**CV-5**, **D-022**)
+//! independent of Sun illumination. Checks are **skipped** when inputs are non-finite, decode fails,
+//! or tunables are invalid — never panic on untrusted floats.
 //!
 //! ## `physics_flags` bitfield (stable contract)
 //!
@@ -45,7 +46,8 @@
 //! | 3 | `0x08` | Pointing residual — measured vs computed (az, el) exceeds **T-POINT**. | **CV-2** (shipped) |
 //! | 4 | `0x10` | EPS / bus voltage vs toy sun-angle model (**T-EPS**). | **CV-4** (shipped) |
 //! | 5 | `0x20` | Thermal vs sun-angle proxy band (**T-THERMAL**). | **CV-4** (shipped) |
-//! | 6–7 | `0x40`–`0x80` | Reserved. | — |
+//! | 6 | `0x40` | ADCS — HIL `body_rate_deg_s` magnitude exceeds **T-BODYRATE** (**CV-5**). | **CV-5** (shipped) |
+//! | 7 | `0x80` | Reserved. | — |
 //!
 //! If more than eight flags are needed, add `physics_flags_v2` (or similar) to the Open MCT JSON
 //! envelope rather than silently reusing reserved bits (D-016).
@@ -87,6 +89,8 @@ pub const FLAG_POINTING_ANOMALY: u8 = 0x08;
 pub const FLAG_EPS_SUBSYSTEM_ANOMALY: u8 = 0x10;
 /// Bit 5 — decoded HIL panel temperature outside toy thermal band (**CV-4** / **T-THERMAL**).
 pub const FLAG_THERMAL_SUBSYSTEM_ANOMALY: u8 = 0x20;
+/// Bit 6 — decoded HIL \|`body_rate_deg_s`\| exceeds configured ceiling (**CV-5** / **T-BODYRATE**).
+pub const FLAG_ADCS_BODY_RATE_ANOMALY: u8 = 0x40;
 
 /// Optional **ground / receiver-chain** measurements accompanying a frame (SDR or synthetic lab).
 ///
@@ -120,7 +124,7 @@ pub struct LinkBudgetStationParams {
     pub tolerance_db: f64,
 }
 
-/// Tunables for **CV-4** HIL subsystem cross-checks (synthetic demo only).
+/// Tunables for **CV-4** / **CV-5** HIL subsystem cross-checks (synthetic demo only).
 ///
 /// Built from [`crate::config::StationConfig`] at the HTTP/WebSocket distribution layer.
 #[derive(Debug, Clone, Copy)]
@@ -137,10 +141,12 @@ pub struct HilSubsystemCvParams {
     pub hil_eps_relative_tolerance: f64,
     /// **T-THERMAL:** allowed ± deviation from the linear thermal model, kelvin (°C numerically).
     pub hil_thermal_absolute_tolerance_k: f64,
+    /// **T-BODYRATE:** maximum allowed \|`body_rate_deg_s`\| from decoded HIL v1 (deg/s).
+    pub hil_body_rate_max_abs_deg_s: f64,
 }
 
 impl HilSubsystemCvParams {
-    /// Copies CV-4 fields from a validated [`crate::config::StationConfig`].
+    /// Copies CV-4 / CV-5 fields from a validated [`crate::config::StationConfig`].
     #[must_use]
     pub fn from_station(station: &crate::config::StationConfig) -> Self {
         Self {
@@ -150,6 +156,7 @@ impl HilSubsystemCvParams {
             hil_thermal_c_eclipse: station.hil_thermal_c_eclipse,
             hil_eps_relative_tolerance: station.hil_eps_relative_tolerance,
             hil_thermal_absolute_tolerance_k: station.hil_thermal_absolute_tolerance_k,
+            hil_body_rate_max_abs_deg_s: station.hil_body_rate_max_abs_deg_s,
         }
     }
 }
@@ -245,7 +252,7 @@ fn az_el_to_enu_unit(az_deg: f64, el_deg: f64) -> Option<(f64, f64, f64)> {
 ///
 /// `pointing_tolerance_deg` is **T-POINT** (must be finite and `> 0`); when non-positive or
 /// non-finite, the pointing check is skipped.
-#[allow(clippy::too_many_arguments)] // M4 + CV-1…CV-4 parameters; grouping would churn every call site.
+#[allow(clippy::too_many_arguments)] // M4 + CV-1…CV-5 parameters; grouping would churn every call site.
 pub fn apply_physics_validation(
     frame: &mut TelemetryFrame,
     state: &TrackingState,
@@ -320,8 +327,16 @@ pub fn apply_physics_validation(
         }
     }
 
-    // CV-4 — decoded HIL scalars vs toy sun proxy (skip unless all inputs finite and params valid).
+    // CV-4 / CV-5 — decoded HIL v1 (skip unless params valid; never panic on floats).
     if let (Some(hil), Some(p)) = (hil_tm, hil_subsystem) {
+        // CV-5 — ADCS body-rate envelope (independent of Sun illumination).
+        if p.hil_body_rate_max_abs_deg_s.is_finite() && p.hil_body_rate_max_abs_deg_s > 0.0 {
+            let w = hil.body_rate_deg_s as f64;
+            if w.is_finite() && w.abs() > p.hil_body_rate_max_abs_deg_s {
+                frame.physics_flags |= FLAG_ADCS_BODY_RATE_ANOMALY;
+            }
+        }
+
         let illum = state.nadir_sun_illum_cos;
         if illum.is_finite() && (0.0..=1.0).contains(&illum) {
             if p.hil_eps_relative_tolerance.is_finite()
@@ -868,6 +883,7 @@ mod tests {
             hil_thermal_c_eclipse: 12.0,
             hil_eps_relative_tolerance: 0.11,
             hil_thermal_absolute_tolerance_k: 10.0,
+            hil_body_rate_max_abs_deg_s: 5.0,
         };
         let v_exp = 24.0 + (28.0 - 24.0) * illum;
         let t_exp = 12.0 + (32.0 - 12.0) * illum;
@@ -913,6 +929,7 @@ mod tests {
             hil_thermal_c_eclipse: 12.0,
             hil_eps_relative_tolerance: 0.1,
             hil_thermal_absolute_tolerance_k: 10.0,
+            hil_body_rate_max_abs_deg_s: 5.0,
         };
         let v_ok = 24.0 + (28.0 - 24.0) * illum;
         let t_ok = 12.0 + (32.0 - 12.0) * illum;
@@ -956,6 +973,7 @@ mod tests {
             hil_thermal_c_eclipse: 12.0,
             hil_eps_relative_tolerance: 0.1,
             hil_thermal_absolute_tolerance_k: 10.0,
+            hil_body_rate_max_abs_deg_s: 5.0,
         };
         let v_ok = 24.0 + (28.0 - 24.0) * illum;
         let t_ok = 12.0 + (32.0 - 12.0) * illum;
@@ -998,6 +1016,7 @@ mod tests {
             hil_thermal_c_eclipse: 12.0,
             hil_eps_relative_tolerance: 0.1,
             hil_thermal_absolute_tolerance_k: 10.0,
+            hil_body_rate_max_abs_deg_s: 5.0,
         };
         let hil = crate::hil_tm::DecodedHilTmV1 {
             seq: 0,
@@ -1025,5 +1044,165 @@ mod tests {
             Some(p),
         );
         assert_eq!(tm.physics_flags & (FLAG_EPS_SUBSYSTEM_ANOMALY | FLAG_THERMAL_SUBSYSTEM_ANOMALY), 0);
+    }
+
+    #[test]
+    fn hil_cv5_body_rate_within_ceiling_no_bit6() {
+        let mut tm = dummy_tm();
+        let p = HilSubsystemCvParams {
+            hil_eps_voltage_full_sun_v: 28.0,
+            hil_eps_voltage_eclipse_v: 24.0,
+            hil_thermal_c_full_sun: 32.0,
+            hil_thermal_c_eclipse: 12.0,
+            hil_eps_relative_tolerance: 0.1,
+            hil_thermal_absolute_tolerance_k: 10.0,
+            hil_body_rate_max_abs_deg_s: 2.0,
+        };
+        let hil = crate::hil_tm::DecodedHilTmV1 {
+            seq: 0,
+            eps_bus_voltage_v: 0.0,
+            thermal_panel_c: 0.0,
+            body_rate_deg_s: 1.5,
+        };
+        let s = TrackingState {
+            azimuth_deg: 0.0,
+            elevation_deg: 45.0,
+            range_km: 4000.0,
+            range_rate_km_s: 0.0,
+            nadir_sun_illum_cos: f64::NAN,
+        };
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            437e6,
+            RfMetadata::default(),
+            150.0,
+            0.0,
+            None,
+            T_POINT,
+            Some(hil),
+            Some(p),
+        );
+        assert_eq!(tm.physics_flags & FLAG_ADCS_BODY_RATE_ANOMALY, 0);
+    }
+
+    #[test]
+    fn hil_cv5_body_rate_exceeds_ceiling_sets_bit6() {
+        let mut tm = dummy_tm();
+        let p = HilSubsystemCvParams {
+            hil_eps_voltage_full_sun_v: 28.0,
+            hil_eps_voltage_eclipse_v: 24.0,
+            hil_thermal_c_full_sun: 32.0,
+            hil_thermal_c_eclipse: 12.0,
+            hil_eps_relative_tolerance: 0.1,
+            hil_thermal_absolute_tolerance_k: 10.0,
+            hil_body_rate_max_abs_deg_s: 1.0,
+        };
+        let hil = crate::hil_tm::DecodedHilTmV1 {
+            seq: 0,
+            eps_bus_voltage_v: 0.0,
+            thermal_panel_c: 0.0,
+            body_rate_deg_s: -3.0,
+        };
+        let s = TrackingState {
+            azimuth_deg: 0.0,
+            elevation_deg: 45.0,
+            range_km: 4000.0,
+            range_rate_km_s: 0.0,
+            nadir_sun_illum_cos: f64::NAN,
+        };
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            437e6,
+            RfMetadata::default(),
+            150.0,
+            0.0,
+            None,
+            T_POINT,
+            Some(hil),
+            Some(p),
+        );
+        assert!(tm.physics_flags & FLAG_ADCS_BODY_RATE_ANOMALY != 0);
+    }
+
+    #[test]
+    fn hil_cv5_skips_when_body_rate_non_finite() {
+        let mut tm = dummy_tm();
+        let p = HilSubsystemCvParams {
+            hil_eps_voltage_full_sun_v: 28.0,
+            hil_eps_voltage_eclipse_v: 24.0,
+            hil_thermal_c_full_sun: 32.0,
+            hil_thermal_c_eclipse: 12.0,
+            hil_eps_relative_tolerance: 0.1,
+            hil_thermal_absolute_tolerance_k: 10.0,
+            hil_body_rate_max_abs_deg_s: 1.0,
+        };
+        let hil = crate::hil_tm::DecodedHilTmV1 {
+            seq: 0,
+            eps_bus_voltage_v: 0.0,
+            thermal_panel_c: 0.0,
+            body_rate_deg_s: f32::NAN,
+        };
+        let s = TrackingState {
+            azimuth_deg: 0.0,
+            elevation_deg: 45.0,
+            range_km: 4000.0,
+            range_rate_km_s: 0.0,
+            nadir_sun_illum_cos: f64::NAN,
+        };
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            437e6,
+            RfMetadata::default(),
+            150.0,
+            0.0,
+            None,
+            T_POINT,
+            Some(hil),
+            Some(p),
+        );
+        assert_eq!(tm.physics_flags & FLAG_ADCS_BODY_RATE_ANOMALY, 0);
+    }
+
+    #[test]
+    fn hil_cv5_skips_when_max_not_positive() {
+        let mut tm = dummy_tm();
+        let p = HilSubsystemCvParams {
+            hil_eps_voltage_full_sun_v: 28.0,
+            hil_eps_voltage_eclipse_v: 24.0,
+            hil_thermal_c_full_sun: 32.0,
+            hil_thermal_c_eclipse: 12.0,
+            hil_eps_relative_tolerance: 0.1,
+            hil_thermal_absolute_tolerance_k: 10.0,
+            hil_body_rate_max_abs_deg_s: f64::NAN,
+        };
+        let hil = crate::hil_tm::DecodedHilTmV1 {
+            seq: 0,
+            eps_bus_voltage_v: 0.0,
+            thermal_panel_c: 0.0,
+            body_rate_deg_s: 100.0,
+        };
+        let s = TrackingState {
+            azimuth_deg: 0.0,
+            elevation_deg: 45.0,
+            range_km: 4000.0,
+            range_rate_km_s: 0.0,
+            nadir_sun_illum_cos: f64::NAN,
+        };
+        apply_physics_validation(
+            &mut tm,
+            &s,
+            437e6,
+            RfMetadata::default(),
+            150.0,
+            0.0,
+            None,
+            T_POINT,
+            Some(hil),
+            Some(p),
+        );
+        assert_eq!(tm.physics_flags & FLAG_ADCS_BODY_RATE_ANOMALY, 0);
     }
 }

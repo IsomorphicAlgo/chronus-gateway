@@ -43,7 +43,7 @@ pub struct OpenMctRealtimeMessageV1 {
     pub apid: u16,
     pub seq_count: u16,
     pub received_at: chrono::DateTime<chrono::Utc>,
-    /// Bitfield per D-016 / `validate` module docs (M4 + CV-1…CV-4 shipped for chartered bits).
+    /// Bitfield per D-016 / `validate` module docs (M4 + CV-1…CV-5 for assigned bits).
     pub physics_flags: u8,
     pub source: String,
     pub elevation_deg: Option<f64>,

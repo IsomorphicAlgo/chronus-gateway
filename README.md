@@ -14,7 +14,7 @@ measured RF and signal parameters disagree with the physics.
 > **Status:** Roadmap through **Milestone 8** is implemented: M1–M7 as before, plus optional **TOML**
 > configuration (`--config` / `CHRONUS_GATEWAY_CONFIG`, `[gateway.example.toml](gateway.example.toml)`).
 > NeXosim HIL notes: `[docs/HIL.md](docs/HIL.md)`.
-> Post-M8 **extended co-validation** (`[docs/EXTENDED_COVALIDATION_PLAN.md](docs/EXTENDED_COVALIDATION_PLAN.md)`): **CV-1…CV-4** implemented (link budget, pointing, **HIL TM v1**, subsystem toy checks vs Sun proxy); **Gate CV-4** pending owner sign-off. See `[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)`.
+> Post-M8 **extended co-validation** (`[docs/EXTENDED_COVALIDATION_PLAN.md](docs/EXTENDED_COVALIDATION_PLAN.md)`): **CV-1…CV-5** implemented; **Gate CV-5** pending owner sign-off. See `[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)`.
 
 ---
 
@@ -74,7 +74,7 @@ chronus-gateway/
 │   └── tests/hil_ingest.rs Milestone 7 smoke + soak vs real `ingest::run`
 ├── docs/
 │   ├── BUILD_PLAN.md       Iterative, stage-gated implementation roadmap
-│   ├── EXTENDED_COVALIDATION_PLAN.md  Post-M8 co-validation milestones (CV-0…CV-4)
+│   ├── EXTENDED_COVALIDATION_PLAN.md  Post-M8 co-validation milestones (CV-0…CV-5)
 │   └── HIL.md              Manual profiling recipe (gateway metrics)
 ├── Methodology.md          Decision log: the reasoning behind major choices
 └── TEST_PLAN.md            Companion test plan and tolerance register

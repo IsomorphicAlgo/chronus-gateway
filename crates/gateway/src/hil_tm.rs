@@ -1,7 +1,7 @@
 //! Synthetic HIL telemetry payload layout **CV-3** (`chronus.hil.tm.v1`).
 //!
 //! Versioned, fixed-width binary layout in the CCSDS Space Packet **data field** (no PUS secondary
-//! header in v1). Used by `chronus-hil-sim` and tests so subsystem co-validation (**CV-4**) does not
+//! header in v1). Used by `chronus-hil-sim` and tests so subsystem co-validation (**CV-4**, **CV-5**) does not
 //! depend on ambiguous raw blobs. See **`docs/EXTENDED_COVALIDATION_PLAN.md`** and `docs/HIL.md`.
 //!
 //! ## Layout (`chronus.hil.tm.v1`)
