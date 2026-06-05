@@ -4,6 +4,11 @@
 [advisories]
 version = 2
 yanked = "deny"
+# Transitive unmaintained crates (no semver-safe upgrade in our graph yet). See Methodology.md D-019.
+ignore = [
+    { id = "RUSTSEC-2025-0141", reason = "bincode 2.x unmaintained; only via nexosim (HIL). Await upstream; not a CVE (project halt)." },
+    { id = "RUSTSEC-2024-0436", reason = "paste unmaintained; via spacepackets 0.17 (CCSDS). Await upstream; compile-time macro, no CVE." },
+]
 
 [licenses]
 version = 2

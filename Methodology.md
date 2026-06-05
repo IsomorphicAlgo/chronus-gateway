@@ -266,6 +266,14 @@ matches `TrackingState` azimuth (clockwise from north) / elevation (above horizo
 **Tested by:** `validate` unit tests (`angular_separation_*`, pointing in/out of band, skip paths) and
 `config` validation for `pointing_tolerance_deg`.
 
+### D-019 — `cargo-deny` exceptions for transitive unmaintained advisories
+**Decision:** List **RUSTSEC-2025-0141** (`bincode` 2.x) and **RUSTSEC-2024-0436** (`paste`) in
+`deny.toml` `[advisories].ignore` with recorded reasons. Both are **unmaintained** (not vulnerability)
+reports on transitive dependencies: **`nexosim`** → `bincode`, **`spacepackets`** 0.17 → `paste`.
+**Why:** `cargo deny check` is a CI gate (M6); failing the build on advisories we cannot resolve without
+forking or dropping HIL / CCSDS stacks would block all merges. Revisit when `nexosim` or `spacepackets`
+publishes releases that remove these crates; remove ignores and re-run `cargo deny check`.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -290,4 +298,4 @@ External works this project builds on or is inspired by (keep current; attribute
 
 ---
 
-*Last updated: 2026-06-03.*
+*Last updated: 2026-06-05.*
