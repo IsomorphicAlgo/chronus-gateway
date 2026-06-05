@@ -18,7 +18,7 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner approval required to adv
 **Objective:** A compiling workspace with the astrodynamics seam proven end to end.
 
 **Deliverables**
-- [x] Cargo workspace (`crates/gateway`), centralized `[workspace.dependencies]`, MSRV 1.88.
+- [x] Cargo workspace (`crates/gateway`), centralized `[workspace.dependencies]`, MSRV 1.89.
 - [x] `OrbitalPropagator` trait + `EphemerustPropagator` backend (`src/propagator.rs`).
 - [x] `main.rs` smoke test producing a real `TrackingState` from a reference ISS TLE.
 - [x] Governance: `../Methodology.md`; build unblocked via `rust-lld` (D-008).

@@ -6,7 +6,7 @@ members = ["crates/gateway", "crates/chronus-hil-sim"]
 # (see Methodology.md → "Workspace + centralized dependency versions").
 [workspace.package]
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.89"
 license = "MIT"
 authors = ["MichaelHansen"]
 repository = "https://github.com/IsomorphicAlgo/chronus-gateway"

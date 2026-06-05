@@ -61,12 +61,13 @@ or a crates.io version (and update this entry).
 **Reproducibility:** `0.x` crate — pin intentionally and bump deliberately on breaking minors.
 **CI:** `.github/workflows/ci.yml` always clones **`IsomorphicAlgo/Ephemerust`** (not `github.repository_owner`) into a sibling directory so fork pull requests still resolve `../Ephemerust`; `actions/checkout@v5` avoids deprecated Node 20 runners for the checkout action.
 
-### D-006 — MSRV 1.88 (advisory), no forced toolchain pin yet
-**Decision:** Set `rust-version = "1.88"` in `[workspace.package]` to match Ephemerust's MSRV;
-do **not** add a `rust-toolchain.toml` forcing a channel for now.
-**Why:** The installed toolchain (1.90) satisfies the MSRV. Forcing an exact channel that may not
-be installed would trigger surprise downloads/build failures. Add a pinned `rust-toolchain.toml`
-later if/when CI reproducibility demands it.
+### D-006 — MSRV 1.89 (advisory), no forced toolchain pin yet
+**Decision:** Set `rust-version = "1.89"` in `[workspace.package]`; GitHub CI uses the same
+`dtolnay/rust-toolchain@stable` pin. Do **not** add a `rust-toolchain.toml` forcing a channel for now.
+**Why:** **`nexosim` 1.x** (HIL / `chronus-hil-sim`) pulls **`smol_str` 0.3.6**, which declares
+**rustc 1.89** as its minimum — building on 1.88 fails with Cargo’s MSRV check. Ephemerust remains
+compatible at this floor. Forcing an exact channel that may not be installed would trigger surprise
+downloads/build failures; add a pinned `rust-toolchain.toml` later if CI reproducibility demands it.
 
 ### D-007 — Async runtime: Tokio (multi-threaded)
 **Decision:** Use Tokio (`features = ["full"]`) as the async runtime.

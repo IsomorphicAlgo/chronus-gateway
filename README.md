@@ -47,7 +47,7 @@ The reasoning behind these and other choices is recorded in `[Methodology.md](Me
 
 ```
 chronus-gateway/
-├── Cargo.toml              Workspace manifest (centralized dependency versions, MSRV 1.88)
+├── Cargo.toml              Workspace manifest (centralized dependency versions, MSRV 1.89)
 ├── deny.toml               cargo-deny policy (CI supply-chain gate)
 ├── gateway.example.toml    Example TOML for `chronus-gateway --config` (M8)
 ├── .github/workflows/ci.yml Tests, clippy, audit, deny (checks out Ephemerust sibling)
@@ -84,7 +84,7 @@ chronus-gateway/
 
 ## Building and running
 
-The project targets Rust 1.88 or newer and consumes the Ephemerust library as a sibling
+The project targets Rust 1.89 or newer and consumes the Ephemerust library as a sibling
 checkout. The expected on-disk layout places both repositories next to each other:
 
 ```
