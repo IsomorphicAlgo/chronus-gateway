@@ -1,7 +1,7 @@
 # ChronusGateway-RS — Demo & Showcase Acceptance
 
-**Companion:** [`docs/SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md) (iterative, **owner-gated** roadmap),
-[`TEST_PLAN.md`](../TEST_PLAN.md) (checkbox gates S0–S4).
+**Companion:** [`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md) (iterative, **owner-gated** roadmap),
+[`TEST_PLAN.md`](../TEST_PLAN.md) (checkbox gates S0–S4). Operator runbook: [`DEMO.md`](DEMO.md).
 
 This document holds **manual and semi-automated acceptance** for showcase work. It is **not** a
 replacement for `cargo test` on the gateway library — it defines what “demo-ready” means for each
@@ -37,12 +37,15 @@ replacement for `cargo test` on the gateway library — it defines what “demo-
 
 ## S1 — Demo spine acceptance
 
-**Prerequisites:** Rust toolchain per workspace MSRV; Ephemerust sibling checkout per README.
+**Prerequisites**
+
+- **Native path:** Rust MSRV+; Ephemerust sibling checkout (see [`README.md`](../README.md)).
+- **Docker path:** Docker with Compose v2 only (Ephemerust is cloned **inside** the image build).
 
 **Procedure**
 
-1. Start stack per **`docs/DEMO.md`** (or `demo/README.md` once added) — e.g. `docker compose up`
-   **or** the documented two-terminal `cargo run` sequence.
+1. Start stack per **[`DEMO.md`](DEMO.md)** — either **Path A (native)** or **Path B (Docker)** as written there
+   (Docker: from repo root, `docker compose -f demo/docker-compose.yml up -d --build --wait`).
 2. **`GET /health`** — expect HTTP **200** and JSON body indicating healthy status (exact shape per
    `crates/gateway/src/http.rs` at review time).
 3. **WebSocket** — connect to `GET /telemetry/openmct` (upgrade); after HIL or UDP feed starts,
@@ -54,8 +57,8 @@ replacement for `cargo test` on the gateway library — it defines what “demo-
 
 **Pass:** Steps 2–4 succeed on a clean machine following only repo docs; **Gate S-1** approved.
 
-**Failure triage:** port collisions → document port overrides; missing Ephemerust → README layout;
-Windows firewall → document loopback-only binds.
+**Failure triage:** port collisions → document port overrides; missing Ephemerust (native) → README layout;
+Docker build failures → see `DEMO.md` troubleshooting; Windows firewall → document loopback-only binds.
 
 ---
 
@@ -111,3 +114,4 @@ Windows firewall → document loopback-only binds.
 | Date       | Change                          |
 |------------|---------------------------------|
 | 2026-06-04 | Initial `Demo_Test.md` created. |
+| 2026-06-05 | S1: native + Docker procedures; link `DEMO.md`. |

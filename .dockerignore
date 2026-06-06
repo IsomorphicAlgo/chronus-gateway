@@ -1,0 +1,3 @@
+# Build context for `demo/Dockerfile` (repository root). Keeps `docker build` uploads small.
+/target
+.git

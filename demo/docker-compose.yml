@@ -1,0 +1,34 @@
+# Chronus demo stack (Showcase S1). Build context = repository root (`..` from this file).
+#
+# Usage (from repo root): `docker compose -f demo/docker-compose.yml up -d --build --wait`
+# Then open `ws://127.0.0.1:8080/telemetry/openmct` or `curl http://127.0.0.1:8080/health`.
+#
+# `hil-feeder` exits after sending FRAMES (default 500); gateway keeps running.
+
+services:
+  gateway:
+    image: chronus-demo:local
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile
+    ports:
+      - "8080:8080"
+      - "7301:7301/udp"
+    environment:
+      CHRONUS_GATEWAY_CONFIG: /etc/chronus/gateway.toml
+    volumes:
+      - ./gateway.docker.toml:/etc/chronus/gateway.toml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  hil-feeder:
+    image: chronus-demo:local
+    depends_on:
+      gateway:
+        condition: service_healthy
+    command: ["chronus-hil-sim", "gateway:7301", "500"]
+    restart: "no"

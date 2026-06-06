@@ -198,10 +198,10 @@ stages — obtain **owner Gate S-*** approval between tranches (same governance 
 
 ### S1 — Demo spine
 
-- Documented stack (`docs/DEMO.md` or `demo/README.md`) starts gateway + synthetic feeder;
-`GET /health` → **200**; WebSocket `GET /telemetry/openmct` delivers **≥ 1** valid
-`openmct.realtime.v1` JSON message; `GET /api/v1/chronus/metrics` → **200** with finite fields after ingest
-(see `Demo_Test.md` §S1).
+- [x] Documented stack — [`docs/DEMO.md`](docs/DEMO.md) + [`demo/README.md`](demo/README.md) + [`demo/docker-compose.yml`](demo/docker-compose.yml); native `cargo run` two-terminal flow and Docker Compose path.
+- [x] `GET /health` → **200**; WebSocket `GET /telemetry/openmct` delivers **≥ 1** valid `openmct.realtime.v1`
+      JSON message; `GET /api/v1/chronus/metrics` → **200** with finite fields after ingest (manual / `Demo_Test.md` §S1).
+- [x] CI validates Compose file: `docker compose -f demo/docker-compose.yml config --quiet` (`.github/workflows/ci.yml`).
 
 **Gate S-1:** `[ ]` **Owner approval** — **S2** may proceed.
 
@@ -257,4 +257,4 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Showcase gates S0–S4 | 1 / 5 | S0 complete; [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md); manual steps [`docs/Demo_Test.md`](docs/Demo_Test.md). |
 
 
-*Last updated: 2026-06-04.*
+*Last updated: 2026-06-05.*

@@ -185,6 +185,7 @@ the same milestones and tolerances the project tests against:
 | See **what is tested**, **default tolerances** (T-DOPPLER, T-RSSI, …), and test commands | [`TEST_PLAN.md`](../TEST_PLAN.md) |
 | Read the **extended co-validation** story after M8 (CV milestones, flags, charter) | [`docs/EXTENDED_COVALIDATION_PLAN.md`](EXTENDED_COVALIDATION_PLAN.md) |
 | Run the **NeXosim HIL** driver and interpret gateway metrics during a soak | [`docs/HIL.md`](HIL.md) |
+| Run a **repeatable demo** (native or Docker) | [`docs/DEMO.md`](DEMO.md) |
 | Plan **portfolio demos** (Docker, dashboard, replay) and manual acceptance gates | [`docs/SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md), [`docs/Demo_Test.md`](Demo_Test.md) |
 | Understand **why** a major choice was made (dependencies, seams, deferrals) | [`Methodology.md`](../Methodology.md) |
 | Configure a real run (bind addresses, station, TLE path) | [`gateway.example.toml`](../gateway.example.toml), `--config` / `-c`, and `CHRONUS_GATEWAY_CONFIG` (see **First run** above) |

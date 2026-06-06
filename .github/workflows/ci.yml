@@ -39,6 +39,11 @@ jobs:
         working-directory: chronus-gateway
         run: cargo test
 
+      # Showcase S1: ensure Compose spec is valid (no full `docker build` here — too slow for PR CI).
+      - name: Validate demo Docker Compose spec
+        working-directory: chronus-gateway
+        run: docker compose -f demo/docker-compose.yml config --quiet
+
       - name: Compile benchmarks (Criterion)
         working-directory: chronus-gateway
         run: cargo bench --no-run

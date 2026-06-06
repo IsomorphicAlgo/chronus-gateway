@@ -1,12 +1,28 @@
 # Demo & showcase assets (workspace root)
 
-This directory is the **intended home** for Docker Compose files, dashboard sources (Open MCT bridge,
-static SPA), and other **booth / portfolio** materials tracked in [`docs/SHOWCASE_PLAN.md`](../docs/SHOWCASE_PLAN.md).
+This directory holds the **Showcase S1** “demo spine”: Docker build/compose plus a Docker-specific
+gateway TOML fragment. It is **not** shipped inside crates.io packages (`Methodology.md` **D-025**).
 
-**Why here:** `cargo publish` only packages each crate’s own folder (`crates/gateway/`,
-`crates/chronus-hil-sim/`). Keeping demos under **workspace root** keeps the **crates.io tarball**
-free of large or fast-moving showcase files (`Methodology.md` **D-025**).
+## Quick links
 
-**Separate download:** Optional **GitHub Release** zip (demo + short README) can be built in CI so
-users fetch the showcase **without** pulling the full monorepo — see *Crates.io vs showcase
-distribution* in `SHOWCASE_PLAN.md`.
+| Doc / file | Purpose |
+|------------|---------|
+| [`../docs/DEMO.md`](../docs/DEMO.md) | **Operator runbook** — native two-terminal flow, Docker Compose, curls, WebSocket expectations, troubleshooting |
+| [`docker-compose.yml`](docker-compose.yml) | `gateway` + one-shot `hil-feeder` (Compose network) |
+| [`Dockerfile`](Dockerfile) | Multi-stage image: clone upstream Ephemerust, build both binaries |
+| [`gateway.docker.toml`](gateway.docker.toml) | Ingest + HTTP bind on `0.0.0.0` for container networking |
+
+## One-liner (Docker)
+
+From **repository root**:
+
+```bash
+docker compose -f demo/docker-compose.yml up -d --build --wait
+```
+
+Then `curl http://127.0.0.1:8080/health` and open `ws://127.0.0.1:8080/telemetry/openmct`.
+
+## Separate download (future)
+
+Optional **GitHub Release** zip containing only `demo/**` + pointers to crates.io — see
+*Crates.io vs showcase distribution* in [`../docs/SHOWCASE_PLAN.md`](../docs/SHOWCASE_PLAN.md).

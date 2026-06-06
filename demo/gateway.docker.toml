@@ -1,0 +1,10 @@
+# Docker demo: bind **all interfaces** so other containers can reach UDP :7301 and HTTP :8080.
+# Station section omitted → same defaults as no-config `chronus-gateway` (see `gateway.example.toml`).
+#
+# Mount as `/etc/chronus/gateway.toml` and set `CHRONUS_GATEWAY_CONFIG=/etc/chronus/gateway.toml`.
+
+[ingest]
+bind_addr = "0.0.0.0:7301"
+channel_capacity = 1024
+max_datagram_size = 65542
+http_bind = "0.0.0.0:8080"

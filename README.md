@@ -16,6 +16,7 @@ measured RF and signal parameters disagree with the physics.
 > NeXosim HIL notes: `[docs/HIL.md](docs/HIL.md)`.
 > **User guide (intro + first run + alarms):** `[docs/USER_GUIDE.md](docs/USER_GUIDE.md)` — grows with the plan files below.
 > Post-M8 **extended co-validation** (`[docs/EXTENDED_COVALIDATION_PLAN.md](docs/EXTENDED_COVALIDATION_PLAN.md)`): **CV-1…CV-5** implemented; **Gate CV-5** pending owner sign-off. See `[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)`.
+> **Showcase / demos:** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) — **S0** approved; **S1** deliverables (Docker + [`docs/DEMO.md`](docs/DEMO.md)) in place — **Gate S-1** pending owner sign-off. Manual acceptance: [`docs/Demo_Test.md`](docs/Demo_Test.md).
 
 ---
 
@@ -75,6 +76,7 @@ chronus-gateway/
 │   └── tests/hil_ingest.rs Milestone 7 smoke + soak vs real `ingest::run`
 ├── demo/                   Compose + dashboard sources (S1+); **not** shipped inside crates.io packages
 ├── docs/
+│   ├── DEMO.md             Operator demo runbook (native + Docker; Showcase S1)
 │   ├── USER_GUIDE.md       Operator guide (intro, first run, `physics_flags`; grows with plans)
 │   ├── BUILD_PLAN.md       Iterative, stage-gated implementation roadmap
 │   ├── SHOWCASE_PLAN.md    Owner-gated demo/showcase stages (S0–S4; Docker, dashboard, replay)

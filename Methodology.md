@@ -10,7 +10,7 @@ contributor expectations in `README.md` (keep this file current when decisions c
 > **Gate CV-2** is approved; **CV-3** (synthetic HIL TM v1 payload + decoder + APID policy) is **implemented** — **Gate CV-3** approved.
 > **CV-4** (HIL subsystem vs toy Sun proxy) is **implemented** — **Gate CV-4** approved.
 > **CV-5** (HIL ADCS body-rate envelope) is **implemented** — **Gate CV-5** pending owner sign-off.
-> **Showcase track (S0–S4):** roadmap and manual acceptance in [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) + [`docs/Demo_Test.md`](docs/Demo_Test.md); **Gate S-0** approved (2026-06-04).
+> **Showcase track (S0–S4):** roadmap and manual acceptance in [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) + [`docs/Demo_Test.md`](docs/Demo_Test.md); **Gate S-0** approved (2026-06-04). **S1** demo spine (Docker + [`docs/DEMO.md`](docs/DEMO.md)) implemented — **Gate S-1** pending.
 
 ---
 
@@ -341,6 +341,10 @@ dropped if mistakenly created under the crate folder.
 **Why:** `cargo publish` only packages the crate directory; keeping demos out of `crates/*` avoids
 bloat, accidental IP drift, and confusion for dependents who only need the gateway API/binary.
 **Companion:** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) → *Crates.io vs showcase distribution*.
+
+**Addendum (Showcase S1 — Docker):** [`demo/Dockerfile`](demo/Dockerfile) clones **IsomorphicAlgo/Ephemerust**
+at **image build** time (same upstream as CI) so the container does not depend on a host-side sibling
+checkout. For bit-for-bit reproducible images later, pin a `git` **rev** in that Dockerfile.
 
 ---
 
