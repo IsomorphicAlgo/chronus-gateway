@@ -16,7 +16,9 @@ measured RF and signal parameters disagree with the physics.
 > NeXosim HIL notes: `[docs/HIL.md](docs/HIL.md)`.
 > **User guide (intro + first run + alarms):** `[docs/USER_GUIDE.md](docs/USER_GUIDE.md)` — grows with the plan files below.
 > Post-M8 **extended co-validation** (`[docs/EXTENDED_COVALIDATION_PLAN.md](docs/EXTENDED_COVALIDATION_PLAN.md)`): **CV-1…CV-5** implemented; **Gate CV-5** pending owner sign-off. See `[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)`.
-> **Showcase / demos:** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) — **S0** approved; **S1** deliverables (Docker + [`docs/DEMO.md`](docs/DEMO.md)) in place — **Gate S-1** pending owner sign-off. Manual acceptance: [`docs/Demo_Test.md`](docs/Demo_Test.md).
+> **Showcase / demos:** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) — **S0–S1** gates approved; **S2** Vite dashboard
+> delivered — **Gate S-2** pending owner sign-off. Manual acceptance: [`docs/Demo_Test.md`](docs/Demo_Test.md). Runbook:
+> [`docs/DEMO.md`](docs/DEMO.md).
 
 ---
 
@@ -74,9 +76,11 @@ chronus-gateway/
 │   ├── src/lib.rs          `SpacecraftDemo` + UDP bridge + `run_nexosim_udp_hil`
 │   ├── src/main.rs        CLI: `[DEST] [FRAMES]` (default `127.0.0.1:7301`, `100`)
 │   └── tests/hil_ingest.rs Milestone 7 smoke + soak vs real `ingest::run`
-├── demo/                   Compose + dashboard sources (S1+); **not** shipped inside crates.io packages
+├── demo/                   Compose + dashboard (S1–S2); **not** shipped inside crates.io packages
+│   ├── dashboard/          Vite + TypeScript live view (`npm run dev`) — Showcase S2
+│   └── openmct/            Open MCT adapter notes (Track A backlog)
 ├── docs/
-│   ├── DEMO.md             Operator demo runbook (native + Docker; Showcase S1)
+│   ├── DEMO.md             Operator demo runbook (native + Docker + Vite dashboard; S1–S2)
 │   ├── USER_GUIDE.md       Operator guide (intro, first run, `physics_flags`; grows with plans)
 │   ├── BUILD_PLAN.md       Iterative, stage-gated implementation roadmap
 │   ├── SHOWCASE_PLAN.md    Owner-gated demo/showcase stages (S0–S4; Docker, dashboard, replay)

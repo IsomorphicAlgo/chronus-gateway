@@ -17,3 +17,8 @@ credentials.txt
 .idea/
 .DS_Store
 Thumbs.db
+
+# Demo dashboard (Showcase S2 — Node / Vite)
+demo/dashboard/node_modules/
+demo/dashboard/dist/
+demo/dashboard/.env.local

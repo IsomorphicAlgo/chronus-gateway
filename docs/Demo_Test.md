@@ -64,21 +64,21 @@ Docker build failures → see `DEMO.md` troubleshooting; Windows firewall → do
 
 ## S2 — Dashboard v1 acceptance
 
-**Procedure (Track A — Open MCT)**
+**Primary (Track B — implemented):** [`demo/dashboard/`](../demo/dashboard/) Vite app per [`docs/DEMO.md`](DEMO.md) **Path C**.
 
-1. Follow `demo/openmct/` (or linked repo) README to install Open MCT assets and the Chronus bridge/plugin.
-2. Open the hosted Open MCT page; confirm a **realtime** display updates when the gateway streams.
-3. Confirm **`physics_flags`** (or derived alarm state) is visible when a synthetic anomaly is injected
-   (manual toggle or replay from S3 once available).
+**Procedure (Track B)**
 
-**Procedure (Track B — minimal SPA)**
+1. Start gateway + UDP feeder (**Path A** or **B** in [`DEMO.md`](DEMO.md)).
+2. `cd demo/dashboard && npm install && npm run dev` (Node 20+).
+3. Open the Vite dev URL; click **Connect**; confirm **≥ 1** frame updates **APID / seq / time** and
+   **physics_flags** badges (or “No physics alarms” when flags are zero).
+4. Confirm **azimuth**, **elevation**, **range**, **range-rate** cells update when propagator fields are present on the wire.
 
-1. `npm install` / `pnpm install` / `bun install` per `demo/dashboard/README.md`; `npm run dev` (or equivalent).
-2. Open the local dev URL; confirm WebSocket connects to the gateway URL from env/config.
-3. Confirm live fields: at minimum **azimuth_deg, elevation_deg, range_rate_km_s** (when present) and
-   **physics_flags** rendered (raw hex/decimal + human-readable badges).
+**Procedure (Track A — Open MCT, backlog)**
 
-**Pass:** Chosen track’s procedure passes; screenshot archived; **Gate S-2** approved.
+1. When implemented, follow [`demo/openmct/README.md`](../demo/openmct/README.md) and re-run steps analogous to Track B above.
+
+**Pass:** Track B procedure passes; screenshot archived for gate review; **Gate S-2** approved.
 
 ---
 
@@ -115,3 +115,4 @@ Docker build failures → see `DEMO.md` troubleshooting; Windows firewall → do
 |------------|---------------------------------|
 | 2026-06-04 | Initial `Demo_Test.md` created. |
 | 2026-06-05 | S1: native + Docker procedures; link `DEMO.md`. |
+| 2026-06-05 | S2: Track B dashboard acceptance; Open MCT backlog pointer. |

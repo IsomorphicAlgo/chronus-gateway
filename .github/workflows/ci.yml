@@ -44,6 +44,15 @@ jobs:
         working-directory: chronus-gateway
         run: docker compose -f demo/docker-compose.yml config --quiet
 
+      - name: Setup Node.js (demo dashboard)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build demo dashboard (Vite)
+        working-directory: chronus-gateway/demo/dashboard
+        run: npm install && npm run build
+
       - name: Compile benchmarks (Criterion)
         working-directory: chronus-gateway
         run: cargo bench --no-run

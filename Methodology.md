@@ -10,7 +10,7 @@ contributor expectations in `README.md` (keep this file current when decisions c
 > **Gate CV-2** is approved; **CV-3** (synthetic HIL TM v1 payload + decoder + APID policy) is **implemented** — **Gate CV-3** approved.
 > **CV-4** (HIL subsystem vs toy Sun proxy) is **implemented** — **Gate CV-4** approved.
 > **CV-5** (HIL ADCS body-rate envelope) is **implemented** — **Gate CV-5** pending owner sign-off.
-> **Showcase track (S0–S4):** roadmap and manual acceptance in [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) + [`docs/Demo_Test.md`](docs/Demo_Test.md); **Gate S-0** approved (2026-06-04). **S1** demo spine (Docker + [`docs/DEMO.md`](docs/DEMO.md)) implemented — **Gate S-1** pending.
+> **Showcase track (S0–S4):** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) + [`docs/Demo_Test.md`](docs/Demo_Test.md); **Gate S-0** / **Gate S-1** approved. **S2** (`demo/dashboard` Vite UI) implemented — **Gate S-2** pending.
 
 ---
 
@@ -346,6 +346,13 @@ bloat, accidental IP drift, and confusion for dependents who only need the gatew
 at **image build** time (same upstream as CI) so the container does not depend on a host-side sibling
 checkout. For bit-for-bit reproducible images later, pin a `git` **rev** in that Dockerfile.
 
+### D-026 — Showcase S2 demo dashboard (Vite + TypeScript)
+**Decision:** Ship **Track B** first as [`demo/dashboard/`](demo/dashboard/) (Vite + TS) consuming the existing
+`openmct.realtime.v1` WebSocket JSON. **Track A** (full NASA Open MCT wiring) stays a documented backlog under
+[`demo/openmct/README.md`](demo/openmct/README.md).
+**Why:** Gives a zero–Open-MCT-clone demo surface for portfolio and CI; keeps Node tooling isolated under `demo/`
+per **D-025**. CI runs `npm install && npm run build` to guard the bundle.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -366,7 +373,7 @@ External works this project builds on or is inspired by (keep current; attribute
 | Tokio, Axum, Tower, Tower-HTTP, Serde, Chrono, Anyhow, Thiserror, Base64, Futures-util | Runtime + HTTP/WS + serialization | crates.io, MIT/Apache-2.0 |
 | `criterion`, `proptest` | Benchmarks + parser robustness property tests (M6) | crates.io, MIT/Apache-2.0 |
 | `toml` | Gateway config file parsing (M8) | crates.io, MIT/Apache-2.0 |
-| NASA Open MCT | Target mission-control dashboard | open source (NASA) |
+| Vite | Demo dashboard bundler (Showcase S2) | [vitejs.dev](https://vitejs.dev/), MIT |
 
 ---
 

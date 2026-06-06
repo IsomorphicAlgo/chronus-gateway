@@ -1,6 +1,6 @@
-# ChronusGateway-RS — Demo runbook (Showcase **S1**)
+# ChronusGateway-RS — Demo runbook (Showcase **S1** + **S2**)
 
-Two ways to run the same story: **native Rust** (needs Ephemerust as a sibling checkout) or **Docker Compose** (Ephemerust is cloned during `docker build` inside the image). Full acceptance checklist: [`Demo_Test.md`](Demo_Test.md#s1--demo-spine-acceptance).
+Two ways to run the gateway stack: **native Rust** (needs Ephemerust as a sibling checkout) or **Docker Compose** (Ephemerust is cloned during `docker build` inside the image). **Showcase S2** adds a **Vite dashboard** under [`demo/dashboard/`](../demo/dashboard/). Full acceptance checklists: [`Demo_Test.md`](Demo_Test.md).
 
 ---
 
@@ -40,7 +40,7 @@ curl -sS http://127.0.0.1:8080/health
 curl -sS http://127.0.0.1:8080/api/v1/chronus/metrics
 ```
 
-Open a WebSocket client on `websocat --version` (e.g. [`websocat`](https://github.com/vi/websocat), browser devtools, or a small script). After frames arrive, each **text** message is one JSON object. Expect at least:
+Open a WebSocket client on `ws://127.0.0.1:8080/telemetry/openmct` (e.g. [`websocat`](https://github.com/vi/websocat), browser devtools, or the **S2** dashboard in [Path C](#path-c--demo-dashboard-vite)). After frames arrive, each **text** message is one JSON object. Expect at least:
 
 - `"chronus_schema":"openmct.realtime.v1"` (string)
 - `"apid"`, `"seq_count"`, `"physics_flags"` (numbers / small integer)
@@ -93,6 +93,25 @@ Docker path uses only [`demo/gateway.docker.toml`](../demo/gateway.docker.toml) 
 
 ---
 
+## Path C — Demo dashboard (Vite, Showcase **S2**)
+
+**Prerequisites:** [Node.js](https://nodejs.org/) **20+** and npm.
+
+With the gateway (and UDP feeder) already running per **Path A** or **Path B**:
+
+```bash
+cd demo/dashboard
+npm install
+npm run dev
+```
+
+Open the URL Vite prints (typically `http://127.0.0.1:5173`). Click **Connect** (default WebSocket URL matches the gateway). You should see **latest frame** fields update and **`physics_flags`** rendered as alarm badges when non-zero.
+
+- **Override URL:** `http://127.0.0.1:5173/?ws=ws://127.0.0.1:8080/telemetry/openmct` or `.env.local` with `VITE_GATEWAY_WS=…` (see [`demo/dashboard/README.md`](../demo/dashboard/README.md)).
+- **Static build:** `npm run build` → output in `demo/dashboard/dist/`.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely cause | What to try |
@@ -103,6 +122,9 @@ Docker path uses only [`demo/gateway.docker.toml`](../demo/gateway.docker.toml) 
 | `curl` health fails on host with Docker | Gateway not ready | Wait for healthcheck / `docker compose ps`; increase `start_period` in [`demo/docker-compose.yml`](../demo/docker-compose.yml) on slow disks. |
 | WebSocket connects but no messages | No UDP source | Run `chronus-hil-sim` (native path) or confirm `hil-feeder` in Compose exited **0** (`docker compose ps`); re-run compose or raise the frame count in [`demo/docker-compose.yml`](../demo/docker-compose.yml). |
 
+| Dashboard shows “WebSocket error” | Wrong URL / gateway down | Confirm `curl` health; try `?ws=` override; check browser console. |
+| `npm install` fails | Node too old | Use Node 20+ LTS. |
+
 ---
 
 ## Compliance
@@ -111,4 +133,4 @@ Use **synthetic** HIL traffic and **public reference** TLE defaults only for pub
 
 ---
 
-*Companion: [`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md) S1, [`Demo_Test.md`](Demo_Test.md) §S1.*
+*Companion: [`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md) (S1–S2), [`Demo_Test.md`](Demo_Test.md).*

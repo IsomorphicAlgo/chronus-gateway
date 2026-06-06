@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chronus Gateway — demo dashboard</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="header">
+        <h1>ChronusGateway-RS</h1>
+        <p class="subtitle">Live telemetry · <code>openmct.realtime.v1</code></p>
+      </header>
+
+      <section class="panel connection">
+        <h2>Connection</h2>
+        <label>
+          WebSocket URL
+          <input id="ws-url" type="text" spellcheck="false" />
+        </label>
+        <div class="row">
+          <button id="btn-connect" type="button">Connect</button>
+          <button id="btn-disconnect" type="button" disabled>Disconnect</button>
+        </div>
+        <p id="conn-status" class="status status--idle">Disconnected</p>
+        <p class="hint">
+          Default <code>ws://127.0.0.1:8080/telemetry/openmct</code> matches native gateway defaults.
+          Query override: <code>?ws=ws://host:port/telemetry/openmct</code>
+        </p>
+      </section>
+
+      <section class="panel flags-panel">
+        <h2><code>physics_flags</code></h2>
+        <div id="flag-badges" class="flag-badges"></div>
+        <p class="raw">Raw: <code id="flags-raw">—</code></p>
+      </section>
+
+      <section class="panel grid-panel">
+        <h2>Latest frame</h2>
+        <dl class="grid">
+          <dt>APID</dt><dd id="v-apid">—</dd>
+          <dt>Seq</dt><dd id="v-seq">—</dd>
+          <dt>Received</dt><dd id="v-time">—</dd>
+          <dt>Source</dt><dd id="v-source">—</dd>
+          <dt>Azimuth °</dt><dd id="v-az">—</dd>
+          <dt>Elevation °</dt><dd id="v-el">—</dd>
+          <dt>Range km</dt><dd id="v-range">—</dd>
+          <dt>Range rate km/s</dt><dd id="v-rr">—</dd>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <h2>Messages</h2>
+        <pre id="log" class="log"></pre>
+      </section>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

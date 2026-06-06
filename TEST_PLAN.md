@@ -1,10 +1,10 @@
 # ChronusGateway-RS — Iterative Test Plan
 
-The testing companion to `[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)`. It encodes the **Ephemerust testing standard**
+The testing companion to [`docs/BUILD_PLAN.md`](docs/BUILD_PLAN.md). It encodes the **Ephemerust testing standard**
 required by the project's stage-gate protocol: layered tests, documented physics tolerances, deterministic and
 offline, enforced at every stage gate.
 
-**Showcase & demos (post-M8):** iterative, **owner-gated** stages **S0–S4** live in `[docs/SHOWCASE_PLAN.md](docs/SHOWCASE_PLAN.md)`; manual acceptance steps in `[docs/Demo_Test.md](docs/Demo_Test.md)`. Gates are listed under [Showcase tracks](#showcase-tracks) below.
+**Showcase & demos (post-M8):** iterative, **owner-gated** stages **S0–S4** live in [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md); manual acceptance steps in [`docs/Demo_Test.md`](docs/Demo_Test.md). Gates are listed under [Showcase tracks](#showcase-tracks) below.
 
 ---
 
@@ -183,32 +183,32 @@ uncalibrated hardware RSSI).
 
 ## Showcase tracks
 
-Companion roadmap: `[docs/SHOWCASE_PLAN.md](docs/SHOWCASE_PLAN.md)`.
+Companion roadmap: [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md).
 
 Automated `cargo test` remains the **primary** software quality gate for gateway crates. Stages **S0–S4** add
-**demo / delivery** acceptance. Detailed procedures: `[docs/Demo_Test.md](docs/Demo_Test.md)`. **Do not chain**
+**demo / delivery** acceptance. Detailed procedures: [`docs/Demo_Test.md`](docs/Demo_Test.md). **Do not chain**
 stages — obtain **owner Gate S-*** approval between tranches (same governance as `BUILD_PLAN` / CV milestones).
 
 ### S0 — Showcase charter
 
-- [x] [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) and [`docs/Demo_Test.md`](docs/Demo_Test.md) committed;
-      [`README.md`](README.md) lists both; compliance expectations acknowledged per `Demo_Test.md` global rules.
+- [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) and [`docs/Demo_Test.md`](docs/Demo_Test.md) committed;
+  [`README.md`](README.md) lists both; compliance expectations acknowledged per `Demo_Test.md` global rules.
 
 **Gate S-0:** `[x]` **Owner approval** (2026-06-04) — **S1** implementation may proceed.
 
 ### S1 — Demo spine
 
-- [x] Documented stack — [`docs/DEMO.md`](docs/DEMO.md) + [`demo/README.md`](demo/README.md) + [`demo/docker-compose.yml`](demo/docker-compose.yml); native `cargo run` two-terminal flow and Docker Compose path.
-- [x] `GET /health` → **200**; WebSocket `GET /telemetry/openmct` delivers **≥ 1** valid `openmct.realtime.v1`
-      JSON message; `GET /api/v1/chronus/metrics` → **200** with finite fields after ingest (manual / `Demo_Test.md` §S1).
-- [x] CI validates Compose file: `docker compose -f demo/docker-compose.yml config --quiet` (`.github/workflows/ci.yml`).
+- Documented stack — [`docs/DEMO.md`](docs/DEMO.md) + [`demo/README.md`](demo/README.md) + [`demo/docker-compose.yml`](demo/docker-compose.yml); native `cargo run` two-terminal flow and Docker Compose path.
+- `GET /health` → **200**; WebSocket `GET /telemetry/openmct` delivers **≥ 1** valid `openmct.realtime.v1`
+JSON message; `GET /api/v1/chronus/metrics` → **200** with finite fields after ingest (manual / `Demo_Test.md` §S1).
+- CI validates Compose file: `docker compose -f demo/docker-compose.yml config --quiet` (`.github/workflows/ci.yml`).
 
-**Gate S-1:** `[ ]` **Owner approval** — **S2** may proceed.
+**Gate S-1:** `[x]` **Owner approval** — **S2** may proceed.
 
 ### S2 — Dashboard v1
 
-- **Open MCT** bridge/plugin **or** **minimal SPA** consumes the WebSocket; **physics_flags** (or derived alarms)
-visible under synthetic stream (`Demo_Test.md` §S2).
+- [x] **Track B:** [`demo/dashboard/`](demo/dashboard/) Vite + TypeScript app; `physics_flags` badges + latest az/el/range/range-rate; documented in [`docs/DEMO.md`](docs/DEMO.md) Path C and [`demo/dashboard/README.md`](demo/dashboard/README.md).
+- [x] **Track A backlog:** [`demo/openmct/README.md`](demo/openmct/README.md) describes Open MCT adapter scope.
 
 **Gate S-2:** `[ ]` **Owner approval** — **S3** may proceed.
 
@@ -232,16 +232,16 @@ sign-off (`Demo_Test.md` §S4).
 Populate as engines land; keep rationale next to the value (Ephemerust style).
 
 
-| ID          | Quantity                                                                        | Tolerance                                                  | Rationale / source                                                                                                                                                                                                                                                                                                                                     |
-| ----------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| T-DOPPLER   | Carrier Δf deviation                                                            | ±150 Hz                                                    | **Locked (M4 / OD-C).** PDF atmospheric/ionospheric drift band; Ephemerust `range_rate_km_s` is validated to ~0.25 km/s vs central difference — at 437.5 MHz that is sub-kHz from propagation math, so ±150 Hz is conservative for physics-only error.                                                                                                 |
-| T-ELEVATION | Minimum elevation for valid TM                                                  | Configurable (`minimum_elevation_deg`, default **0°**)     | Flag when `elevation_deg < threshold` (strict inequality). Default: at or above mathematical horizon passes; use negative threshold for refraction margin.                                                                                                                                                                                             |
-| T-RANGERATE | Range-rate vs numerical                                                         | 0.25 km/s                                                  | Matches Ephemerust's central-difference check (reused convention).                                                                                                                                                                                                                                                                                     |
-| T-RSSI      | |P_{rx,\mathrm{meas}} - P_{rx,\mathrm{pred}}| on **free-space** link budget     | **±3 dB**                                                  | **Locked for v1 (CV-1 / D-017).** Matches design-paper margin for a **synthetic** dBm contract. **Caveat:** prediction is **free-space only** (no rain, ionosphere, cable, or pointing loss in P_{rx,\mathrm{pred}}); measured values must use the same calibration fiction in tests/HIL. Revisit if a richer budget is justified.                     |
-| T-POINT     | Great-circle angular separation between measured (Az,El) and computed boresight | **0.25°**                                                  | **Charter (CV-0 / D-016).** Design-paper encoder vs computed residual; implementation in CV-2 uses spherical geometry. Revisit if station mount flex or refraction dominates in a given demo.                                                                                                                                                          |
-| T-EPS       | Decoded HIL bus voltage vs linear map from toy Sun illumination                 | **±10 %** of configured voltage span (default **24–28 V**) | **Locked (CV-4 / D-021).** Proxy for “array current” in the CV-0 charter: the v1 payload carries **abstract bus voltage (V)**; tolerance applies to |V_{\mathrm{meas}}-V_{\mathrm{pred}}| with V_{\mathrm{pred}} = V_{\mathrm{ecl}} + (V_{\mathrm{sun}}-V_{\mathrm{ecl}})\texttt{nadirsunillumcos}. Revisit if the payload adds a true current scalar. |
-| T-THERMAL   | Decoded HIL panel °C vs the same illumination linear map                        | **±10 K**                                                  | **Locked (CV-4 / D-021).** Not flight thermal analysis; `chronus-hil-sim` emits self-consistent demo values.                                                                                                                                                                                                                                           |
-| T-BODYRATE  | Decoded HIL |`body_rate_deg_s`| vs configured ceiling                           | **≤ `hil_body_rate_max_abs_deg_s`** (default **5 deg/s**)  | **Locked (CV-5 / D-022).** Envelope only — not a gyro bias or noise model; skip when rate or ceiling is non-finite / ceiling non-positive.                                                                                                                                                                                                             |
+| ID          | Quantity                                                                        | Tolerance                                                  | Rationale / source                                                                                                                                                                                                                                     |
+| ----------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| T-DOPPLER   | Carrier Δf deviation                                                            | ±150 Hz                                                    | **Locked (M4 / OD-C).** PDF atmospheric/ionospheric drift band; Ephemerust `range_rate_km_s` is validated to ~0.25 km/s vs central difference — at 437.5 MHz that is sub-kHz from propagation math, so ±150 Hz is conservative for physics-only error. |
+| T-ELEVATION | Minimum elevation for valid TM                                                  | Configurable (`minimum_elevation_deg`, default **0°**)     | Flag when `elevation_deg < threshold` (strict inequality). Default: at or above mathematical horizon passes; use negative threshold for refraction margin.                                                                                             |
+| T-RANGERATE | Range-rate vs numerical                                                         | 0.25 km/s                                                  | Matches Ephemerust's central-difference check (reused convention).                                                                                                                                                                                     |
+| T-RSSI      |                                                                                 | P_{rx,\mathrm{meas}} - P_{rx,\mathrm{pred}}                | on **free-space** link budget                                                                                                                                                                                                                          |
+| T-POINT     | Great-circle angular separation between measured (Az,El) and computed boresight | **0.25°**                                                  | **Charter (CV-0 / D-016).** Design-paper encoder vs computed residual; implementation in CV-2 uses spherical geometry. Revisit if station mount flex or refraction dominates in a given demo.                                                          |
+| T-EPS       | Decoded HIL bus voltage vs linear map from toy Sun illumination                 | **±10 %** of configured voltage span (default **24–28 V**) | **Locked (CV-4 / D-021).** Proxy for “array current” in the CV-0 charter: the v1 payload carries **abstract bus voltage (V)**; tolerance applies to                                                                                                    |
+| T-THERMAL   | Decoded HIL panel °C vs the same illumination linear map                        | **±10 K**                                                  | **Locked (CV-4 / D-021).** Not flight thermal analysis; `chronus-hil-sim` emits self-consistent demo values.                                                                                                                                           |
+| T-BODYRATE  | Decoded HIL                                                                     | `body_rate_deg_s`                                          | vs configured ceiling                                                                                                                                                                                                                                  |
 
 
 ---
@@ -249,12 +249,12 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 ## Status / counts (keep current)
 
 
-| Layer                | Count | Notes                                                                                                    |
-| -------------------- | ----- | -------------------------------------------------------------------------------------------------------- |
-| Unit tests           | 63    | `ccsds` + `config` + `hil_tm` + `propagator` + `validate` (`cargo test -p chronus-gateway --lib` count). |
-| Integration tests    | 9     | `crates/gateway/tests/*.rs` (7) + `crates/chronus-hil-sim/tests/hil_ingest.rs` (2).                      |
-| Doctests             | 1     | `EphemerustPropagator::new`.                                                                             |
-| Showcase gates S0–S4 | 1 / 5 | S0 complete; [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md); manual steps [`docs/Demo_Test.md`](docs/Demo_Test.md). |
+| Layer                | Count | Notes                                                                                                                 |
+| -------------------- | ----- | --------------------------------------------------------------------------------------------------------------------- |
+| Unit tests           | 63    | `ccsds` + `config` + `hil_tm` + `propagator` + `validate` (`cargo test -p chronus-gateway --lib` count).              |
+| Integration tests    | 9     | `crates/gateway/tests/*.rs` (7) + `crates/chronus-hil-sim/tests/hil_ingest.rs` (2).                                   |
+| Doctests             | 1     | `EphemerustPropagator::new`.                                                                                          |
+| Showcase gates S0–S4 | 2 / 5 | S0–S1 gates approved; S2 deliverables in repo — **Gate S-2** pending. [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md); [`docs/Demo_Test.md`](docs/Demo_Test.md). |
 
 
 *Last updated: 2026-06-05.*
