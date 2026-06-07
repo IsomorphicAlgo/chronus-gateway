@@ -86,13 +86,14 @@ Docker build failures → see `DEMO.md` troubleshooting; Windows firewall → do
 
 **Procedure**
 
-1. **Replay (when implemented):** run replay tool against a committed **JSONL** (or UDP hex) fixture;
-   assert **deterministic** flag transitions documented in the fixture README (e.g. “frame 100–110:
-   bit0 set”).
-2. **Scripted anomaly (optional):** trigger documented mode; WebSocket shows expected **physics_flags**
-   change within **N** frames.
+1. **Replay:** start gateway (Path A or B). In another terminal, run **Path D** from [`DEMO.md`](DEMO.md) with
+   `demo/replay/fixtures/golden_tm.hex` (or `.jsonl`) and **`--repeat 2`**. Confirm **no errors** from `chronus-replay`;
+   WebSocket or dashboard shows ingest for the golden **APID 0x2A**; **`GET /api/v1/chronus/metrics`** counters advance.
+2. **Scripted HIL anomaly:** with gateway + dashboard (optional), run  
+   `cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 500 --scripted-anomaly body-rate --anomaly-after-frame 50 --anomaly-frame-count 30`  
+   Confirm the dashboard **`physics_flags`** shows **CV-5** (bit **6**, body rate) during the injection window, then clears when the sim returns to nominal ramp (see [`HIL.md`](HIL.md)).
 
-**Pass:** Repeatable runbook in `DEMO.md`; owner sign-off **Gate S-3**.
+**Pass:** Repeatable runbook in `DEMO.md` Path D + scripted HIL above; **Gate S-3** approved (2026-06-04).
 
 ---
 
@@ -116,3 +117,4 @@ Docker build failures → see `DEMO.md` troubleshooting; Windows firewall → do
 | 2026-06-04 | Initial `Demo_Test.md` created. |
 | 2026-06-05 | S1: native + Docker procedures; link `DEMO.md`. |
 | 2026-06-05 | S2: Track B dashboard acceptance; Open MCT backlog pointer. |
+| 2026-06-04 | S3 complete: **Gate S-3** approved; S4 on hold. |

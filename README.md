@@ -16,9 +16,9 @@ measured RF and signal parameters disagree with the physics.
 > NeXosim HIL notes: `[docs/HIL.md](docs/HIL.md)`.
 > **User guide (intro + first run + alarms):** `[docs/USER_GUIDE.md](docs/USER_GUIDE.md)` — grows with the plan files below.
 > Post-M8 **extended co-validation** (`[docs/EXTENDED_COVALIDATION_PLAN.md](docs/EXTENDED_COVALIDATION_PLAN.md)`): **CV-1…CV-5** implemented; **Gate CV-5** pending owner sign-off. See `[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)`.
-> **Showcase / demos:** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) — **S0–S1** gates approved; **S2** Vite dashboard
-> delivered — **Gate S-2** pending owner sign-off. Manual acceptance: [`docs/Demo_Test.md`](docs/Demo_Test.md). Runbook:
-> [`docs/DEMO.md`](docs/DEMO.md).
+> **Showcase / demos:** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) — **S0–S3** gates approved (2026-06-04); **S4** on hold.
+> **S3:** `chronus-replay` + `demo/replay/`, scripted HIL (`chronus-hil-sim --scripted-anomaly …`). Manual acceptance:
+> [`docs/Demo_Test.md`](docs/Demo_Test.md). Runbook: [`docs/DEMO.md`](docs/DEMO.md).
 
 ---
 
@@ -74,13 +74,16 @@ chronus-gateway/
 │       └── distribution.rs Milestone 5 (HTTP health + WebSocket JSON)
 ├── crates/chronus-hil-sim/ NeXosim HIL: synthetic spacecraft → UDP (`chronus-hil-sim` binary)
 │   ├── src/lib.rs          `SpacecraftDemo` + UDP bridge + `run_nexosim_udp_hil`
-│   ├── src/main.rs        CLI: `[DEST] [FRAMES]` (default `127.0.0.1:7301`, `100`)
+│   ├── src/main.rs        CLI: `[DEST] [FRAMES]` + optional `--scripted-anomaly` (Showcase S3)
 │   └── tests/hil_ingest.rs Milestone 7 smoke + soak vs real `ingest::run`
-├── demo/                   Compose + dashboard (S1–S2); **not** shipped inside crates.io packages
+├── crates/chronus-replay/  Showcase S3: replay synthetic TM UDP datagrams from hex/JSONL (`chronus-replay` binary)
+│   └── src/main.rs         CLI: `--file`, optional `HOST:PORT`, `--delay-ms`, `--repeat`
+├── demo/                   Compose + dashboard + replay (S1–S3); **not** shipped inside crates.io packages
 │   ├── dashboard/          Vite + TypeScript live view (`npm run dev`) — Showcase S2
+│   ├── replay/             Hex/JSONL fixtures + README — Showcase S3 (`chronus-replay`)
 │   └── openmct/            Open MCT adapter notes (Track A backlog)
 ├── docs/
-│   ├── DEMO.md             Operator demo runbook (native + Docker + Vite dashboard; S1–S2)
+│   ├── DEMO.md             Operator demo runbook (native + Docker + Vite + UDP replay; S1–S3)
 │   ├── USER_GUIDE.md       Operator guide (intro, first run, `physics_flags`; grows with plans)
 │   ├── BUILD_PLAN.md       Iterative, stage-gated implementation roadmap
 │   ├── SHOWCASE_PLAN.md    Owner-gated demo/showcase stages (S0–S4; Docker, dashboard, replay)
@@ -119,6 +122,9 @@ cargo run -p chronus-gateway -- --config gateway.example.toml   # optional TOML 
 cargo test       # unit + integration + doctests
 cargo bench -p chronus-gateway   # Criterion benchmarks (M6)
 cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 2000   # NeXosim HIL (M7); run gateway first
+# Optional Showcase S3 — synthetic CV-4/CV-5 fault window (`physics_flags` bits 4–6):
+# cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 500 --scripted-anomaly eps-voltage --anomaly-after-frame 40 --anomaly-frame-count 25
+cargo run -p chronus-replay -- --file demo/replay/fixtures/golden_tm.hex --repeat 2   # Showcase S3; gateway must be up
 ```
 
 See `[docs/HIL.md](docs/HIL.md)` for pairing with `GET /api/v1/chronus/metrics`.

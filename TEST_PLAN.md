@@ -210,13 +210,14 @@ JSON message; `GET /api/v1/chronus/metrics` → **200** with finite fields after
 - [x] **Track B:** [`demo/dashboard/`](demo/dashboard/) Vite + TypeScript app; `physics_flags` badges + latest az/el/range/range-rate; documented in [`docs/DEMO.md`](docs/DEMO.md) Path C and [`demo/dashboard/README.md`](demo/dashboard/README.md).
 - [x] **Track A backlog:** [`demo/openmct/README.md`](demo/openmct/README.md) describes Open MCT adapter scope.
 
-**Gate S-2:** `[ ]` **Owner approval** — **S3** may proceed.
+**Gate S-2:** `[x]` **Owner approval** — **S3** may proceed.
 
 ### S3 — Narrative polish
 
-- Replay and/or scripted anomaly path documented; repeatable demo runbook (`Demo_Test.md` §S3).
+- [x] **Replay:** `chronus-replay` binary (`crates/chronus-replay/`) sends synthetic UDP datagrams from **hex lines** or **JSONL** (`udp_hex`); `--delay-ms`, **`--repeat`**; fixtures under [`demo/replay/fixtures/`](../demo/replay/fixtures/); runbooks [`demo/replay/README.md`](../demo/replay/README.md) and [`docs/DEMO.md` → Path D](docs/DEMO.md#path-d--udp-replay-showcase-s3).
+- [x] **Scripted HIL:** `chronus-hil-sim --scripted-anomaly {eps-voltage,thermal,body-rate}` with `--anomaly-after-frame` / `--anomaly-frame-count` (CV-4/CV-5 bits **4–6**); [`docs/HIL.md`](HIL.md).
 
-**Gate S-3:** `[ ]` **Owner approval** — **S4** may proceed (or close showcase track without S4).
+**Gate S-3:** `[x]` **Owner approval** (2026-06-04) — **S4** optional; owner holding S4 for now.
 
 ### S4 — Optional public fixtures
 
@@ -251,10 +252,10 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 
 | Layer                | Count | Notes                                                                                                                 |
 | -------------------- | ----- | --------------------------------------------------------------------------------------------------------------------- |
-| Unit tests           | 63    | `ccsds` + `config` + `hil_tm` + `propagator` + `validate` (`cargo test -p chronus-gateway --lib` count).              |
-| Integration tests    | 9     | `crates/gateway/tests/*.rs` (7) + `crates/chronus-hil-sim/tests/hil_ingest.rs` (2).                                   |
+| Unit tests           | 68    | `chronus-gateway` lib (63) + `chronus-replay` (3) + `chronus-hil-sim` lib (2). |
+| Integration tests    | 10    | `crates/gateway/tests/*.rs` (7) + `crates/chronus-hil-sim/tests/hil_ingest.rs` (3).                                   |
 | Doctests             | 1     | `EphemerustPropagator::new`.                                                                                          |
-| Showcase gates S0–S4 | 2 / 5 | S0–S1 gates approved; S2 deliverables in repo — **Gate S-2** pending. [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md); [`docs/Demo_Test.md`](docs/Demo_Test.md). |
+| Showcase gates S0–S4 | 4 / 5 | **S0–S3** gates approved; **S4** on hold. [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md); [`docs/Demo_Test.md`](docs/Demo_Test.md). |
 
 
-*Last updated: 2026-06-05.*
+*Last updated: 2026-06-04.*

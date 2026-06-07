@@ -209,6 +209,6 @@ unit tests in `config/file.rs`.
 
 **Extended co-validation (post-M8):** link budget / RSSI, antenna pointing residual, synthetic HIL TM payload (**CV-3**), subsystem vs Sun proxy (**CV-4**), and HIL body-rate envelope (**CV-5**) are tracked under **[`EXTENDED_COVALIDATION_PLAN.md`](EXTENDED_COVALIDATION_PLAN.md)** — same stage-gate rules; **owner approval required between CV milestones** (do not chain). **CV-0** charter is documented (**`../Methodology.md` D-016**, `../TEST_PLAN.md`, `validate` docs); **Gate CV-0** is **approved**; **CV-1…CV-5** are implemented per that plan.
 
-**Showcase & demos (orthogonal to M/CV):** one-command demos, Docker Compose, Vite dashboard, future Open MCT adapter, replay, optional fixtures — **[`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md)** (gates **S0–S4**) and **[`Demo_Test.md`](Demo_Test.md)**; checklist in **[`../TEST_PLAN.md`](../TEST_PLAN.md#showcase-tracks)**. **S1** (Docker + [`DEMO.md`](DEMO.md)) complete — **Gate S-1** approved (2026-06-05). **S2** Vite dashboard (`demo/dashboard`) + Open MCT backlog note (`demo/openmct`) — **Gate S-2** pending.
+**Showcase & demos (orthogonal to M/CV):** one-command demos, Docker Compose, Vite dashboard, future Open MCT adapter, UDP replay (`chronus-replay`), optional fixtures — **[`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md)** (gates **S0–S4**) and **[`Demo_Test.md`](Demo_Test.md)**; checklist in **[`../TEST_PLAN.md`](../TEST_PLAN.md#showcase-tracks)**. **S1** (Docker + [`DEMO.md`](DEMO.md)) complete — **Gate S-1** approved (2026-06-05). **S2** Vite dashboard (`demo/dashboard`) + Open MCT backlog note (`demo/openmct`) — **Gate S-2** approved. **S3** replay + scripted HIL — **Gate S-3** approved (2026-06-04); **S4** on hold.
 
-*Last updated: 2026-06-05.*
+*Last updated: 2026-06-04.*

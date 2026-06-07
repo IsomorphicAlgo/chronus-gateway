@@ -13,6 +13,10 @@ use tokio::net::UdpSocket;
 use tokio::sync::{broadcast, oneshot};
 use tokio::task::JoinHandle;
 
+use chronus_hil_sim::{
+    HilScriptedAnomaly, HilScriptedAnomalyKind, run_nexosim_udp_hil_with_script,
+};
+
 async fn bind_loopback(max_datagram_size: usize) -> (UdpSocket, IngestConfig, SocketAddr) {
     let config = IngestConfig {
         bind_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
@@ -118,6 +122,58 @@ async fn nexosim_soak_bounded_recv_errors() {
     assert_eq!(stats.frames_received.load(Ordering::Relaxed), N as u64);
     assert_eq!(stats.recv_errors.load(Ordering::Relaxed), 0);
 
+    sd_tx.send(()).ok();
+    ingest_handle.await.expect("join").expect("ingest");
+}
+
+#[tokio::test]
+async fn nexosim_scripted_body_rate_window_on_wire() {
+    let (socket, config, local) = bind_loopback(2048).await;
+    let (tx, mut rx) = broadcast::channel(4096);
+    let stats = Arc::new(IngestStats::default());
+    let (ingest_handle, sd_tx) = spawn_run(socket, tx, config, Arc::clone(&stats));
+
+    const N: u32 = 16;
+    const START: u32 = 5;
+    const DUR: u32 = 3;
+    let apid = 0x7B2u16;
+    let script = HilScriptedAnomaly {
+        kind: HilScriptedAnomalyKind::BodyRate,
+        start_frame: START,
+        duration_frames: DUR,
+    };
+    let hil = tokio::task::spawn_blocking(move || {
+        run_nexosim_udp_hil_with_script(local, N, apid, Some(script))
+    });
+    hil.await.expect("hil join").expect("hil run");
+
+    let mut by_seq: Vec<Option<chronus_gateway::hil_tm::DecodedHilTmV1>> = vec![None; N as usize];
+    for _ in 0..N {
+        let frame = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("recv wait")
+            .expect("frame");
+        let tm = ccsds::parse_telemetry(&frame).expect("TM");
+        let decoded = decode_hil_tm_v1(tm.payload()).expect("HIL v1");
+        let s = decoded.seq as usize;
+        assert!(s < by_seq.len(), "unexpected seq {}", decoded.seq);
+        by_seq[s] = Some(decoded);
+    }
+
+    for i in 0..N {
+        let d = by_seq[i as usize].expect("every seq received");
+        assert_eq!(d.seq, i);
+        if (START..START + DUR).contains(&i) {
+            assert_eq!(d.body_rate_deg_s, 99.0, "seq {i} should be in scripted window");
+        } else {
+            assert!(
+                (d.body_rate_deg_s - 0.001 * i as f32).abs() < 1e-4,
+                "seq {i} nominal ramp"
+            );
+        }
+    }
+
+    assert_eq!(stats.frames_received.load(Ordering::Relaxed), N as u64);
     sd_tx.send(()).ok();
     ingest_handle.await.expect("join").expect("ingest");
 }

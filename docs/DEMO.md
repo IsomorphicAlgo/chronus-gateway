@@ -1,4 +1,4 @@
-# ChronusGateway-RS — Demo runbook (Showcase **S1** + **S2**)
+# ChronusGateway-RS — Demo runbook (Showcase **S1**–**S3**)
 
 Two ways to run the gateway stack: **native Rust** (needs Ephemerust as a sibling checkout) or **Docker Compose** (Ephemerust is cloned during `docker build` inside the image). **Showcase S2** adds a **Vite dashboard** under [`demo/dashboard/`](../demo/dashboard/). Full acceptance checklists: [`Demo_Test.md`](Demo_Test.md).
 
@@ -32,6 +32,15 @@ cargo run -p chronus-gateway
 cd chronus-gateway
 cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 200
 ```
+
+Optional **scripted subsystem fault** (Showcase S3 — same gateway, deterministic CV alarms on bits **4–6**):
+
+```bash
+cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 400 \
+  --scripted-anomaly thermal --anomaly-after-frame 80 --anomaly-frame-count 40
+```
+
+See [`HIL.md`](HIL.md) for semantics; `chronus-hil-sim --help` lists flags.
 
 **Checks**
 
@@ -112,6 +121,28 @@ Open the URL Vite prints (typically `http://127.0.0.1:5173`). Click **Connect** 
 
 ---
 
+## Path D — UDP replay (Showcase **S3**)
+
+**Prerequisites:** Rust **1.89+**; **gateway running** with UDP ingest on **`127.0.0.1:7301`** (Path A or B). Fixtures are **synthetic lab bytes** only (`AGENTS.md`).
+
+From **repository root**:
+
+```bash
+cargo run -p chronus-replay -- --file demo/replay/fixtures/golden_tm.hex --delay-ms 50 --repeat 3
+```
+
+Or JSONL (`udp_hex` per line):
+
+```bash
+cargo run -p chronus-replay -- --file demo/replay/fixtures/golden_tm.jsonl 127.0.0.1:7301
+```
+
+The positional argument is **`HOST:PORT`** (default `127.0.0.1:7301`). With the **S2** dashboard connected, you should see **APID 0x2A (42)** and the same **`seq_count`** on each repeat (fixture bytes are identical). **`GET /api/v1/chronus/metrics`** frame counters advance with each send.
+
+Full options: [`demo/replay/README.md`](../demo/replay/README.md).
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely cause | What to try |
@@ -133,4 +164,4 @@ Use **synthetic** HIL traffic and **public reference** TLE defaults only for pub
 
 ---
 
-*Companion: [`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md) (S1–S2), [`Demo_Test.md`](Demo_Test.md).*
+*Companion: [`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md) (S1–S3), [`Demo_Test.md`](Demo_Test.md).*

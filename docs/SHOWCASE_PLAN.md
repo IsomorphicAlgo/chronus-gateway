@@ -89,7 +89,7 @@ for screen recording and CI-smoke (optional).
 
 ---
 
-## S2 — Dashboard v1 (Open MCT *or* minimal SPA) — **deliverables complete; Gate S-2 pending**
+## S2 — Dashboard v1 (Open MCT *or* minimal SPA) — **Complete (2026-06-04); Gate S-2 `[x]`**
 
 **Objective:** A visible “mission control” surface that consumes the existing
 `GET /telemetry/openmct` WebSocket (`chronus_schema: "openmct.realtime.v1"`) and surfaces at least
@@ -105,28 +105,28 @@ for screen recording and CI-smoke (optional).
 
 **Test gate:** [`TEST_PLAN.md` → S2](../TEST_PLAN.md#s2--dashboard-v1); procedures [`Demo_Test.md` §S2](Demo_Test.md#s2--dashboard-v1-acceptance).
 
-**Gate S-2:** `[ ]` **Owner approval** — **S3** may proceed.
+**Gate S-2:** `[x]` **Owner approval** — **S3** may proceed.
 
 ---
 
-## S3 — Narrative polish (replay / scripted faults) — **pending**
+## S3 — Narrative polish (replay / scripted faults) — **Complete; Gate S-3 `[x]`** (2026-06-04)
 
 **Objective:** Repeatable demos without live improvisation — same bytes → same flags on every run.
 
 **Deliverables**
 
-- [ ] **Replay path (recommended):** CLI or small tool that replays **captured JSONL** or raw UDP hex
-      at configurable rate; documented in [`docs/DEMO.md`](DEMO.md).
-- [ ] **Scripted anomaly mode (optional):** HIL sim or gateway test hook toggles out-of-band Doppler /
-      pointing / link budget for a fixed number of frames (synthetic only).
+- [x] **Replay path:** Workspace binary **`chronus-replay`** (`crates/chronus-replay/`) replays **hex lines**
+      or **JSONL** with `udp_hex` at configurable `--delay-ms` and **`--repeat`**; fixtures and runbook in
+      [`demo/replay/README.md`](../demo/replay/README.md); operator path **Path D** in [`docs/DEMO.md`](DEMO.md).
+- [x] **Scripted anomaly mode (optional):** `chronus-hil-sim` **`--scripted-anomaly`** (`eps-voltage` \| `thermal` \| `body-rate`) with **`--anomaly-after-frame`** / **`--anomaly-frame-count`** injects synthetic **CV-4 / CV-5** faults for a bounded 0-based frame window (`physics_flags` bits **4–6**). See [`docs/HIL.md`](HIL.md) and `chronus-hil-sim --help`.
 
 **Test gate:** [`TEST_PLAN.md` → S3](../TEST_PLAN.md#s3--narrative-polish); procedures [`Demo_Test.md` §S3](Demo_Test.md#s3--narrative-polish-acceptance).
 
-**Gate S-3:** `[ ]` **Owner approval** — **S4** may proceed (or close showcase track without S4).
+**Gate S-3:** `[x]` **Owner approval** (2026-06-04) — **S4** may proceed when desired (owner **holding S4** for now), or close showcase track without S4.
 
 ---
 
-## S4 — Optional public fixtures (strictly gated) — **pending**
+## S4 — Optional public fixtures (strictly gated) — **pending (on hold)**
 
 **Objective:** One or two **documented** external frame sources (e.g. amateur-sat public examples)
 **only** where license and mission policy are explicit — never the only path to a green demo.
@@ -136,7 +136,7 @@ for screen recording and CI-smoke (optional).
 - [ ] **`demo/fixtures/README.md`** — source URL, license, date retrieved, transformation to UDP
       (if any), and **AGENTS.md** compliance note.
 - [ ] Optional integration test: ingest fixture bytes in-process (deterministic); or manual-only
-      if bytes are large — decided at **Gate S-3**.
+      if bytes are large — **owner decides when pursuing S4** (currently on hold).
 
 **Test gate:** [`TEST_PLAN.md` → S4](../TEST_PLAN.md#s4--optional-public-fixtures); procedures [`Demo_Test.md` §S4](Demo_Test.md#s4--optional-public-fixtures-acceptance).
 
@@ -153,4 +153,4 @@ for screen recording and CI-smoke (optional).
 
 ---
 
-*Last updated: 2026-06-05.*
+*Last updated: 2026-06-04.*

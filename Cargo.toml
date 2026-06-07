@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/gateway", "crates/chronus-hil-sim"]
+members = ["crates/gateway", "crates/chronus-hil-sim", "crates/chronus-replay"]
 
 # Shared metadata + dependency versions. Member crates opt in with `field.workspace = true`
 # (see Methodology.md → "Workspace + centralized dependency versions").
@@ -28,6 +28,9 @@ base64 = { version = "0.22", default-features = false, features = ["std"] }
 # Error handling
 anyhow = "1"
 thiserror = "1"
+
+# CLI (Showcase S3 replay tool)
+clap = { version = "4", features = ["derive"] }
 
 # Time + serialization
 chrono = { version = "0.4", features = ["serde"] }

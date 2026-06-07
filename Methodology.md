@@ -10,7 +10,7 @@ contributor expectations in `README.md` (keep this file current when decisions c
 > **Gate CV-2** is approved; **CV-3** (synthetic HIL TM v1 payload + decoder + APID policy) is **implemented** — **Gate CV-3** approved.
 > **CV-4** (HIL subsystem vs toy Sun proxy) is **implemented** — **Gate CV-4** approved.
 > **CV-5** (HIL ADCS body-rate envelope) is **implemented** — **Gate CV-5** pending owner sign-off.
-> **Showcase track (S0–S4):** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) + [`docs/Demo_Test.md`](docs/Demo_Test.md); **Gate S-0** / **Gate S-1** approved. **S2** (`demo/dashboard` Vite UI) implemented — **Gate S-2** pending.
+> **Showcase track (S0–S4):** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) + [`docs/Demo_Test.md`](docs/Demo_Test.md); **Gate S-0** / **Gate S-1** / **Gate S-2** / **Gate S-3** approved (2026-06-04). **S4** optional — **on hold**. **S3** deliverables: `chronus-replay`, scripted `chronus-hil-sim`, `demo/replay/`.
 
 ---
 
@@ -353,6 +353,17 @@ checkout. For bit-for-bit reproducible images later, pin a `git` **rev** in that
 **Why:** Gives a zero–Open-MCT-clone demo surface for portfolio and CI; keeps Node tooling isolated under `demo/`
 per **D-025**. CI uses **Node 22 LTS** and runs `npm install && npm run build` to guard the bundle (Node **20** reached EOL **2026-04-30**; use a supported LTS for security fixes).
 
+### D-027 — Showcase S3 UDP replay (`chronus-replay`)
+**Decision:** Add workspace member **`chronus-replay`** — a small Tokio CLI that reads **synthetic** UDP payloads from a text fixture (**hex lines** or **JSONL** with `udp_hex`) and sends them to the gateway ingest socket, with **`--delay-ms`** pacing and **`--repeat`** for deterministic loops.
+**Why:** Satisfies **SHOWCASE_PLAN** S3 “narrative polish” without capturing real RF: portfolio demos and screenshots can replay **the same bytes** every time. Keeps tooling in Rust next to `chronus-hil-sim`; fixtures live under **`demo/replay/`** (not inside publishable crate roots per **D-025**).
+**Compliance:** Fixtures must be lab-generated only (`AGENTS.md`); no operational dumps.
+**Dependencies:** **`clap`** (derive) added to `[workspace.dependencies]` for argv parsing.
+
+### D-028 — Showcase S3 scripted HIL anomalies (`chronus-hil-sim`)
+**Decision:** Extend **`chronus-hil-sim`** with optional **`HilScriptedAnomaly`** (kind + start frame + duration) applied inside [`SpacecraftDemo`](crates/chronus-hil-sim/src/lib.rs) before UDP send. CLI: **`--scripted-anomaly`** (`eps-voltage` \| `thermal` \| `body-rate`), **`--anomaly-after-frame`**, **`--anomaly-frame-count`**, plus **`--apid`**. Library entrypoint **`run_nexosim_udp_hil_with_script`**. Uses **`clap`** in the HIL binary (workspace dep).
+**Why:** Delivers the SHOWCASE S3 “scripted fault” path using **only synthetic CV-4/CV-5** scalars already on the wire — no RF capture, no gateway fork — so operators get repeatable **`physics_flags`** bit **4–6** footage with one command.
+**Limits:** Does not set Doppler / RSSI / pointing bits (**0–3**); those still require measured RF fields in [`RfMetadata`](crates/gateway/src/validate.rs) if we extend the ingest path later.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -374,7 +385,8 @@ External works this project builds on or is inspired by (keep current; attribute
 | `criterion`, `proptest` | Benchmarks + parser robustness property tests (M6) | crates.io, MIT/Apache-2.0 |
 | `toml` | Gateway config file parsing (M8) | crates.io, MIT/Apache-2.0 |
 | Vite | Demo dashboard bundler (Showcase S2) | [vitejs.dev](https://vitejs.dev/), MIT |
+| `clap` | argv parsing for `chronus-replay` (Showcase S3) | crates.io, MIT/Apache-2.0 |
 
 ---
 
-*Last updated: 2026-06-05.*
+*Last updated: 2026-06-04.*

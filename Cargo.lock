@@ -375,12 +375,23 @@ dependencies = [
  "anyhow",
  "chrono",
  "chronus-gateway",
+ "clap",
  "ephemerust",
  "nexosim",
  "serde",
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "chronus-replay"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

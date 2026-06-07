@@ -1,0 +1,2 @@
+# Golden synthetic TM (11 bytes): APID 0x2A, "hello" user field — matches gateway tests.
+00 2A C0 07 00 04 68 65 6C 6C 6F
