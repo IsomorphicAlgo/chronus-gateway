@@ -22,3 +22,7 @@ Thumbs.db
 demo/dashboard/node_modules/
 demo/dashboard/dist/
 demo/dashboard/.env.local
+
+# Personal Files
+
+personal.md

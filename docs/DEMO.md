@@ -95,7 +95,7 @@ Docker path uses only [`demo/gateway.docker.toml`](../demo/gateway.docker.toml) 
 
 ## Path C — Demo dashboard (Vite, Showcase **S2**)
 
-**Prerequisites:** [Node.js](https://nodejs.org/) **20+** and npm.
+**Prerequisites:** [Node.js](https://nodejs.org/) **22 LTS** (or newer **Active LTS**, e.g. 24) and npm. Avoid **EOL** majors (e.g. 20 after 2026-04-30) for security patches.
 
 With the gateway (and UDP feeder) already running per **Path A** or **Path B**:
 
@@ -123,7 +123,7 @@ Open the URL Vite prints (typically `http://127.0.0.1:5173`). Click **Connect** 
 | WebSocket connects but no messages | No UDP source | Run `chronus-hil-sim` (native path) or confirm `hil-feeder` in Compose exited **0** (`docker compose ps`); re-run compose or raise the frame count in [`demo/docker-compose.yml`](../demo/docker-compose.yml). |
 
 | Dashboard shows “WebSocket error” | Wrong URL / gateway down | Confirm `curl` health; try `?ws=` override; check browser console. |
-| `npm install` fails | Node too old | Use Node 20+ LTS. |
+| `npm install` fails | Node too old / EOL | Install a **supported LTS** from [nodejs.org](https://nodejs.org/) (e.g. **22** or **24**). |
 
 ---
 

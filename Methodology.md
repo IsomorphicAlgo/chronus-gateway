@@ -61,7 +61,7 @@ vs WGS84 geodetic). Adequate for foundation/look-angle/Doppler work; revisit pre
 `EPHEMERUST_INTEGRATION_PLAN.md`. If third-party builds ever matter, switch to a pinned git `rev`
 or a crates.io version (and update this entry).
 **Reproducibility:** `0.x` crate — pin intentionally and bump deliberately on breaking minors.
-**CI:** `.github/workflows/ci.yml` always clones **`IsomorphicAlgo/Ephemerust`** (not `github.repository_owner`) into a sibling directory so fork pull requests still resolve `../Ephemerust`; `actions/checkout@v5` avoids deprecated Node 20 runners for the checkout action.
+**CI:** `.github/workflows/ci.yml` always clones **`IsomorphicAlgo/Ephemerust`** (not `github.repository_owner`) into a sibling directory so fork pull requests still resolve `../Ephemerust`; `actions/checkout@v5` tracks current GitHub runner guidance for the checkout action.
 
 ### D-006 — MSRV 1.89 (advisory), no forced toolchain pin yet
 **Decision:** Set `rust-version = "1.89"` in `[workspace.package]`; GitHub CI uses the same
@@ -351,7 +351,7 @@ checkout. For bit-for-bit reproducible images later, pin a `git` **rev** in that
 `openmct.realtime.v1` WebSocket JSON. **Track A** (full NASA Open MCT wiring) stays a documented backlog under
 [`demo/openmct/README.md`](demo/openmct/README.md).
 **Why:** Gives a zero–Open-MCT-clone demo surface for portfolio and CI; keeps Node tooling isolated under `demo/`
-per **D-025**. CI runs `npm install && npm run build` to guard the bundle.
+per **D-025**. CI uses **Node 22 LTS** and runs `npm install && npm run build` to guard the bundle (Node **20** reached EOL **2026-04-30**; use a supported LTS for security fixes).
 
 ---
 

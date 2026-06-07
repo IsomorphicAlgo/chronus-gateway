@@ -69,7 +69,7 @@ Docker build failures → see `DEMO.md` troubleshooting; Windows firewall → do
 **Procedure (Track B)**
 
 1. Start gateway + UDP feeder (**Path A** or **B** in [`DEMO.md`](DEMO.md)).
-2. `cd demo/dashboard && npm install && npm run dev` (Node 20+).
+2. `cd demo/dashboard && npm install && npm run dev` (Node **22+** LTS recommended; avoid EOL Node majors).
 3. Open the Vite dev URL; click **Connect**; confirm **≥ 1** frame updates **APID / seq / time** and
    **physics_flags** badges (or “No physics alarms” when flags are zero).
 4. Confirm **azimuth**, **elevation**, **range**, **range-rate** cells update when propagator fields are present on the wire.

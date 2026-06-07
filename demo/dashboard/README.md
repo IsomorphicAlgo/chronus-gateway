@@ -8,7 +8,7 @@ range, and range rate.
 
 ## Prerequisites
 
-- Node.js **20+** and npm.
+- Node.js **22 LTS** or newer **Active LTS** (e.g. 24) and npm — avoid EOL lines (Node **20** reached EOL **2026-04-30** per the [official schedule](https://github.com/nodejs/release)).
 - Gateway running with HTTP/WebSocket on the URL you configure (default `ws://127.0.0.1:8080/telemetry/openmct`).
 - A UDP telemetry source (e.g. `chronus-hil-sim`) so frames appear — see [`../../docs/DEMO.md`](../../docs/DEMO.md).
 
