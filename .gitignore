@@ -23,6 +23,7 @@ demo/dashboard/node_modules/
 demo/dashboard/dist/
 demo/dashboard/.env.local
 
-# Personal Files
+# Personal Files (owner-local notes; not for publication)
 
+Personal/
 personal.md
