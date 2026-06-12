@@ -21,7 +21,7 @@ in `Demo_Test.md` and owner approval — no unclear-origin RF captures or propri
 ### Crates.io vs showcase distribution
 
 **Facts (Cargo):** `cargo publish` uploads only the **crate package root** — for this workspace, that is
-`crates/gateway/` for `chronus-gateway` and `crates/chronus-hil-sim/` for the HIL binary. Files in the
+`crates/gateway/` for `chronus-gateway`, `crates/chronus-hil-sim/` for the HIL binary, and `crates/chronus-replay/` for the replay CLI. Files in the
 **repository root** (`docs/`, `demo/`, `README.md`, etc.) are **not** inside those tarballs unless they are
 copied under the crate directory.
 

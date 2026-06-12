@@ -1,0 +1,39 @@
+# Optional Criterion run — manual dispatch only (not a PR gate). See TEST_PLAN.md → Performance regression guard.
+name: Benchmark
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  criterion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gateway
+        uses: actions/checkout@v5
+        with:
+          path: chronus-gateway
+
+      - name: Checkout Ephemerust (upstream sibling)
+        uses: actions/checkout@v5
+        with:
+          repository: IsomorphicAlgo/Ephemerust
+          path: Ephemerust
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89"
+
+      - name: Run Criterion (chronus-gateway)
+        working-directory: chronus-gateway
+        run: cargo bench -p chronus-gateway
+
+      - name: Upload Criterion HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-report-${{ github.run_id }}
+          path: chronus-gateway/target/criterion/report
+          if-no-files-found: warn

@@ -7,6 +7,8 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "UDP replay of synthetic CCSDS TM datagrams from hex or JSONL (Showcase S3)"
+# Defensive: keep any mistaken `demo/` or `showcase/` trees out of the published tarball (`Methodology.md` D-025).
+exclude = ["demo", "showcase"]
 
 [[bin]]
 name = "chronus-replay"

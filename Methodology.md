@@ -11,6 +11,9 @@ contributor expectations in `README.md` (keep this file current when decisions c
 > **CV-4** (HIL subsystem vs toy Sun proxy) is **implemented** — **Gate CV-4** approved.
 > **CV-5** (HIL ADCS body-rate envelope) is **implemented** — **Gate CV-5** pending owner sign-off.
 > **Showcase track (S0–S4):** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) + [`docs/Demo_Test.md`](docs/Demo_Test.md); **Gate S-0** / **Gate S-1** / **Gate S-2** / **Gate S-3** approved (2026-06-04). **S4** optional — **on hold**. **S3** deliverables: `chronus-replay`, scripted `chronus-hil-sim`, `demo/replay/`.
+> **Secondary testing** (optional pre-release depth): [`TEST_PLAN.md`](TEST_PLAN.md) + **D-029** (`cargo-mutants`, `cargo-hack` when features exist, Miri scope, Loom deferred).
+> **Release rehearsal** (`cargo package`): [`TEST_PLAN.md`](TEST_PLAN.md) — **§ Release rehearsal**; **`chronus-replay`** full package verified; gateway/HIL gated on Ephemerust crates.io (**D-005** / **E.2**).
+> **Criterion / benches:** [`TEST_PLAN.md`](TEST_PLAN.md) — **§ Performance regression guard**; optional **`bench`** workflow (**D-030**); PR CI stays **`cargo bench --no-run`** only.
 
 ---
 
@@ -333,9 +336,9 @@ operator path, visuals, compliance evidence) without diluting physics gates.
 
 ### D-025 — crates.io package vs showcase materials
 **Decision:** Treat **crates.io** as shipping **library/binary source only** inside each member’s
-**crate root** (`crates/gateway/`, `crates/chronus-hil-sim/`). Showcase and booth assets (Compose,
+**crate root** (`crates/gateway/`, `crates/chronus-hil-sim/`, **`crates/chronus-replay/`**). Showcase and booth assets (Compose,
 Open MCT bridge, SPA, large fixtures) live at **workspace root** (e.g. `demo/`) or in a **separate
-download** (GitHub Release zip or sibling repo) — never required inside the published tarball. Both
+download** (GitHub Release zip or sibling repo) — never required inside the published tarball. All three
 publishable crates set **`[package] exclude = ["demo", "showcase"]`** so those directory names are
 dropped if mistakenly created under the crate folder.
 **Why:** `cargo publish` only packages the crate directory; keeping demos out of `crates/*` avoids
@@ -364,6 +367,16 @@ per **D-025**. CI uses **Node 22 LTS** and runs `npm install && npm run build` t
 **Why:** Delivers the SHOWCASE S3 “scripted fault” path using **only synthetic CV-4/CV-5** scalars already on the wire — no RF capture, no gateway fork — so operators get repeatable **`physics_flags`** bit **4–6** footage with one command.
 **Limits:** Does not set Doppler / RSSI / pointing bits (**0–3**); those still require measured RF fields in [`RfMetadata`](crates/gateway/src/validate.rs) if we extend the ingest path later.
 
+### D-029 — Secondary testing charter (mutation, feature matrix, Miri, Loom)
+**Decision:** Charter **optional** depth checks in [`TEST_PLAN.md`](TEST_PLAN.md) under **Secondary testing plan**: [`cargo-mutants`](https://mutants.rs/), [`cargo-hack`](https://github.com/taiki-e/cargo-hack) when `[features]` exist, **`cargo miri`** on a scoped subset (library tests first), and **Loom** only if bespoke atomics/lock-free code appears. **`cargo test`** remains the **primary** stage-gate; secondary tools are **pre-release / periodic** until explicitly promoted to required CI.
+**Why:** Strengthens confidence before crates.io and public discussion without inflating every PR’s latency or flaking on environment-specific Miri/mutants runs.
+**CI:** Optional `workflow_dispatch` / scheduled jobs are listed in `TEST_PLAN.md`; promotion to required checks needs a new Methodology note.
+
+### D-030 — Performance regression guard (Criterion baselines + optional bench workflow)
+**Decision:** Document **local** Criterion **baseline save/compare** in [`TEST_PLAN.md`](TEST_PLAN.md) under **Performance regression guard (Criterion)**; keep PR CI at **`cargo bench --no-run`** (compile-only) per existing [`ci.yml`](.github/workflows/ci.yml). Add optional [`.github/workflows/bench.yml`](.github/workflows/bench.yml) on **`workflow_dispatch`** that runs **`cargo bench -p chronus-gateway`** and uploads the **HTML** report from **`target/criterion/report`** as an artifact.
+**Why:** Gives the owner a repeatable **pre-release** comparison on a **reference machine** without turning noisy full benches into a merge blocker. Shared runners are unsuitable for strict regression thresholds.
+**Credit:** **Criterion** ([user guide / book](https://bheisler.github.io/criterion.rs/book/criterion_rs.html)) — same crate as M6 benches.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -382,11 +395,13 @@ External works this project builds on or is inspired by (keep current; attribute
 | `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
 | Tokio, Axum, Tower, Tower-HTTP, Serde, Chrono, Anyhow, Thiserror, Base64, Futures-util | Runtime + HTTP/WS + serialization | crates.io, MIT/Apache-2.0 |
-| `criterion`, `proptest` | Benchmarks + parser robustness property tests (M6) | crates.io, MIT/Apache-2.0 |
+| `criterion`, `proptest` | Benchmarks + parser robustness property tests (M6); Criterion baselines + optional **`bench`** workflow (**D-030**) | crates.io, MIT/Apache-2.0 |
 | `toml` | Gateway config file parsing (M8) | crates.io, MIT/Apache-2.0 |
 | Vite | Demo dashboard bundler (Showcase S2) | [vitejs.dev](https://vitejs.dev/), MIT |
 | `clap` | argv parsing for `chronus-replay` (Showcase S3) | crates.io, MIT/Apache-2.0 |
+| `cargo-mutants` | Optional mutation testing (secondary plan; **D-029**) | [mutants.rs](https://mutants.rs/), MIT |
+| `cargo-hack` | Optional per-feature test matrix when features land (**D-029**) | GitHub taiki-e/cargo-hack, MIT/Apache-2.0 |
 
 ---
 
-*Last updated: 2026-06-04.*
+*Last updated: 2026-06-13.*

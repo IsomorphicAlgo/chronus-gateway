@@ -37,6 +37,205 @@ cargo clippy --all-targets
 
 ---
 
+## Secondary testing plan (release / depth; optional for stage gates)
+
+The layers above — especially **`cargo test`** — remain the **primary** quality gate for milestone
+and showcase stage gates. This section charters **additional** checks that catch weak assertions,
+feature-interaction bugs, and undefined behavior in dependencies, without blocking every PR unless
+the owner promotes a given tool to **required**.
+
+**Principles**
+
+1. **Offline & deterministic** where possible (same rule as primary tests). Mutation and Miri runs
+   may be slower; treat them as **pre-release** or **weekly** cadence unless CI adds optional jobs.
+2. **Workspace context:** `ephemerust` is a **path** dependency (`../Ephemerust`). Run secondary
+   commands from the **workspace root** with both repos checked out, matching CI and local dev.
+3. **CI posture:** keep these as **optional** (`workflow_dispatch` or scheduled) jobs until the
+   owner decides latency and flake budget allow promotion to required checks — see
+   [Optional CI follow-ups](#optional-ci-follow-ups-secondary) below.
+
+### Mutation testing (`cargo-mutants`)
+
+**Goal:** Prove tests actually fail when implementation code is perturbed (finds “tests that never
+assert behavior”).
+
+**Tool:** [`cargo-mutants`](https://mutants.rs/) (`cargo install cargo-mutants`).
+
+**Suggested invocations** (from workspace root; adjust timeout if the machine is slow):
+
+```text
+cargo mutants --no-shuffle -p chronus-gateway
+cargo mutants --no-shuffle -p chronus-hil-sim
+cargo mutants --no-shuffle -p chronus-replay
+```
+
+- Start with **`chronus-gateway`** — largest surface (parse, validate, config).
+- If mutants escape the default timeout, add `--timeout-multiplier 2` (or higher) per upstream docs.
+- **Baseline / triage:** capture `mutants.out` / logs for any **unviable** or **caught** mutants and
+  either add a targeted test or document an explicit exclusion with rationale (same honesty bar as
+  tolerance rows).
+
+### Feature-matrix builds (`cargo-hack`)
+
+**Goal:** When a crate exposes **`[features]`**, ensure every feature combination at least **compiles**
+and tests that are feature-gated still pass.
+
+**Tool:** [`cargo-hack`](https://github.com/taiki-e/cargo-hack) (`cargo install cargo-hack`).
+
+**Current workspace baseline (2026-06):** workspace members **`chronus-gateway`**, **`chronus-hil-sim`**,
+and **`chronus-replay`** do **not** define optional Cargo features. Until `[features]` are added,
+the matrix check collapses to the primary gate:
+
+```text
+cargo test --workspace
+```
+
+**When features land:** run, from the workspace root:
+
+```text
+cargo hack test --workspace --each-feature --exclude-no-default-features
+```
+
+Revisit this subsection when the first `[features]` table appears in any member `Cargo.toml`.
+
+### Undefined-behavior hygiene (`cargo miri`)
+
+**Goal:** Exercise the **safe** Rust under Miri to catch UB in the crate’s own code and in
+`unsafe` inside dependencies (subject to Miri’s model).
+
+**Tool:** Rustup component: `rustup component add miri` then `cargo miri setup`.
+
+**Project-owned `unsafe`:** none in `crates/*/src` at charter time — any `unsafe` lives in
+dependencies (Tokio, etc.).
+
+**Suggested scope:** prefer **library** tests first (lighter than full multi-threaded integration):
+
+```text
+cargo miri test -p chronus-gateway --lib
+```
+
+**Platform notes:** Miri on **Windows hosts** is often slower or more constrained than on **Linux**
+or **WSL2**; if local Miri is impractical, run the same command in CI on `ubuntu-latest` or in WSL.
+Full **`#[tokio::test]`** integration suites may require Miri flags or may be **out of scope** for
+Miri until the owner narrows a supported subset — document failures instead of silencing them.
+
+### Concurrency model-checking (`loom`)
+
+**Goal:** Exhaust small-state models of **custom** lock-free or atomics-heavy code.
+
+**Charter for this repository:** concurrent structure relies on **Tokio** channels, broadcast, and
+the async runtime rather than bespoke lock-free queues. **Loom is not required** until the codebase
+introduces custom `std::sync::atomic` or hand-rolled synchronization worth modeling. If that
+changes, add a subsection here with the exact `loom` test harness and invariants.
+
+### Optional CI follow-ups (secondary)
+
+Track (do not chain gates): add **non-required** GitHub Actions workflows or jobs, for example:
+
+| Job | Trigger | Notes |
+| --- | --- | --- |
+| `mutants` | `workflow_dispatch` + optional `schedule` | Long-running; cache `target/` where safe. |
+| `miri` | `workflow_dispatch` or weekly cron | `ubuntu-latest`; `-p chronus-gateway --lib` first. |
+| `hack` | on `Cargo.toml` / member manifest changes | No-op useful until `[features]` exist; then `--each-feature`. |
+| `bench` | `workflow_dispatch` only | Criterion run for `chronus-gateway`; uploads HTML report artifact (`.github/workflows/bench.yml`). **Not** a PR gate — see [Performance regression guard (Criterion)](#performance-regression-guard-criterion). |
+
+Promotion to **required** checks is an owner decision recorded in `Methodology.md`.
+
+### Release rehearsal (`cargo package`)
+
+**Goal:** Before `cargo publish`, confirm each crate’s **tarball contents** match **D-025** (no
+`demo/` or `showcase/` trees inside `crates/*`) and that **verify** builds succeed where the
+dependency graph is fully resolvable from **crates.io**.
+
+**D-025 alignment:** `chronus-gateway`, `chronus-hil-sim`, and `chronus-replay` each declare
+`exclude = ["demo", "showcase"]` in their `[package]` section (defensive if those folder names are
+ever created under the crate root by mistake).
+
+**1 — Inspect the packaged file list (always; no registry resolve):**
+
+```text
+cargo package -p chronus-gateway --list
+cargo package -p chronus-hil-sim --list
+cargo package -p chronus-replay --list
+```
+
+**Pass:** no path containing `demo/` or `showcase/` appears in the listing. (The workspace root
+`demo/` directory is **never** under these crate roots and must not be pulled in via mistaken
+`include` patterns.)
+
+**2 — Full package + verify (when the graph allows):**
+
+```text
+cargo package -p chronus-replay
+cargo package -p chronus-gateway
+cargo package -p chronus-hil-sim
+```
+
+Use **`--allow-dirty`** only when rehearsing with **uncommitted** manifest changes (CI should run
+on clean trees without this flag).
+
+**`chronus-replay`:** Has no path dependency on **Ephemerust**; full `cargo package` is expected to
+**pass** on a clean tree once the index is reachable.
+
+**`chronus-gateway` / `chronus-hil-sim`:** Today **`ephemerust`** is a **path-only** sibling
+(`../Ephemerust`, **D-005**). Cargo then either (a) errors that a **version** must be specified for
+packaging/publish, or (b) after adding `version = "…"` next to `path`, errors that **`ephemerust`**
+is missing from **crates.io** until **E.2** is executed. That is **expected** until Ephemerust is
+published and this workspace pins it for the registry. Until then, rely on **§1** above plus
+`cargo test --workspace` for integration confidence; treat a **green** `cargo package` on these
+two crates as a **release-day** check after the Ephemerust story is closed.
+
+**3 — LICENSE / README in the tarball:** `cargo package --list` should be reviewed for a **`LICENSE`**
+(or `LICENSE-MIT`) file if crates.io policy requires an explicit file in the crate root; today the
+workspace declares `license = "MIT"` in `[workspace.package]` — confirm the published crate layout
+against crates.io requirements before the first upload (**finalization plan D.2**).
+
+### Performance regression guard (Criterion)
+
+**Goal:** Catch accidental slowdowns in the **CCSDS parse** and **`apply_physics_validation`** hot
+paths before a release, using the same **Criterion** harness as Milestone 6
+([`crates/gateway/benches/parse_validate.rs`](crates/gateway/benches/parse_validate.rs)).
+
+**Routine commands** (workspace root; sibling **`../Ephemerust`** present):
+
+```text
+cargo bench -p chronus-gateway --no-run    # compile benches only (matches required CI)
+cargo bench -p chronus-gateway             # run all gateway benches (Criterion)
+cargo bench -p chronus-gateway --bench parse_validate
+```
+
+**Saving and comparing baselines (reference machine)**
+
+Criterion forwards arguments after `--` to the benchmark binary:
+
+1. On a **quiet**, **idle** machine (fixed power profile if on a laptop), same **`rustc`** / MSRV as
+   CI, run once and **save** a named baseline (pick a stable name, e.g. include date or release tag):
+
+   ```text
+   cargo bench -p chronus-gateway --bench parse_validate -- --save-baseline chronus-2026-06-12
+   ```
+
+2. After code changes on the **same** machine, **compare**:
+
+   ```text
+   cargo bench -p chronus-gateway --bench parse_validate -- --baseline chronus-2026-06-12
+   ```
+
+3. **Read the output:** Criterion reports typical timing, noise, and **regression / improvement**
+   estimates with confidence. Investigate large regressions or record an intentional change in
+   `Methodology.md` (same bar as tolerance register updates).
+
+**Where baselines live:** under `target/criterion/` (already under `/target`, git-ignored). A
+`cargo clean` removes them — **re-record** a saved baseline after a clean if comparisons should
+continue. Do **not** commit raw `target/` artifacts; if the owner ever checks in golden numbers, do
+so via a small documented note (hash + machine class), not the whole Criterion tree.
+
+**CI vs local baselines:** GitHub-hosted runners are **noisy** and differ CPU-to-CPU; treat optional
+**`bench`** workflow results as **smoke / artifact capture**, not as a substitute for a
+**reference-machine** baseline comparison before release.
+
+---
+
 ## Shared fixtures
 
 - **Reference TLE:** public ISS (ZARYA) 3-line set (same family Ephemerust tests use).
@@ -109,7 +308,7 @@ receives well-formed Open MCT JSON including `physics_flags`.
 
 ### M6 — Hardening
 
-- **Benchmarks:** `criterion` parse + validate hot paths (`cargo bench -p chronus-gateway`).
+- **Benchmarks:** `criterion` parse + validate hot paths (`cargo bench -p chronus-gateway`). Baseline save/compare before releases: [Performance regression guard (Criterion)](#performance-regression-guard-criterion).
 - **Fuzz/property:** randomized byte streams never panic the parser (`ccsds` proptest).
 - **Supply chain:** `cargo audit` / `cargo deny` in CI (`deny.toml`).
 
@@ -258,4 +457,4 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Showcase gates S0–S4 | 4 / 5 | **S0–S3** gates approved; **S4** on hold. [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md); [`docs/Demo_Test.md`](docs/Demo_Test.md). |
 
 
-*Last updated: 2026-06-04.*
+*Last updated: 2026-06-13.*
