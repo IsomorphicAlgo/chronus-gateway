@@ -1,0 +1,9 @@
+# Robustness pair for amsat/clean.hex — locally derived; no external source
+# Truncated payload
+00 73 C0 2A 00 06 41 4F
+# Telecommand (type bit set)
+10 73 C0 2A 00 07 41 4F 2D 37 33 45 44 55
+# Too short
+00 73
+# Garbage header
+FF FF FF FF FF FF

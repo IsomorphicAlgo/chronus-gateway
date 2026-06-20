@@ -1,6 +1,7 @@
 # Demo & showcase assets (workspace root)
 
-This directory holds **Showcase S1–S3** assets: Docker spine, **Vite dashboard**, **UDP replay** fixtures, and Open MCT backlog notes.
+This directory holds **Showcase S1–S4** assets: Docker spine, **Vite dashboard**, **UDP replay** fixtures,
+**curated public CCSDS fixtures** (S4), and Open MCT backlog notes.
 It is **not** shipped inside crates.io packages (`Methodology.md` **D-025**).
 
 ## Quick links
@@ -11,6 +12,7 @@ It is **not** shipped inside crates.io packages (`Methodology.md` **D-025**).
 | [`docker-compose.yml`](docker-compose.yml) | `gateway` + one-shot `hil-feeder` (Compose network) |
 | [`dashboard/README.md`](dashboard/README.md) | **S2** Vite + TypeScript UI (`npm run dev`) |
 | [`replay/README.md`](replay/README.md) | **S3** synthetic TM UDP replay (`chronus-replay`, hex/JSONL fixtures) |
+| [`fixtures/README.md`](fixtures/README.md) | **S4** ISS + AMSAT CCSDS fixtures (clean + robustness pairs) |
 | [`openmct/README.md`](openmct/README.md) | Open MCT adapter backlog (**Track A**) |
 | [`Dockerfile`](Dockerfile) | Multi-stage image: clone upstream Ephemerust, build both binaries |
 | [`gateway.docker.toml`](gateway.docker.toml) | Ingest + HTTP bind on `0.0.0.0` for container networking |

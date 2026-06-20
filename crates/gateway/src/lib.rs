@@ -16,6 +16,13 @@
 //!
 //! Built strictly on open, international standards (CCSDS). See the repository `README.md` and
 //! `Methodology.md` for compliance posture, attribution, and security priorities.
+//!
+//! ## Attribution
+//!
+//! External crates and standards are credited in the repository `README.md` § Acknowledgements and
+//! `Methodology.md` § Attribution (kept in sync with `Cargo.toml` workspace dependencies).
+//!
+//! **Operators:** install, first run, and `physics_flags` — `docs/USER_GUIDE.md` (repository root).
 
 pub mod ccsds;
 pub mod config;

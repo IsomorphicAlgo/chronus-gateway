@@ -10,10 +10,13 @@ contributor expectations in `README.md` (keep this file current when decisions c
 > **Gate CV-2** is approved; **CV-3** (synthetic HIL TM v1 payload + decoder + APID policy) is **implemented** — **Gate CV-3** approved.
 > **CV-4** (HIL subsystem vs toy Sun proxy) is **implemented** — **Gate CV-4** approved.
 > **CV-5** (HIL ADCS body-rate envelope) is **implemented** — **Gate CV-5** pending owner sign-off.
-> **Showcase track (S0–S4):** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) + [`docs/Demo_Test.md`](docs/Demo_Test.md); **Gate S-0** / **Gate S-1** / **Gate S-2** / **Gate S-3** approved (2026-06-04). **S4** optional — **on hold**. **S3** deliverables: `chronus-replay`, scripted `chronus-hil-sim`, `demo/replay/`.
+> **Showcase track (S0–S4):** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) + [`docs/Demo_Test.md`](docs/Demo_Test.md); **Gate S-0** through **Gate S-4** approved (2026-06-19). **S3:** `chronus-replay`, scripted `chronus-hil-sim`, `demo/replay/`. **S4:** `demo/fixtures/` (ISS + AMSAT).
+> **Manual demo path (finalization A.5):** [`docs/DEMO.md`](docs/DEMO.md) ↔ [`docs/Demo_Test.md`](docs/Demo_Test.md) runbook alignment — **D-033**.
 > **Secondary testing** (optional pre-release depth): [`TEST_PLAN.md`](TEST_PLAN.md) + **D-029** (`cargo-mutants`, `cargo-hack` when features exist, Miri scope, Loom deferred).
 > **Release rehearsal** (`cargo package`): [`TEST_PLAN.md`](TEST_PLAN.md) — **§ Release rehearsal**; **`chronus-replay`** full package verified; gateway/HIL gated on Ephemerust crates.io (**D-005** / **E.2**).
 > **Criterion / benches:** [`TEST_PLAN.md`](TEST_PLAN.md) — **§ Performance regression guard**; optional **`bench`** workflow (**D-030**); PR CI stays **`cargo bench --no-run`** only.
+> **Cross-target smoke:** [`TEST_PLAN.md`](TEST_PLAN.md) — **§ Cross-target smoke (Linux publish shape)**; reference **`x86_64-unknown-linux-gnu`** via **`ci.yml`** on `ubuntu-latest` (**D-031**).
+> **Finalization Tranche A:** secondary testing + release rehearsal + cross-target smoke + manual demo alignment — **complete** (**A.1–A.5**, **D-033**). **Tranche B.1** README narrative — **complete** (**D-034**). **Tranche B.2** acknowledgments audit — **complete** (**D-035**). **Tranche B.3** operator doc split — **complete** (**D-036**). Next: **B.4** ([`PROJECT_FINALIZATION_PLAN.md`](PROJECT_FINALIZATION_PLAN.md)).
 
 ---
 
@@ -377,6 +380,37 @@ per **D-025**. CI uses **Node 22 LTS** and runs `npm install && npm run build` t
 **Why:** Gives the owner a repeatable **pre-release** comparison on a **reference machine** without turning noisy full benches into a merge blocker. Shared runners are unsuitable for strict regression thresholds.
 **Credit:** **Criterion** ([user guide / book](https://bheisler.github.io/criterion.rs/book/criterion_rs.html)) — same crate as M6 benches.
 
+### D-031 — Cross-target smoke (`x86_64-unknown-linux-gnu` publish shape)
+**Decision:** Treat **`x86_64-unknown-linux-gnu`** on GitHub Actions **`ubuntu-latest`** as the **reference publish shape** for pre-crates.io verification. Document commands and pass criteria in [`TEST_PLAN.md`](TEST_PLAN.md) under **Cross-target smoke (Linux publish shape)**. The existing **`test`** job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (`cargo test`, clippy, `cargo bench --no-run`, audit/deny, demo Compose + dashboard build) is the **canonical** recorded Linux build; optional local reproduction via **WSL2** uses the same triple without the Windows-only **`rust-lld`** linker override (**D-008**).
+**Why:** Downstream consumers and crates.io CI overwhelmingly build on Linux; the owner’s MSVC **`link.exe`** policy is host-specific and must not be mistaken for publish requirements. One documented non-Windows target satisfies finalization plan **A.4** without adding a second mandatory workflow.
+**Exit:** Green **`ci.yml`** `test` on `ubuntu-latest` before first publish; no extra artifact beyond CI run history.
+
+### D-032 — Showcase S4 curated fixtures (ISS + AMSAT CCSDS tracks)
+**Decision:** Add **`demo/fixtures/`** with two **owner-gated** tracks — **ISS** and **AMSAT** — each providing a **clean** CCSDS TM hex line plus a **robustness** companion (truncated, TC-on-TM-path, short, garbage) derived locally. Bytes follow **CCSDS 133.0-B** Space Packet layout (public standard + `spacepackets` educational cross-check); they are **not** operational ISS/AMSAT RF captures (ISS amateur APRS is AX.25; FUNcube uses custom FEC). Provenance, SHA-256, and compliance rows live in [`demo/fixtures/README.md`](demo/fixtures/README.md). Automated gate: [`crates/gateway/tests/s4_fixtures.rs`](crates/gateway/tests/s4_fixtures.rs); operator path: [`docs/DEMO.md`](docs/DEMO.md) Path E.
+**Why:** Closes showcase **S4** with credible amateur-space **narrative** while staying inside AGENTS.md synthetic/open-standards posture; robustness pairs demo parser resilience without NeXosim.
+**Credit:** CCSDS public Blue Books; [`spacepackets`](https://github.com/us-irs/spacepackets); [gr-satellites CCSDS README](https://github.com/daniestevez/gr-satellites) (GPL-3.0, pedagogical APID reference); AMSAT-UK CCSDS outreach pages.
+**Gate S-4:** Owner approval **2026-06-19**.
+
+### D-033 — Manual demo path maintenance (`DEMO.md` ↔ `Demo_Test.md`)
+**Decision:** Record a **cross-walk table** in [`docs/Demo_Test.md`](docs/Demo_Test.md) mapping **`DEMO.md`** Paths **A–E** to showcase gates **S1–S4** and matching acceptance sections. Any change to demo commands, ports, or paths must update **both** files before a showcase or finalization gate closes.
+**Why:** Satisfies finalization plan **A.5** — operators and gate reviewers use one runbook (`DEMO.md`) and one checklist (`Demo_Test.md`) that cannot drift.
+**Exit:** Tranche **A** complete after **Gate S-4** and alignment table land.
+
+### D-034 — README intro narrative (finalization Tranche B.1)
+**Decision:** Lead [`README.md`](README.md) with plain-language **problem → three-step story** (fast CCSDS→JSON translator, Ephemerust “space map,” physics co-validation with Doppler and illumination-style checks). Move milestone/status density into a **Current status** table below the narrative. Align `chronus-gateway` `[package] description` in [`crates/gateway/Cargo.toml`](crates/gateway/Cargo.toml) with the one-line pitch for crates.io.
+**Why:** GitHub and crates.io first impressions should explain *why* before *how*; technical accuracy (flags vs RF block, synthetic demo posture) preserved per `AGENTS.md`.
+**Credit:** Narrative adapted from owner draft; Rusty_Server + Ephemerust attribution unchanged.
+
+### D-035 — Acknowledgments audit (finalization Tranche B.2)
+**Decision:** Restructure [`README.md`](README.md) § Acknowledgements into maintainer projects, first-class crates (with [crates.io](https://crates.io) links), Ephemerust-transitive deps, standards, dev/CI/demo tooling, and design-analysis-only crates. Expand [`Methodology.md`](Methodology.md) § Attribution to cover **every** workspace dependency (including **`nexosim`**, **`tokio-util`**, **`tracing-subscriber`**, **`tokio-tungstenite`**, **`tempfile`**) plus CCSDS/Open MCT and S4 pedagogical cites. Point [`crates/gateway/src/lib.rs`](crates/gateway/src/lib.rs) crate docs at README + Methodology. Fix broken `sgp4` markdown; correct NeXosim from “planned” to **M7 shipped**; Ephemerust GitHub URL casing.
+**Why:** Satisfies **B.2** — no orphan dependency without documented rationale; crates.io-first links for publishable deps.
+**Maintenance:** Re-run this cross-check when adding a workspace dependency or promoting a dev-tool to required CI.
+
+### D-036 — Operator doc split (finalization Tranche B.3)
+**Decision:** [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) is the **canonical operator surface** (install, first run, TOML, **`physics_flags`**). [`README.md`](README.md) carries the narrative and **one sentence** after **In short** pointing operators to the user guide; repeatable demo steps stay in [`docs/DEMO.md`](docs/DEMO.md) only. README **Current status** table labels USER_GUIDE as canonical — no duplicated first-run prose in README.
+**Why:** Satisfies **B.3** — visitors get “why” on GitHub/crates.io first page, “how to run” in one maintained doc.
+**Maintenance:** Change operator steps or alarm text in **USER_GUIDE** first; README links only.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -386,22 +420,36 @@ per **D-025**. CI uses **Node 22 LTS** and runs `npm install && npm run build` t
 ---
 
 ## Attribution
-External works this project builds on or is inspired by (keep current; attribute in this table and at point of use):
+
+External works this project builds on or is inspired by. **Keep this table aligned** with
+`[workspace.dependencies]` in the root `Cargo.toml`, `README.md` § Acknowledgements, and crate
+docs when dependencies change (finalization **B.2**, **D-035**).
 
 | Work | Role here | Source / License |
 |------|-----------|------------------|
-| **Ephemerust** (owner) | SGP4 propagation, look-angles, range-rate, low-precision Sun position (**CV-4** illumination) | local sibling crate, MIT |
-| `sgp4` crate | Underlying SGP4/SDP4 numerics (via Ephemerust) | crates.io |
-| `spacepackets` (us-irs) | CCSDS Space Packet parsing (M2) | crates.io, Apache-2.0/MIT |
-| **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | sibling repo |
-| Tokio, Axum, Tower, Tower-HTTP, Serde, Chrono, Anyhow, Thiserror, Base64, Futures-util | Runtime + HTTP/WS + serialization | crates.io, MIT/Apache-2.0 |
-| `criterion`, `proptest` | Benchmarks + parser robustness property tests (M6); Criterion baselines + optional **`bench`** workflow (**D-030**) | crates.io, MIT/Apache-2.0 |
-| `toml` | Gateway config file parsing (M8) | crates.io, MIT/Apache-2.0 |
-| Vite | Demo dashboard bundler (Showcase S2) | [vitejs.dev](https://vitejs.dev/), MIT |
-| `clap` | argv parsing for `chronus-replay` (Showcase S3) | crates.io, MIT/Apache-2.0 |
-| `cargo-mutants` | Optional mutation testing (secondary plan; **D-029**) | [mutants.rs](https://mutants.rs/), MIT |
-| `cargo-hack` | Optional per-feature test matrix when features land (**D-029**) | GitHub taiki-e/cargo-hack, MIT/Apache-2.0 |
+| **Ephemerust** (owner) | SGP4 propagation, look-angles, range-rate, low-precision Sun position (**CV-4** illumination) | [GitHub IsomorphicAlgo/Ephemerust](https://github.com/IsomorphicAlgo/Ephemerust), MIT (sibling path dep) |
+| **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | Maintainer sibling project; **D-002** |
+| [`sgp4`](https://crates.io/crates/sgp4) | SGP4/SDP4 numerics (via Ephemerust) | crates.io, MIT/Apache-2.0 |
+| [`spacepackets`](https://crates.io/crates/spacepackets) ([us-irs](https://github.com/us-irs/spacepackets)) | CCSDS Space Packet parsing (**M2**, **D-010**) | crates.io, Apache-2.0/MIT |
+| [`nexosim`](https://crates.io/crates/nexosim) ([asynchronics](https://github.com/asynchronics/nexosim)) | HIL discrete-event sim (`chronus-hil-sim`, **M7**) | crates.io, MIT OR Apache-2.0 |
+| [`tokio`](https://crates.io/crates/tokio), [`tokio-util`](https://crates.io/crates/tokio-util) | Async runtime, UDP ingest, graceful shutdown | crates.io, MIT |
+| [`axum`](https://crates.io/crates/axum), [`tower`](https://crates.io/crates/tower), [`tower-http`](https://crates.io/crates/tower-http) | HTTP + WebSocket (**M5**, **D-013**) | crates.io, MIT |
+| [`tracing`](https://crates.io/crates/tracing), [`tracing-subscriber`](https://crates.io/crates/tracing-subscriber) | Structured logging | crates.io, MIT |
+| [`serde`](https://crates.io/crates/serde), [`serde_json`](https://crates.io/crates/serde_json), [`chrono`](https://crates.io/crates/chrono) | Serialization + timestamps | crates.io, MIT/Apache-2.0 |
+| [`toml`](https://crates.io/crates/toml) | Gateway config file parsing (**M8**) | crates.io, MIT/Apache-2.0 |
+| [`anyhow`](https://crates.io/crates/anyhow), [`thiserror`](https://crates.io/crates/thiserror) | Error handling | crates.io, MIT/Apache-2.0 |
+| [`clap`](https://crates.io/crates/clap) | CLI (`chronus-replay`, `chronus-hil-sim`; **S3**, **D-028**) | crates.io, MIT/Apache-2.0 |
+| [`base64`](https://crates.io/crates/base64), [`futures-util`](https://crates.io/crates/futures-util) | WebSocket JSON encoding | crates.io, MIT/Apache-2.0 |
+| [`criterion`](https://crates.io/crates/criterion), [`proptest`](https://crates.io/crates/proptest) | Benchmarks + parser property tests (**M6**, **D-030**) | crates.io, MIT/Apache-2.0 |
+| [`tokio-tungstenite`](https://crates.io/crates/tokio-tungstenite), [`tempfile`](https://crates.io/crates/tempfile) | Dev-only: WS integration tests; TOML config tests | crates.io, MIT |
+| [`cargo-audit`](https://crates.io/crates/cargo-audit), [`cargo-deny`](https://crates.io/crates/cargo-deny) | CI supply-chain gates | crates.io |
+| Vite | Demo dashboard bundler (Showcase **S2**) | [vitejs.dev](https://vitejs.dev/), MIT |
+| [`cargo-mutants`](https://mutants.rs/), [`cargo-hack`](https://github.com/taiki-e/cargo-hack) | Optional secondary testing (**D-029**) | MIT |
+| **CCSDS** Blue Books | Wire formats and protocols | [public.ccsds.org](https://public.ccsds.org/) |
+| **NASA Open MCT** | Distribution UX reference | [nasa.github.io/openmct](https://nasa.github.io/openmct/), Apache-2.0 |
+| `sat-rs`, `nyx-space` | Design analysis only (not dependencies) | GitHub; see **D-001** |
+| [gr-satellites](https://github.com/daniestevez/gr-satellites) | Pedagogical CCSDS reference (**S4** fixtures) | GPL-3.0 (cited, not vendored) |
 
 ---
 
-*Last updated: 2026-06-13.*
+*Last updated: 2026-06-19.*

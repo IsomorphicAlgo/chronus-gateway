@@ -1,0 +1,9 @@
+# Robustness pair for iss/clean.hex — locally derived; no external source
+# Truncated payload (header declares 7-byte field, only 2 bytes follow)
+01 55 C0 01 00 06 49 53
+# Telecommand on TM ingest path (type bit set), same APID/seq/payload as clean
+11 55 C0 01 00 06 49 53 53 2D 45 44 55
+# Too short for primary header
+01 55 C0
+# All-0xFF header (declared length >> available)
+FF FF FF FF FF FF

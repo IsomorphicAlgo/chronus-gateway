@@ -234,6 +234,53 @@ so via a small documented note (hash + machine class), not the whole Criterion t
 **`bench`** workflow results as **smoke / artifact capture**, not as a substitute for a
 **reference-machine** baseline comparison before release.
 
+### Cross-target smoke (Linux publish shape)
+
+**Goal:** Confirm the workspace builds and tests on a **non-Windows** target before the first
+**crates.io** push. Linux is the reference **publish shape** because most downstream consumers and
+CI hosts use **GNU/Linux**, and this repo’s Windows dev host carries a **local-only** linker
+workaround (**`Methodology.md` D-008**, `.cargo/config.toml` → `rust-lld` for `x86_64-pc-windows-msvc`)
+that does **not** apply to published crates.
+
+**Reference triple:** **`x86_64-unknown-linux-gnu`** (default Rust target on GitHub **`ubuntu-latest`**).
+
+**Canonical verification (required):** the **`test`** job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+on every push/PR to **`main`** / **`master`**:
+
+| Step | Command / action |
+| --- | --- |
+| Workspace tests | `cargo test` (from `chronus-gateway/` with sibling **`../Ephemerust`**) |
+| Clippy | `cargo clippy --all-targets -- -D warnings` |
+| Bench compile | `cargo bench --no-run` |
+| Supply chain | `cargo audit`, `cargo deny check` |
+| Demo spine | `docker compose -f demo/docker-compose.yml config --quiet`; Vite dashboard `npm run build` |
+
+**Pass:** job **`test`** is **green** on `ubuntu-latest` for the commit tagged or merged for release.
+That run is the **recorded** clean Linux build (finalization plan **A.4**). No separate artifact is
+required beyond CI history and logs.
+
+**Local Linux (optional, same triple):** owners on Windows may reproduce the publish shape in **WSL2**
+or on a Linux VM — sibling checkout layout must match CI (`Ephemerust` next to `chronus-gateway`):
+
+```text
+# From workspace root; Ephemerust at ../Ephemerust
+rustup toolchain install 1.89
+cargo test
+cargo clippy --all-targets -- -D warnings
+cargo bench --no-run
+```
+
+WSL2 uses the **Linux** linker stack (not `.cargo/config.toml`’s MSVC `rust-lld` path). Miri and
+other secondary tools that are awkward on Windows hosts should use the same **`x86_64-unknown-linux-gnu`**
+environment (see [Undefined-behavior hygiene (`cargo miri`)](#undefined-behavior-hygiene-cargo-miri)).
+
+**Out of scope for A.4:** cross-compiling **from** Windows **to** Linux (`cargo build --target
+x86_64-unknown-linux-gnu` with a GNU linker) — not required while CI provides the reference build.
+Add a dedicated cross-compile note only if CI is unavailable or a second triple (e.g. **`aarch64-unknown-linux-gnu`**) is chartered later.
+
+**MSRV alignment:** CI pins toolchain **`1.89`** (workspace MSRV); local Linux smoke should use the
+same version when comparing with CI output.
+
 ---
 
 ## Shared fixtures
@@ -416,14 +463,15 @@ JSON message; `GET /api/v1/chronus/metrics` → **200** with finite fields after
 - [x] **Replay:** `chronus-replay` binary (`crates/chronus-replay/`) sends synthetic UDP datagrams from **hex lines** or **JSONL** (`udp_hex`); `--delay-ms`, **`--repeat`**; fixtures under [`demo/replay/fixtures/`](../demo/replay/fixtures/); runbooks [`demo/replay/README.md`](../demo/replay/README.md) and [`docs/DEMO.md` → Path D](docs/DEMO.md#path-d--udp-replay-showcase-s3).
 - [x] **Scripted HIL:** `chronus-hil-sim --scripted-anomaly {eps-voltage,thermal,body-rate}` with `--anomaly-after-frame` / `--anomaly-frame-count` (CV-4/CV-5 bits **4–6**); [`docs/HIL.md`](HIL.md).
 
-**Gate S-3:** `[x]` **Owner approval** (2026-06-04) — **S4** optional; owner holding S4 for now.
+**Gate S-3:** `[x]` **Owner approval** (2026-06-04) — **S4** may proceed.
 
 ### S4 — Optional public fixtures
 
-- Each external fixture documented in `demo/fixtures/README.md` (source, license, date); owner compliance
-sign-off (`Demo_Test.md` §S4).
+- [`demo/fixtures/README.md`](../demo/fixtures/README.md) — **ISS** and **AMSAT** tracks; each with
+  **clean** + **robustness** hex pairs (provenance, license, SHA-256, AGENTS compliance note).
+- Integration: `cargo test -p chronus-gateway --test s4_fixtures` (offline). Manual: [`docs/DEMO.md` → Path E](docs/DEMO.md#path-e--curated-public-fixtures-showcase-s4).
 
-**Gate S-4:** `[ ]` **Owner approval** — fixture tranche closed.
+**Gate S-4:** `[x]` **Owner approval** (2026-06-19) — showcase track **S0–S4** complete.
 
 ---
 
@@ -452,9 +500,9 @@ Populate as engines land; keep rationale next to the value (Ephemerust style).
 | Layer                | Count | Notes                                                                                                                 |
 | -------------------- | ----- | --------------------------------------------------------------------------------------------------------------------- |
 | Unit tests           | 68    | `chronus-gateway` lib (63) + `chronus-replay` (3) + `chronus-hil-sim` lib (2). |
-| Integration tests    | 10    | `crates/gateway/tests/*.rs` (7) + `crates/chronus-hil-sim/tests/hil_ingest.rs` (3).                                   |
+| Integration tests    | 11    | `crates/gateway/tests/*.rs` (8 incl. `s4_fixtures`) + `chronus-hil-sim/tests/hil_ingest.rs` (3). |
 | Doctests             | 1     | `EphemerustPropagator::new`.                                                                                          |
-| Showcase gates S0–S4 | 4 / 5 | **S0–S3** gates approved; **S4** on hold. [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md); [`docs/Demo_Test.md`](docs/Demo_Test.md). |
+| Showcase gates S0–S4 | 5 / 5 | **S0–S4** gates approved (2026-06-19). [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md); [`docs/Demo_Test.md`](docs/Demo_Test.md). |
 
 
-*Last updated: 2026-06-13.*
+*Last updated: 2026-06-19.*

@@ -28,4 +28,5 @@ Options:
 
 ## Compliance
 
-Use **only synthetic / lab-generated** payloads (`AGENTS.md`). Do not replay operational or export-controlled data.
+Use **only synthetic / lab-generated** payloads (`AGENTS.md`) in **`demo/replay/`**. For **Tier-2**
+curated public CCSDS fixtures (ISS / AMSAT tracks), see **`demo/fixtures/`** (Showcase **S4**).

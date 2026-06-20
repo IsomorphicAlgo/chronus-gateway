@@ -1,9 +1,10 @@
 # ChronusGateway-RS — User guide
 
-This document is for **operators and integrators**: people who want to run the gateway, feed it
-data, and understand what it is checking — without first reading the whole codebase. It starts
-here at a **story level**; later sections will follow the same stage-gated plans the project uses
-internally so nothing drifts from the source of truth.
+This document is the **canonical operator-facing guide**: build, first run, configuration, and
+**`physics_flags`** semantics. The repository [`README.md`](../README.md) explains *why* the
+project exists; [`DEMO.md`](DEMO.md) holds repeatable demo paths (Docker, dashboard, replay).
+**Do not duplicate** first-run or alarm detail in the README — update this file instead
+(finalization **B.3**, **Methodology D-036**).
 
 ---
 
@@ -134,7 +135,8 @@ the **subsystem-style** checks described in the next section.
 **Quick health check without a full dashboard:** open **`http://127.0.0.1:8080/health`** in a
 browser — expect **HTTP 200**. Metrics live under **`/api/v1/chronus/metrics`** (see
 [`docs/HIL.md`](HIL.md)). Open MCT–oriented streaming uses the **WebSocket** at
-**`/telemetry/openmct`**.
+**`/telemetry/openmct`**. A connected **Vite dashboard** trial capture is in the README
+([`docs/assets/vitro-trial-run.png`](assets/vitro-trial-run.png); runbook: [`DEMO.md`](DEMO.md) Path C).
 
 ---
 
@@ -185,7 +187,7 @@ the same milestones and tolerances the project tests against:
 | See **what is tested**, **default tolerances** (T-DOPPLER, T-RSSI, …), and test commands | [`TEST_PLAN.md`](../TEST_PLAN.md) |
 | Read the **extended co-validation** story after M8 (CV milestones, flags, charter) | [`docs/EXTENDED_COVALIDATION_PLAN.md`](EXTENDED_COVALIDATION_PLAN.md) |
 | Run the **NeXosim HIL** driver and interpret gateway metrics during a soak | [`docs/HIL.md`](HIL.md) |
-| Run a **repeatable demo** (native or Docker) | [`docs/DEMO.md`](DEMO.md) |
+| Run a **repeatable demo** (native, Docker, replay, S4 fixtures) | [`docs/DEMO.md`](DEMO.md) |
 | Use the **Vite demo dashboard** (live `physics_flags` + geometry) | [`demo/dashboard/README.md`](../demo/dashboard/README.md), [`docs/DEMO.md`](DEMO.md) Path C |
 | Plan **portfolio demos** (Compose, dashboard, replay) and manual acceptance gates | [`docs/SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md), [`docs/Demo_Test.md`](Demo_Test.md) |
 | Understand **why** a major choice was made (dependencies, seams, deferrals) | [`Methodology.md`](../Methodology.md) |

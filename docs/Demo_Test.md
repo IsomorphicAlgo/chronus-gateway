@@ -21,6 +21,23 @@ replacement for `cargo test` on the gateway library — it defines what “demo-
 
 ---
 
+## Runbook alignment (`DEMO.md` ↔ acceptance)
+
+When demo behavior or paths change, update **both** [`DEMO.md`](DEMO.md) (operator commands) and the
+matching section below before closing a showcase or finalization gate. Cross-walk:
+
+| `DEMO.md` path | Showcase gate | `Demo_Test.md` section |
+|----------------|---------------|-------------------------|
+| Path A / B (native + Docker spine) | **S1** | [§S1](#s1--demo-spine-acceptance) |
+| Path C (Vite dashboard) | **S2** | [§S2](#s2--dashboard-v1-acceptance) |
+| Path D (`chronus-replay` + scripted HIL) | **S3** | [§S3](#s3--narrative-polish-acceptance) |
+| Path E (`demo/fixtures/` ISS + AMSAT) | **S4** | [§S4](#s4--optional-public-fixtures-acceptance) |
+
+**Finalization plan A.5:** this table is the maintenance contract — `Demo_Test` procedures must stay
+aligned with `DEMO.md` paths, ports, and commands (recorded in **`Methodology.md` D-033**).
+
+---
+
 ## S0 — Showcase charter acceptance
 
 **Procedure**
@@ -99,14 +116,23 @@ Docker build failures → see `DEMO.md` troubleshooting; Windows firewall → do
 
 ## S4 — Optional public fixtures acceptance
 
+**Prerequisites:** [`demo/fixtures/README.md`](../demo/fixtures/README.md) committed; owner has read compliance rows.
+
 **Procedure**
 
-1. Every fixture file has a **README row**: origin, license, hash, and transformation steps.
-2. Owner confirms **AGENTS.md** / ITAR posture for each source.
-3. If automated test ingests fixture: `cargo test` includes the test and remains **offline**
-   (no network fetch during test).
+1. **Provenance:** Confirm README rows for **ISS** (`iss/clean.hex`, `iss/robustness.hex`) and **AMSAT**
+   (`amsat/clean.hex`, `amsat/robustness.hex`) — source, license, SHA-256, transformation, AGENTS note.
+2. **Owner compliance:** Confirm each source satisfies [`AGENTS.md`](../AGENTS.md) / ITAR-EAR posture (no
+   operational dumps, no controlled RF parameters).
+3. **Automated:** `cargo test -p chronus-gateway --test s4_fixtures` — **offline**, no network fetch.
+4. **Manual replay (clean):** gateway up; run Path E from [`DEMO.md`](DEMO.md) for `iss/clean.hex` and
+   `amsat/clean.hex`; WebSocket or dashboard shows APID **0x155** and **0x073** respectively.
+5. **Robustness (optional narrative):** replay `iss/robustness.hex`; confirm gateway stays healthy and
+   invalid lines do not crash ingest (metrics / logs only).
 
-**Pass:** **Gate S-4** approved; fixture set frozen for the tranche.
+**Pass:** Steps 1–4 succeed; **Gate S-4** approved.
+
+**Status:** **Gate S-4** approved 2026-06-19 — showcase track **S0–S4** complete.
 
 ---
 
@@ -117,4 +143,4 @@ Docker build failures → see `DEMO.md` troubleshooting; Windows firewall → do
 | 2026-06-04 | Initial `Demo_Test.md` created. |
 | 2026-06-05 | S1: native + Docker procedures; link `DEMO.md`. |
 | 2026-06-05 | S2: Track B dashboard acceptance; Open MCT backlog pointer. |
-| 2026-06-04 | S3 complete: **Gate S-3** approved; S4 on hold. |
+| 2026-06-19 | **Gate S-4** approved; runbook alignment table (finalization **A.5**). |

@@ -1,6 +1,6 @@
-# ChronusGateway-RS — Demo runbook (Showcase **S1**–**S3**)
+# ChronusGateway-RS — Demo runbook (Showcase **S1**–**S4**)
 
-Two ways to run the gateway stack: **native Rust** (needs Ephemerust as a sibling checkout) or **Docker Compose** (Ephemerust is cloned during `docker build` inside the image). **Showcase S2** adds a **Vite dashboard** under [`demo/dashboard/`](../demo/dashboard/). Full acceptance checklists: [`Demo_Test.md`](Demo_Test.md).
+Two ways to run the gateway stack: **native Rust** (needs Ephemerust as a sibling checkout) or **Docker Compose** (Ephemerust is cloned during `docker build` inside the image). **Showcase S2** adds a **Vite dashboard** under [`demo/dashboard/`](../demo/dashboard/). **S4** adds curated CCSDS fixtures under [`demo/fixtures/`](../demo/fixtures/). Full acceptance checklists: [`Demo_Test.md`](Demo_Test.md).
 
 ---
 
@@ -116,6 +116,8 @@ npm run dev
 
 Open the URL Vite prints (typically `http://127.0.0.1:5173`). Click **Connect** (default WebSocket URL matches the gateway). You should see **latest frame** fields update and **`physics_flags`** rendered as alarm badges when non-zero.
 
+Example capture (README § Trial run): [`docs/assets/vitro-trial-run.png`](../docs/assets/vitro-trial-run.png).
+
 - **Override URL:** `http://127.0.0.1:5173/?ws=ws://127.0.0.1:8080/telemetry/openmct` or `.env.local` with `VITE_GATEWAY_WS=…` (see [`demo/dashboard/README.md`](../demo/dashboard/README.md)).
 - **Static build:** `npm run build` → output in `demo/dashboard/dist/`.
 
@@ -143,6 +145,34 @@ Full options: [`demo/replay/README.md`](../demo/replay/README.md).
 
 ---
 
+## Path E — Curated public fixtures (Showcase **S4**)
+
+**Prerequisites:** Gateway running (Path A or B). Read [`demo/fixtures/README.md`](../demo/fixtures/README.md) for
+provenance and compliance notes before replay.
+
+**ISS-themed clean TM** (APID **0x155**, payload `ISS-EDU`):
+
+```bash
+cargo run -p chronus-replay -- --file demo/fixtures/iss/clean.hex --delay-ms 100
+```
+
+**AMSAT-themed clean TM** (APID **0x073**, payload `AO-73EDU`):
+
+```bash
+cargo run -p chronus-replay -- --file demo/fixtures/amsat/clean.hex --delay-ms 100
+```
+
+With the **S2** dashboard connected, confirm APID / seq updates. **`physics_flags`** stay zero unless you
+add measured RF metadata on the ingest path (these fixtures are parse-only CCSDS TM).
+
+**Robustness demo:** replay `iss/robustness.hex` or `amsat/robustness.hex` — the gateway drops truncated,
+telecommand, and garbage lines without panicking; metrics should advance only for valid TM lines if you
+interleave a clean line. Automated checks: `cargo test -p chronus-gateway --test s4_fixtures`.
+
+Acceptance: [`docs/Demo_Test.md`](Demo_Test.md#s4--optional-public-fixtures-acceptance).
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely cause | What to try |
@@ -151,17 +181,17 @@ Full options: [`demo/replay/README.md`](../demo/replay/README.md).
 | Windows link / access denied | MSVC `link.exe` | See [`AGENTS.md`](../AGENTS.md) owner scratchpad and [`Methodology.md`](../Methodology.md) **D-008** (rust-lld). |
 | Docker build slow first time | Compiling Rust + deps | Normal; later builds use layer cache. Ensure [`.dockerignore`](../.dockerignore) is present. |
 | `curl` health fails on host with Docker | Gateway not ready | Wait for healthcheck / `docker compose ps`; increase `start_period` in [`demo/docker-compose.yml`](../demo/docker-compose.yml) on slow disks. |
-| WebSocket connects but no messages | No UDP source | Run `chronus-hil-sim` (native path) or confirm `hil-feeder` in Compose exited **0** (`docker compose ps`); re-run compose or raise the frame count in [`demo/docker-compose.yml`](../demo/docker-compose.yml). |
-
+| WebSocket connects but no messages | No UDP source | Run `chronus-hil-sim` (native path), **`chronus-replay`** (Path D or E), or confirm `hil-feeder` in Compose exited **0** (`docker compose ps`); re-run compose or raise the frame count in [`demo/docker-compose.yml`](../demo/docker-compose.yml). |
 | Dashboard shows “WebSocket error” | Wrong URL / gateway down | Confirm `curl` health; try `?ws=` override; check browser console. |
 | `npm install` fails | Node too old / EOL | Install a **supported LTS** from [nodejs.org](https://nodejs.org/) (e.g. **22** or **24**). |
+| S4 replay shows no frames | Wrong fixture path or gateway down | Use paths under `demo/fixtures/` per [Path E](#path-e--curated-public-fixtures-showcase-s4); confirm health + UDP bind on `7301`. |
 
 ---
 
 ## Compliance
 
-Use **synthetic** HIL traffic and **public reference** TLE defaults only for public demos — see [`AGENTS.md`](../AGENTS.md).
+Use **synthetic** HIL traffic and **public reference** TLE defaults for public demos — see [`AGENTS.md`](../AGENTS.md). **S4** curated fixtures require provenance in [`demo/fixtures/README.md`](../demo/fixtures/README.md).
 
 ---
 
-*Companion: [`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md) (S1–S3), [`Demo_Test.md`](Demo_Test.md).*
+*Companion: [`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md) (S0–S4), [`Demo_Test.md`](Demo_Test.md) (acceptance ↔ this runbook).*

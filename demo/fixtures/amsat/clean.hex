@@ -1,0 +1,3 @@
+# AMSAT-themed CCSDS TM (Showcase S4) — see demo/fixtures/README.md
+# TM, APID 0x073, seq 42, payload ASCII "AO-73EDU" (educational label; not FUNcube RF dump)
+00 73 C0 2A 00 07 41 4F 2D 37 33 45 44 55

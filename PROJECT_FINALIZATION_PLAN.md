@@ -20,8 +20,10 @@ supply-chain issues that unit/integration tests alone rarely cover.
 | A.1 | Extend `TEST_PLAN.md` with a **“Secondary testing”** section: scheduled `cargo mutants` (or agreed mutation tool), `cargo hack` / `--all-features` matrix if features are added later, `cargo miri` on pure unsafe-free hot paths (or document why skipped on Windows), optional `loom` only if concurrency primitives warrant it. | Section merged; commands documented; CI follow-up tracked as optional jobs to avoid flaky overload. |
 | A.2 | Add **release rehearsal** checklist: `cargo package -p chronus-gateway`, `cargo package -p chronus-hil-sim`, `cargo package -p chronus-replay`; verify `include`/`exclude` in each `Cargo.toml` matches `Methodology.md` D-025. | Done: see **`TEST_PLAN.md` → Release rehearsal (`cargo package`)**; `exclude` on all three crates; `chronus-replay` passes full `cargo package`; gateway/HIL blocked until Ephemerust + version pins (**E.2**). |
 | A.3 | **Performance regression guard:** document baseline procedure for `cargo bench -p chronus-gateway` (or saved Criterion baselines on a reference machine); optional CI job `bench` on manual dispatch only. | Done: **`TEST_PLAN.md` → Performance regression guard (Criterion)**; **`.github/workflows/bench.yml`** (`workflow_dispatch` + report artifact); **D-030**. |
-| A.4 | **Cross-target smoke:** document one non-Windows target (e.g. `x86_64-unknown-linux-gnu` via CI or WSL) as the reference “publish shape” if MSVC-only quirks exist. | At least one clean Linux build recorded before first crates.io push. |
-| A.5 | **Manual demo path** (already chartered): keep `docs/Demo_Test.md` in sync when behavior changes; treat S4 fixtures as separate compliance tranche. | Demo_Test steps still match `docs/DEMO.md`. |
+| A.4 | **Cross-target smoke:** document one non-Windows target (e.g. `x86_64-unknown-linux-gnu` via CI or WSL) as the reference “publish shape” if MSVC-only quirks exist. | Done: see **`TEST_PLAN.md` → Cross-target smoke (Linux publish shape)**; canonical **`ci.yml`** `test` job on `ubuntu-latest` (**D-031**). |
+| A.5 | **Manual demo path** (already chartered): keep `docs/Demo_Test.md` in sync when behavior changes; treat S4 fixtures as separate compliance tranche. | Done: **`Demo_Test.md` → Runbook alignment** cross-walk to **`DEMO.md`** Paths A–E; S4 gate closed (**D-033**). |
+
+**Tranche A status:** **Complete** (A.1–A.5). Next: **Tranche B** (narrative, README, acknowledgments).
 
 **Dependencies:** None blocking code; primarily documentation + optional CI workflows.
 
@@ -38,15 +40,13 @@ with every external dependency and inspiration **cited**.
 (co-validation with orbit physics), outcome (validated fan-out to Open MCT–style clients). Move
 dense status bullets slightly lower or into a “Current status” subsection so the narrative reads
 cleanly on GitHub and crates.io (crates.io shows description + first paragraphs from README if
-duplicated in crate metadata — align `description` in `Cargo.toml` with the pitch). | README
-skimmable in ~60 seconds; narrative is owner-accurate. |
+duplicated in crate metadata — align `description` in `Cargo.toml` with the pitch). | Done: README narrative + **Current status** table; `chronus-gateway` `description` aligned (**D-034**). |
 | B.2 | **Acknowledgments audit:** Cross-check `README.md`, `Methodology.md` Attribution / decision
 log, and `lib.rs` crate docs against `Cargo.toml` workspace dependencies. Fix broken markdown (e.g.
 `sgp4` link formatting in README if still malformed). Add crates.io links for crates that are
-first-class (spacepackets, nexosim, etc.) where missing. | No orphan dependency without rationale
-in Methodology or README. |
+first-class (spacepackets, nexosim, etc.) where missing. | Done: README § Acknowledgements tables + Methodology § Attribution aligned with workspace deps; `lib.rs` attribution pointer (**D-035**). |
 | B.3 | **Public user guide:** Keep `docs/USER_GUIDE.md` as the operator-facing doc; add a single
-sentence in README pointing to it after the narrative. | No duplicate maintenance burden. |
+sentence in README pointing to it after the narrative. | Done: README sentence after **In short**; USER_GUIDE § doc split + README cross-link (**D-036**). |
 | B.4 | **Ephemerust publishing story:** Document in Methodology (or README FAQ) how consumers
 without a sibling checkout will get `ephemerust` once it is on crates.io; until then, fork CI
 pattern stays canonical. | Clear expectations for `cargo add` users. |
@@ -105,7 +105,7 @@ without rereading the whole repo. |
 
 ## Suggested order
 
-1. **A** (secondary test charter + package dry-runs) — low risk, high clarity for release day.  
+1. **A** (secondary test charter + package dry-runs) — low risk, high clarity for release day. **✅ Complete.**  
 2. **B** (narrative + acks) — maximizes first-impression quality for GitHub + Discord.  
 3. **C** (comments/layout) — incremental; can run in parallel with B on different branches.  
 4. **D** then **E** — mechanical publish steps.

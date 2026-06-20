@@ -1,4 +1,5 @@
 # CI: tests, clippy, supply-chain gates. Ephemerust is checked out as a sibling (path dependency).
+# Cross-target smoke (x86_64-unknown-linux-gnu publish shape): TEST_PLAN.md → Cross-target smoke; D-031.
 #
 # Ephemerust must always be cloned from the upstream repo (IsomorphicAlgo/Ephemerust). Using
 # github.repository_owner would break fork PRs (e.g. contributor/Ephemerust does not exist).

@@ -4,7 +4,7 @@
 //! - **Hex:** whitespace-separated or contiguous hex (one full Space Packet per line).
 //! - **JSONL:** a JSON object with a **`udp_hex`** key (contiguous hex, one datagram per line).
 //!
-//! All payloads must be **synthetic / lab-generated** per project compliance (`AGENTS.md`).
+//! **Credit:** [`clap`](https://crates.io/crates/clap), [`tokio`](https://crates.io/crates/tokio), [`anyhow`](https://crates.io/crates/anyhow), [`serde_json`](https://crates.io/crates/serde_json) — see repository `README.md` § Acknowledgements.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;

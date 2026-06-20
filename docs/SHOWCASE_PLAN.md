@@ -122,25 +122,26 @@ for screen recording and CI-smoke (optional).
 
 **Test gate:** [`TEST_PLAN.md` → S3](../TEST_PLAN.md#s3--narrative-polish); procedures [`Demo_Test.md` §S3](Demo_Test.md#s3--narrative-polish-acceptance).
 
-**Gate S-3:** `[x]` **Owner approval** (2026-06-04) — **S4** may proceed when desired (owner **holding S4** for now), or close showcase track without S4.
+**Gate S-3:** `[x]` **Owner approval** (2026-06-04) — **S4** may proceed.
 
 ---
 
-## S4 — Optional public fixtures (strictly gated) — **pending (on hold)**
+## S4 — Optional public fixtures (strictly gated) — **Complete (2026-06-19)**
 
 **Objective:** One or two **documented** external frame sources (e.g. amateur-sat public examples)
 **only** where license and mission policy are explicit — never the only path to a green demo.
 
 **Deliverables**
 
-- [ ] **`demo/fixtures/README.md`** — source URL, license, date retrieved, transformation to UDP
-      (if any), and **AGENTS.md** compliance note.
-- [ ] Optional integration test: ingest fixture bytes in-process (deterministic); or manual-only
-      if bytes are large — **owner decides when pursuing S4** (currently on hold).
+- [x] **`demo/fixtures/README.md`** — source URL, license, date retrieved, transformation to UDP
+      (if any), SHA-256 hashes, and **AGENTS.md** compliance note. Tracks: **ISS** (`iss/`) and
+      **AMSAT** (`amsat/`), each with **clean** + **robustness** hex pairs.
+- [x] Integration test: `crates/gateway/tests/s4_fixtures.rs` ingests fixture bytes in-process
+      (deterministic, offline). Operator path: **`docs/DEMO.md` → Path E**.
 
 **Test gate:** [`TEST_PLAN.md` → S4](../TEST_PLAN.md#s4--optional-public-fixtures); procedures [`Demo_Test.md` §S4](Demo_Test.md#s4--optional-public-fixtures-acceptance).
 
-**Gate S-4:** `[ ]` **Owner approval** — fixture track closed for this tranche.
+**Gate S-4:** `[x]` **Owner approval** (2026-06-19) — showcase track **S0–S4** closed.
 
 ---
 
@@ -153,4 +154,4 @@ for screen recording and CI-smoke (optional).
 
 ---
 
-*Last updated: 2026-06-04.*
+*Last updated: 2026-06-19.*
