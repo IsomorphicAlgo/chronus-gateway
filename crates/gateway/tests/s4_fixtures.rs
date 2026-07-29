@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::Utc;
-use chronus_gateway::ccsds::{parse_telemetry, CcsdsError, CCSDS_PRIMARY_HEADER_LEN};
+use chronus_gateway::ccsds::{CCSDS_PRIMARY_HEADER_LEN, CcsdsError, parse_telemetry};
 use chronus_gateway::ingest::RawFrame;
 
 fn fixtures_root() -> PathBuf {
@@ -20,7 +20,7 @@ fn parse_hex_line(line: &str) -> Option<Vec<u8>> {
         return None;
     }
     let compact: String = line.chars().filter(|c| !c.is_whitespace()).collect();
-    if compact.len() % 2 != 0 {
+    if !compact.len().is_multiple_of(2) {
         panic!("odd hex length in fixture line: {line}");
     }
     let mut out = Vec::with_capacity(compact.len() / 2);
@@ -33,11 +33,9 @@ fn parse_hex_line(line: &str) -> Option<Vec<u8>> {
 
 fn load_hex_fixture(rel: &str) -> Vec<Vec<u8>> {
     let path = fixtures_root().join(rel);
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    text.lines()
-        .filter_map(parse_hex_line)
-        .collect::<Vec<_>>()
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    text.lines().filter_map(parse_hex_line).collect::<Vec<_>>()
 }
 
 fn frame_from(bytes: Vec<u8>) -> RawFrame {
@@ -51,7 +49,11 @@ fn frame_from(bytes: Vec<u8>) -> RawFrame {
 #[test]
 fn s4_iss_clean_fixture_parses() {
     let datagrams = load_hex_fixture("iss/clean.hex");
-    assert_eq!(datagrams.len(), 1, "iss/clean.hex should contain one TM line");
+    assert_eq!(
+        datagrams.len(),
+        1,
+        "iss/clean.hex should contain one TM line"
+    );
     let tm = parse_telemetry(&frame_from(datagrams[0].clone())).expect("ISS clean TM parses");
     assert_eq!(tm.apid, 0x155);
     assert_eq!(tm.seq_count, 1);
@@ -61,7 +63,11 @@ fn s4_iss_clean_fixture_parses() {
 #[test]
 fn s4_amsat_clean_fixture_parses() {
     let datagrams = load_hex_fixture("amsat/clean.hex");
-    assert_eq!(datagrams.len(), 1, "amsat/clean.hex should contain one TM line");
+    assert_eq!(
+        datagrams.len(),
+        1,
+        "amsat/clean.hex should contain one TM line"
+    );
     let tm = parse_telemetry(&frame_from(datagrams[0].clone())).expect("AMSAT clean TM parses");
     assert_eq!(tm.apid, 0x73);
     assert_eq!(tm.seq_count, 42);
@@ -71,7 +77,11 @@ fn s4_amsat_clean_fixture_parses() {
 #[test]
 fn s4_iss_robustness_fixture_fails_gracefully() {
     let datagrams = load_hex_fixture("iss/robustness.hex");
-    assert_eq!(datagrams.len(), 4, "iss/robustness.hex should contain four cases");
+    assert_eq!(
+        datagrams.len(),
+        4,
+        "iss/robustness.hex should contain four cases"
+    );
     let results: Vec<_> = datagrams
         .into_iter()
         .map(|b| parse_telemetry(&frame_from(b)))
@@ -83,16 +93,19 @@ fn s4_iss_robustness_fixture_fails_gracefully() {
     ));
     assert!(matches!(results[2], Err(CcsdsError::TooShort { .. })));
     assert!(matches!(results[3], Err(CcsdsError::Truncated { .. })));
-    assert!(results[2]
-        .as_ref()
-        .err()
-        .is_some_and(|e| matches!(e, CcsdsError::TooShort { len } if *len < CCSDS_PRIMARY_HEADER_LEN)));
+    assert!(results[2].as_ref().err().is_some_and(
+        |e| matches!(e, CcsdsError::TooShort { len } if *len < CCSDS_PRIMARY_HEADER_LEN)
+    ));
 }
 
 #[test]
 fn s4_amsat_robustness_fixture_fails_gracefully() {
     let datagrams = load_hex_fixture("amsat/robustness.hex");
-    assert_eq!(datagrams.len(), 4, "amsat/robustness.hex should contain four cases");
+    assert_eq!(
+        datagrams.len(),
+        4,
+        "amsat/robustness.hex should contain four cases"
+    );
     let results: Vec<_> = datagrams
         .into_iter()
         .map(|b| parse_telemetry(&frame_from(b)))

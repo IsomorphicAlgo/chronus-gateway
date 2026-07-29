@@ -18,7 +18,7 @@ supply-chain issues that unit/integration tests alone rarely cover.
 | Step | Action | Exit criterion |
 | ---- | ------ | ---------------- |
 | A.1 | Extend `TEST_PLAN.md` with a **“Secondary testing”** section: scheduled `cargo mutants` (or agreed mutation tool), `cargo hack` / `--all-features` matrix if features are added later, `cargo miri` on pure unsafe-free hot paths (or document why skipped on Windows), optional `loom` only if concurrency primitives warrant it. | Section merged; commands documented; CI follow-up tracked as optional jobs to avoid flaky overload. |
-| A.2 | Add **release rehearsal** checklist: `cargo package -p chronus-gateway`, `cargo package -p chronus-hil-sim`, `cargo package -p chronus-replay`; verify `include`/`exclude` in each `Cargo.toml` matches `Methodology.md` D-025. | Done: see **`TEST_PLAN.md` → Release rehearsal (`cargo package`)**; `exclude` on all three crates; `chronus-replay` passes full `cargo package`; gateway/HIL blocked until Ephemerust + version pins (**E.2**). |
+| A.2 | Add **release rehearsal** checklist: `cargo package -p chronus-gateway`, `cargo package -p chronus-hil-sim`, `cargo package -p chronus-replay`; verify `include`/`exclude` in each `Cargo.toml` matches `Methodology.md` D-025. | Done: see **`TEST_PLAN.md` → Release rehearsal (`cargo package`)**; `exclude` on all three crates. All three crates now package fully — Ephemerust is a published crates.io pin (**D-037**), closing the former **E.2** blocker. |
 | A.3 | **Performance regression guard:** document baseline procedure for `cargo bench -p chronus-gateway` (or saved Criterion baselines on a reference machine); optional CI job `bench` on manual dispatch only. | Done: **`TEST_PLAN.md` → Performance regression guard (Criterion)**; **`.github/workflows/bench.yml`** (`workflow_dispatch` + report artifact); **D-030**. |
 | A.4 | **Cross-target smoke:** document one non-Windows target (e.g. `x86_64-unknown-linux-gnu` via CI or WSL) as the reference “publish shape” if MSVC-only quirks exist. | Done: see **`TEST_PLAN.md` → Cross-target smoke (Linux publish shape)**; canonical **`ci.yml`** `test` job on `ubuntu-latest` (**D-031**). |
 | A.5 | **Manual demo path** (already chartered): keep `docs/Demo_Test.md` in sync when behavior changes; treat S4 fixtures as separate compliance tranche. | Done: **`Demo_Test.md` → Runbook alignment** cross-walk to **`DEMO.md`** Paths A–E; S4 gate closed (**D-033**). |
@@ -49,7 +49,7 @@ first-class (spacepackets, nexosim, etc.) where missing. | Done: README § Ackno
 sentence in README pointing to it after the narrative. | Done: README sentence after **In short**; USER_GUIDE § doc split + README cross-link (**D-036**). |
 | B.4 | **Ephemerust publishing story:** Document in Methodology (or README FAQ) how consumers
 without a sibling checkout will get `ephemerust` once it is on crates.io; until then, fork CI
-pattern stays canonical. | Clear expectations for `cargo add` users. |
+pattern stays canonical. | Done: Ephemerust **0.7** published; workspace pins it from crates.io and CI/Docker drop the sibling checkout (**Methodology D-037**; README § Building and running). |
 
 ---
 
@@ -80,8 +80,10 @@ guarded by `exclude`); re-verify after any refactor. | `cargo package` tree insp
 | Step | Action | Exit criterion |
 | ---- | ------ | ---------------- |
 | D.1 | **Versioning policy:** Move `chronus-gateway` from `0.0.0` to `0.1.0` (or agreed `0.x`) for
-first publish; document semver expectations for the public API (`lib.rs` exports). | Tags + CHANGELOG
-(or `docs/BUILD_PLAN` release notes) agreed. |
+first publish; document semver expectations for the public API (`lib.rs` exports). | Done: all three
+crates at **0.1.0** via shared `[workspace.package] version`; semver policy + release notes in
+[`CHANGELOG.md`](CHANGELOG.md); full `cargo package` verified on all three crates. Git tag at owner's
+discretion on the release commit. |
 | D.2 | **LICENSE:** MIT already; ensure `LICENSE` file at repo root is what crates.io will ship
 (workspace members inherit or duplicate per Cargo rules — verify). | `cargo package` contains
 license text. |
@@ -99,7 +101,7 @@ without rereading the whole repo. |
 | Step | Action |
 | ---- | ------ |
 | E.1 | After first publish: monitor `cargo audit` / `cargo deny`; bump MSRV only with Methodology entry. |
-| E.2 | When Ephemerust hits crates.io: switch path dep to version dep in a deliberate PR; update CI. |
+| E.2 | ~~When Ephemerust hits crates.io: switch path dep to version dep in a deliberate PR; update CI.~~ **Done early** — executed with the Ephemerust 0.7 alignment (**Methodology D-037**): `ephemerust = "0.7"` from crates.io; CI and `demo/Dockerfile` sibling-checkout steps removed. |
 
 ---
 

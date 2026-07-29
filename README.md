@@ -61,6 +61,7 @@ Roadmap **M0–M8** is implemented (UDP ingest → CCSDS parse → co-validation
 | HIL profiling | [`docs/HIL.md`](docs/HIL.md) |
 | Tests + tolerances | [`TEST_PLAN.md`](TEST_PLAN.md) |
 | Config file | [`gateway.example.toml`](gateway.example.toml) |
+| Version history | [`CHANGELOG.md`](CHANGELOG.md) — semver policy + `0.1.0` notes |
 
 Showcase gates **S0–S4** approved (2026-06-19). Project finalization: **Tranche B** in progress (B.1–B.3 complete) — see [`PROJECT_FINALIZATION_PLAN.md`](PROJECT_FINALIZATION_PLAN.md).
 
@@ -95,10 +96,11 @@ The reasoning behind these and other choices is recorded in `[Methodology.md](Me
 
 ```
 chronus-gateway/
-├── Cargo.toml              Workspace manifest (centralized dependency versions, MSRV 1.89)
+├── Cargo.toml              Workspace manifest (centralized dependency versions, edition 2024, MSRV 1.89)
+├── CHANGELOG.md            Version history + semver policy (0.x: minor = breaking)
 ├── deny.toml               cargo-deny policy (CI supply-chain gate)
 ├── gateway.example.toml    Example TOML for `chronus-gateway --config` (M8)
-├── .github/workflows/ci.yml Tests, clippy, audit, deny (checks out Ephemerust sibling)
+├── .github/workflows/ci.yml Tests, clippy, audit, deny (Ephemerust resolved from crates.io)
 ├── crates/gateway/         The gateway binary + library
 │   ├── benches/
 │   │   └── parse_validate.rs   Criterion: parse + validate hot paths (M6)
@@ -152,14 +154,10 @@ who `cargo add chronus-gateway` get a **lean library/binary** without demo asset
 
 ## Building and running
 
-The project targets Rust 1.89 or newer and consumes the Ephemerust library as a sibling
-checkout. The expected on-disk layout places both repositories next to each other:
-
-```
-…/Rust/
-├── chronus-gateway/
-└── Ephemerust/
-```
+The project targets **Rust edition 2024** with an MSRV of **1.89** (**Methodology D-039**), the
+same edition as its astrodynamics backend. All dependencies — including the
+[Ephemerust](https://crates.io/crates/ephemerust) astrodynamics backend (pinned to the **0.7**
+minor; **Methodology D-037**) — resolve from crates.io, so a plain clone-and-build works:
 
 ```bash
 cargo build      # compile the workspace
@@ -198,7 +196,7 @@ Full dependency rationale lives in [`Methodology.md`](Methodology.md) § Attribu
 
 ### Maintainer projects
 
-- **[Ephemerust](https://github.com/IsomorphicAlgo/Ephemerust)** — SGP4 look-angles, range-rate, and Sun-geometry proxy for co-validation (sibling crate; same maintainer).
+- **[Ephemerust](https://crates.io/crates/ephemerust)** — SGP4 look-angles, range-rate, and the conical umbra/penumbra eclipse model for co-validation (published crate; same maintainer).
 - **Rusty_Server** — earlier async Axum/Tokio service patterns that informed this gateway’s network layout (maintainer sibling project; see **Methodology D-002**).
 
 ### First-class Rust dependencies

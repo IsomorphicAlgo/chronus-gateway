@@ -7,7 +7,7 @@
 pub mod file;
 
 pub use file::{
-    load_effective_gateway_config, load_gateway_from_path, resolve_config_path, ConfigLoadError,
+    ConfigLoadError, load_effective_gateway_config, load_gateway_from_path, resolve_config_path,
 };
 
 use std::net::SocketAddr;
@@ -204,14 +204,10 @@ pub enum ConfigError {
     )]
     InvalidHilTmV1ApidRange { min: u16, max: u16, apid_max: u16 },
     /// HIL CV-4 EPS relative tolerance is not finite or not in `(0, 1]`.
-    #[error(
-        "HIL EPS relative tolerance {0} is invalid (expected a finite value in (0, 1])"
-    )]
+    #[error("HIL EPS relative tolerance {0} is invalid (expected a finite value in (0, 1])")]
     InvalidHilEpsRelativeTolerance(f64),
     /// HIL CV-4 thermal absolute tolerance is not a finite positive value.
-    #[error(
-        "HIL thermal absolute tolerance {0} K is invalid (expected a finite value > 0)"
-    )]
+    #[error("HIL thermal absolute tolerance {0} K is invalid (expected a finite value > 0)")]
     InvalidHilThermalTolerance(f64),
     /// A HIL CV-4 voltage or temperature endpoint is non-finite.
     #[error("HIL CV-4 field `{field}` is invalid (expected a finite value)")]
@@ -222,9 +218,7 @@ pub enum ConfigError {
         value: f64,
     },
     /// HIL CV-5 body-rate ceiling (deg/s) is not a finite positive value.
-    #[error(
-        "HIL body-rate ceiling {0} deg/s is invalid (expected a finite value > 0)"
-    )]
+    #[error("HIL body-rate ceiling {0} deg/s is invalid (expected a finite value > 0)")]
     InvalidHilBodyRateMaxAbs(f64),
     /// A TLE file could not be read.
     #[error("failed to read TLE file {path}: {source}")]
@@ -266,10 +260,10 @@ impl StationConfig {
                 self.minimum_elevation_deg,
             ));
         }
-        if let TleSource::Inline(text) = &self.tle {
-            if text.trim().is_empty() {
-                return Err(ConfigError::EmptyTle);
-            }
+        if let TleSource::Inline(text) = &self.tle
+            && text.trim().is_empty()
+        {
+            return Err(ConfigError::EmptyTle);
         }
         if !self.tx_power_dbm.is_finite() {
             return Err(ConfigError::InvalidLinkBudgetField {
@@ -310,7 +304,10 @@ impl StationConfig {
             });
         }
         for (field, v) in [
-            ("hil_eps_voltage_full_sun_v", self.hil_eps_voltage_full_sun_v),
+            (
+                "hil_eps_voltage_full_sun_v",
+                self.hil_eps_voltage_full_sun_v,
+            ),
             ("hil_eps_voltage_eclipse_v", self.hil_eps_voltage_eclipse_v),
             ("hil_thermal_c_full_sun", self.hil_thermal_c_full_sun),
             ("hil_thermal_c_eclipse", self.hil_thermal_c_eclipse),
@@ -334,7 +331,8 @@ impl StationConfig {
                 self.hil_thermal_absolute_tolerance_k,
             ));
         }
-        if !self.hil_body_rate_max_abs_deg_s.is_finite() || self.hil_body_rate_max_abs_deg_s <= 0.0 {
+        if !self.hil_body_rate_max_abs_deg_s.is_finite() || self.hil_body_rate_max_abs_deg_s <= 0.0
+        {
             return Err(ConfigError::InvalidHilBodyRateMaxAbs(
                 self.hil_body_rate_max_abs_deg_s,
             ));

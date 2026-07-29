@@ -48,8 +48,9 @@ the owner promotes a given tool to **required**.
 
 1. **Offline & deterministic** where possible (same rule as primary tests). Mutation and Miri runs
    may be slower; treat them as **pre-release** or **weekly** cadence unless CI adds optional jobs.
-2. **Workspace context:** `ephemerust` is a **path** dependency (`../Ephemerust`). Run secondary
-   commands from the **workspace root** with both repos checked out, matching CI and local dev.
+2. **Workspace context:** `ephemerust` resolves from **crates.io** (`"0.7"` pin, **D-037**). Run
+   secondary commands from the **workspace root**; no extra checkout is needed, matching CI and
+   local dev.
 3. **CI posture:** keep these as **optional** (`workflow_dispatch` or scheduled) jobs until the
    owner decides latency and flake budget allow promotion to required checks — see
    [Optional CI follow-ups](#optional-ci-follow-ups-secondary) below.
@@ -174,16 +175,11 @@ cargo package -p chronus-hil-sim
 Use **`--allow-dirty`** only when rehearsing with **uncommitted** manifest changes (CI should run
 on clean trees without this flag).
 
-**`chronus-replay`:** Has no path dependency on **Ephemerust**; full `cargo package` is expected to
-**pass** on a clean tree once the index is reachable.
-
-**`chronus-gateway` / `chronus-hil-sim`:** Today **`ephemerust`** is a **path-only** sibling
-(`../Ephemerust`, **D-005**). Cargo then either (a) errors that a **version** must be specified for
-packaging/publish, or (b) after adding `version = "…"` next to `path`, errors that **`ephemerust`**
-is missing from **crates.io** until **E.2** is executed. That is **expected** until Ephemerust is
-published and this workspace pins it for the registry. Until then, rely on **§1** above plus
-`cargo test --workspace` for integration confidence; treat a **green** `cargo package` on these
-two crates as a **release-day** check after the Ephemerust story is closed.
+All three crates now have fully registry-resolvable dependency graphs: **`ephemerust`** is a
+published crates.io pin (`"0.7"`, **D-037** — the D-005 path-only blocker is gone). Full
+`cargo package` with verify is expected to **pass** on a clean tree for `chronus-replay`,
+`chronus-gateway`, and `chronus-hil-sim` whenever the index is reachable; treat any failure as a
+real packaging regression, not an expected state.
 
 **3 — LICENSE / README in the tarball:** `cargo package --list` should be reviewed for a **`LICENSE`**
 (or `LICENSE-MIT`) file if crates.io policy requires an explicit file in the crate root; today the
@@ -196,7 +192,7 @@ against crates.io requirements before the first upload (**finalization plan D.2*
 paths before a release, using the same **Criterion** harness as Milestone 6
 ([`crates/gateway/benches/parse_validate.rs`](crates/gateway/benches/parse_validate.rs)).
 
-**Routine commands** (workspace root; sibling **`../Ephemerust`** present):
+**Routine commands** (workspace root):
 
 ```text
 cargo bench -p chronus-gateway --no-run    # compile benches only (matches required CI)
@@ -249,7 +245,7 @@ on every push/PR to **`main`** / **`master`**:
 
 | Step | Command / action |
 | --- | --- |
-| Workspace tests | `cargo test` (from `chronus-gateway/` with sibling **`../Ephemerust`**) |
+| Workspace tests | `cargo test` (from `chronus-gateway/`; Ephemerust from crates.io — **D-037**) |
 | Clippy | `cargo clippy --all-targets -- -D warnings` |
 | Bench compile | `cargo bench --no-run` |
 | Supply chain | `cargo audit`, `cargo deny check` |
@@ -260,10 +256,10 @@ That run is the **recorded** clean Linux build (finalization plan **A.4**). No s
 required beyond CI history and logs.
 
 **Local Linux (optional, same triple):** owners on Windows may reproduce the publish shape in **WSL2**
-or on a Linux VM — sibling checkout layout must match CI (`Ephemerust` next to `chronus-gateway`):
+or on a Linux VM:
 
 ```text
-# From workspace root; Ephemerust at ../Ephemerust
+# From workspace root
 rustup toolchain install 1.89
 cargo test
 cargo clippy --all-targets -- -D warnings

@@ -14,7 +14,7 @@ It is **not** shipped inside crates.io packages (`Methodology.md` **D-025**).
 | [`replay/README.md`](replay/README.md) | **S3** synthetic TM UDP replay (`chronus-replay`, hex/JSONL fixtures) |
 | [`fixtures/README.md`](fixtures/README.md) | **S4** ISS + AMSAT CCSDS fixtures (clean + robustness pairs) |
 | [`openmct/README.md`](openmct/README.md) | Open MCT adapter backlog (**Track A**) |
-| [`Dockerfile`](Dockerfile) | Multi-stage image: clone upstream Ephemerust, build both binaries |
+| [`Dockerfile`](Dockerfile) | Multi-stage image: build both binaries (deps from crates.io, **D-037**) |
 | [`gateway.docker.toml`](gateway.docker.toml) | Ingest + HTTP bind on `0.0.0.0` for container networking |
 
 ## One-liner (Docker)

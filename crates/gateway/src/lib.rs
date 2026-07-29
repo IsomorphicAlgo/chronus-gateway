@@ -34,29 +34,29 @@ pub mod propagator;
 pub mod state;
 pub mod validate;
 
-pub use ccsds::{encode_synthetic_tm, CcsdsError, TelemetryFrame};
-pub use hil_tm::{
-    decode_hil_tm_v1, encode_hil_tm_v1_payload, CCSDS_APID_MAX, DecodedHilTmV1,
-    DEFAULT_HIL_TM_V1_APID_MAX, DEFAULT_HIL_TM_V1_APID_MIN, HilTmV1DecodeError, HIL_TM_V1_MAGIC,
-    HIL_TM_V1_PAYLOAD_LEN, HIL_TM_V1_SCHEMA_VERSION,
-};
+pub use ccsds::{CcsdsError, TelemetryFrame, encode_synthetic_tm};
 pub use config::{
-    load_effective_gateway_config, load_gateway_from_path, resolve_config_path, ConfigError,
-    ConfigLoadError, IngestConfig, StationConfig, TleSource,
+    ConfigError, ConfigLoadError, IngestConfig, StationConfig, TleSource,
+    load_effective_gateway_config, load_gateway_from_path, resolve_config_path,
+};
+pub use hil_tm::{
+    CCSDS_APID_MAX, DEFAULT_HIL_TM_V1_APID_MAX, DEFAULT_HIL_TM_V1_APID_MIN, DecodedHilTmV1,
+    HIL_TM_V1_MAGIC, HIL_TM_V1_PAYLOAD_LEN, HIL_TM_V1_SCHEMA_VERSION, HilTmV1DecodeError,
+    decode_hil_tm_v1, encode_hil_tm_v1_payload,
 };
 pub use ingest::{IngestStats, RawFrame};
 pub use propagator::{
-    nadir_sun_illumination_cos, EphemerustPropagator, OrbitalPropagator, TrackingProvider,
-    TrackingState,
+    EphemerustPropagator, OrbitalPropagator, TrackingProvider, TrackingState,
+    nadir_sun_illumination_cos,
 };
 pub use validate::{
-    angular_separation_deg, apply_physics_validation, expected_carrier_hz, expected_rx_power_dbm,
-    free_space_path_loss_db, HilSubsystemCvParams, LinkBudgetStationParams, RfMetadata,
     FLAG_ADCS_BODY_RATE_ANOMALY, FLAG_BELOW_HORIZON, FLAG_DOPPLER_ANOMALY,
-    FLAG_EPS_SUBSYSTEM_ANOMALY, FLAG_LINK_BUDGET_ANOMALY, FLAG_POINTING_ANOMALY, FLAG_RSSI_RESERVED,
-    FLAG_THERMAL_SUBSYSTEM_ANOMALY, SPEED_OF_LIGHT_M_S,
+    FLAG_EPS_SUBSYSTEM_ANOMALY, FLAG_LINK_BUDGET_ANOMALY, FLAG_POINTING_ANOMALY,
+    FLAG_RSSI_RESERVED, FLAG_THERMAL_SUBSYSTEM_ANOMALY, HilSubsystemCvParams,
+    LinkBudgetStationParams, RfMetadata, SPEED_OF_LIGHT_M_S, angular_separation_deg,
+    apply_physics_validation, expected_carrier_hz, expected_rx_power_dbm, free_space_path_loss_db,
 };
 
-pub use http::{router, OpenMctRealtimeMessageV1};
+pub use http::{OpenMctRealtimeMessageV1, router};
 pub use metrics::{GatewayMetrics, GatewayMetricsSnapshot};
 pub use state::SharedGateway;

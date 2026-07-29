@@ -1,6 +1,6 @@
 # ChronusGateway-RS — Demo runbook (Showcase **S1**–**S4**)
 
-Two ways to run the gateway stack: **native Rust** (needs Ephemerust as a sibling checkout) or **Docker Compose** (Ephemerust is cloned during `docker build` inside the image). **Showcase S2** adds a **Vite dashboard** under [`demo/dashboard/`](../demo/dashboard/). **S4** adds curated CCSDS fixtures under [`demo/fixtures/`](../demo/fixtures/). Full acceptance checklists: [`Demo_Test.md`](Demo_Test.md).
+Two ways to run the gateway stack: **native Rust** or **Docker Compose**. All dependencies — including [Ephemerust](https://crates.io/crates/ephemerust) — resolve from crates.io (**Methodology D-037**), so no extra checkout is needed on either path. **Showcase S2** adds a **Vite dashboard** under [`demo/dashboard/`](../demo/dashboard/). **S4** adds curated CCSDS fixtures under [`demo/fixtures/`](../demo/fixtures/). Full acceptance checklists: [`Demo_Test.md`](Demo_Test.md).
 
 ---
 
@@ -17,7 +17,7 @@ Two ways to run the gateway stack: **native Rust** (needs Ephemerust as a siblin
 
 ## Path A — Native (two terminals)
 
-**Prerequisites:** Rust **1.89+**, **Ephemerust** as a sibling directory (`../Ephemerust` from this repo). See [`README.md`](../README.md).
+**Prerequisites:** Rust **1.89+**. See [`README.md`](../README.md).
 
 **Terminal 1 — gateway**
 
@@ -68,7 +68,7 @@ From the **repository root** (`chronus-gateway/`):
 docker compose -f demo/docker-compose.yml up -d --build --wait
 ```
 
-- Builds an image that **clones upstream Ephemerust** inside the build stage (same public repo as CI), then compiles `chronus-gateway` + `chronus-hil-sim`.
+- Builds an image that compiles `chronus-gateway` + `chronus-hil-sim`; all dependencies (including Ephemerust) resolve from crates.io during the build, pinned by the committed `Cargo.lock` (**D-037**).
 - Starts **gateway** (HTTP `0.0.0.0:8080`, UDP `0.0.0.0:7301` via [`demo/gateway.docker.toml`](../demo/gateway.docker.toml)) and **hil-feeder** (sends 500 frames to `gateway:7301` on the Compose network).
 
 **Checks** (same as native, on the host):
@@ -177,7 +177,7 @@ Acceptance: [`docs/Demo_Test.md`](Demo_Test.md#s4--optional-public-fixtures-acce
 
 | Symptom | Likely cause | What to try |
 |--------|----------------|-------------|
-| `cargo build` cannot find `ephemerust` | Missing sibling checkout | Clone [`Ephemerust`](https://github.com/IsomorphicAlgo/Ephemerust) next to this repo (`../Ephemerust`). |
+| `cargo build` cannot find `ephemerust` | Registry index unreachable / offline | Ephemerust comes from crates.io (**D-037**); check network access to the registry, then retry `cargo build`. |
 | Windows link / access denied | MSVC `link.exe` | See [`AGENTS.md`](../AGENTS.md) owner scratchpad and [`Methodology.md`](../Methodology.md) **D-008** (rust-lld). |
 | Docker build slow first time | Compiling Rust + deps | Normal; later builds use layer cache. Ensure [`.dockerignore`](../.dockerignore) is present. |
 | `curl` health fails on host with Docker | Gateway not ready | Wait for healthcheck / `docker compose ps`; increase `start_period` in [`demo/docker-compose.yml`](../demo/docker-compose.yml) on slow disks. |

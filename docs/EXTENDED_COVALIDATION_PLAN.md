@@ -107,7 +107,7 @@ Legend: `[x]` done · `[ ]` pending · **Gate** = owner sign-off required to adv
 
 **Deliverables**
 
-- [x] **Propagator / state seam** — `TrackingState::nadir_sun_illum_cos` + `nadir_sun_illumination_cos` (Ephemerust SGP4 + Sun direction + toy eclipse).
+- [x] **Propagator / state seam** — `TrackingState::nadir_sun_illum_cos` + `nadir_sun_illumination_cos` (Ephemerust SGP4 + Sun vector + conical umbra/penumbra eclipse since Ephemerust 0.7.0 — **D-038**).
 - [x] **Sun geometry** — Documented in `Methodology.md` **D-021**; deterministic unit test `nadir_sun_illumination_cos_is_deterministic`.
 - [x] **Toy models** — Linear voltage / thermal maps vs illumination; **T-EPS** / **T-THERMAL** in `TEST_PLAN.md`.
 - [x] **`apply_physics_validation`** — Bits 4–5; skip when decode missing, APID not HIL, or illumination non-finite.

@@ -1,13 +1,13 @@
 //! Milestone 7: NeXosim drives the real gateway UDP ingest path (smoke + light soak).
 
 use std::net::SocketAddr;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use chronus_gateway::ccsds::{self, CCSDS_PRIMARY_HEADER_LEN};
 use chronus_gateway::config::{IngestConfig, StationConfig};
-use chronus_gateway::hil_tm::{decode_hil_tm_v1, HIL_TM_V1_PAYLOAD_LEN};
+use chronus_gateway::hil_tm::{HIL_TM_V1_PAYLOAD_LEN, decode_hil_tm_v1};
 use chronus_gateway::ingest::{self, IngestStats, RawFrame};
 use tokio::net::UdpSocket;
 use tokio::sync::{broadcast, oneshot};
@@ -112,7 +112,10 @@ async fn nexosim_soak_bounded_recv_errors() {
         let tm = ccsds::parse_telemetry(&frame).expect("valid TM");
         assert_eq!(tm.apid, apid);
         assert_eq!(tm.payload_len(), HIL_TM_V1_PAYLOAD_LEN);
-        assert_eq!(frame.bytes.len(), CCSDS_PRIMARY_HEADER_LEN + HIL_TM_V1_PAYLOAD_LEN);
+        assert_eq!(
+            frame.bytes.len(),
+            CCSDS_PRIMARY_HEADER_LEN + HIL_TM_V1_PAYLOAD_LEN
+        );
         let decoded = decode_hil_tm_v1(tm.payload()).expect("v1 decode");
         assert_eq!(decoded.seq, parsed);
         parsed += 1;
@@ -164,7 +167,10 @@ async fn nexosim_scripted_body_rate_window_on_wire() {
         let d = by_seq[i as usize].expect("every seq received");
         assert_eq!(d.seq, i);
         if (START..START + DUR).contains(&i) {
-            assert_eq!(d.body_rate_deg_s, 99.0, "seq {i} should be in scripted window");
+            assert_eq!(
+                d.body_rate_deg_s, 99.0,
+                "seq {i} should be in scripted window"
+            );
         } else {
             assert!(
                 (d.body_rate_deg_s - 0.001 * i as f32).abs() < 1e-4,

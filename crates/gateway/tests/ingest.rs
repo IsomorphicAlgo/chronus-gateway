@@ -4,8 +4,8 @@
 //! channel as the shutdown signal so each test stops the loop deterministically.
 
 use std::net::SocketAddr;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use chronus_gateway::config::IngestConfig;

@@ -56,8 +56,8 @@ aligned with `DEMO.md` paths, ports, and commands (recorded in **`Methodology.md
 
 **Prerequisites**
 
-- **Native path:** Rust MSRV+; Ephemerust sibling checkout (see [`README.md`](../README.md)).
-- **Docker path:** Docker with Compose v2 only (Ephemerust is cloned **inside** the image build).
+- **Native path:** Rust MSRV+ (see [`README.md`](../README.md); Ephemerust resolves from crates.io — **D-037**).
+- **Docker path:** Docker with Compose v2 only.
 
 **Procedure**
 
@@ -74,8 +74,9 @@ aligned with `DEMO.md` paths, ports, and commands (recorded in **`Methodology.md
 
 **Pass:** Steps 2–4 succeed on a clean machine following only repo docs; **Gate S-1** approved.
 
-**Failure triage:** port collisions → document port overrides; missing Ephemerust (native) → README layout;
-Docker build failures → see `DEMO.md` troubleshooting; Windows firewall → document loopback-only binds.
+**Failure triage:** port collisions → document port overrides; `ephemerust` resolve failures (native) →
+`DEMO.md` troubleshooting (crates.io registry access, **D-037**); Docker build failures → see `DEMO.md`
+troubleshooting; Windows firewall → document loopback-only binds.
 
 ---
 

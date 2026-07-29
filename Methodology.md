@@ -61,7 +61,7 @@ touching ingestion, validation, or distribution code.
 vs WGS84 geodetic). Adequate for foundation/look-angle/Doppler work; revisit precision tolerances
 (e.g. the ±150 Hz Doppler bound) against this error budget before claiming hard accuracy numbers.
 
-### D-005 — Dependency source for Ephemerust: local path
+### D-005 — Dependency source for Ephemerust: local path *(superseded by D-037)*
 **Decision:** `ephemerust = { path = "../Ephemerust" }` (sibling checkout next to this repo).
 **Why:** Tight local co-development; mirrors the proven approach used in Rusty_Server's
 `EPHEMERUST_INTEGRATION_PLAN.md`. If third-party builds ever matter, switch to a pinned git `rev`
@@ -69,7 +69,7 @@ or a crates.io version (and update this entry).
 **Reproducibility:** `0.x` crate — pin intentionally and bump deliberately on breaking minors.
 **CI:** `.github/workflows/ci.yml` always clones **`IsomorphicAlgo/Ephemerust`** (not `github.repository_owner`) into a sibling directory so fork pull requests still resolve `../Ephemerust`; `actions/checkout@v5` tracks current GitHub runner guidance for the checkout action.
 
-### D-006 — MSRV 1.89 (advisory), no forced toolchain pin yet
+### D-006 — MSRV 1.89 (advisory), no forced toolchain pin yet *(edition + resolver updated by D-039)*
 **Decision:** Set `rust-version = "1.89"` in `[workspace.package]`; GitHub CI uses the same
 `dtolnay/rust-toolchain@stable` pin. Do **not** add a `rust-toolchain.toml` forcing a channel for now.
 **Why:** **`nexosim` 1.x** (HIL / `chronus-hil-sim`) pulls **`smol_str` 0.3.6**, which declares
@@ -295,7 +295,7 @@ arbitrary TM.
 **Tested by:** `hil_tm` unit tests (truncation, magic, version, reserved, round-trip) + `config`
 validation + `chronus-hil-sim` integration decode on the ingest path.
 
-### D-021 — Subsystem toy co-validation vs Sun proxy (**CV-4**)
+### D-021 — Subsystem toy co-validation vs Sun proxy (**CV-4**) *(eclipse part amended by D-038)*
 **Decision:** Extend `TrackingState` with `nadir_sun_illum_cos` ∈ \([0,1]\) ∪ \{NaN\}, computed in
 `propagator` from SGP4 TEME position (via Ephemerust `propagate`) and the crate’s low-precision geocentric Sun direction
 (`celestial::calculate_position` for `CelestialObject::Sun` — equator-of-date, **not** SPICE fidelity).
@@ -348,9 +348,10 @@ dropped if mistakenly created under the crate folder.
 bloat, accidental IP drift, and confusion for dependents who only need the gateway API/binary.
 **Companion:** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) → *Crates.io vs showcase distribution*.
 
-**Addendum (Showcase S1 — Docker):** [`demo/Dockerfile`](demo/Dockerfile) clones **IsomorphicAlgo/Ephemerust**
-at **image build** time (same upstream as CI) so the container does not depend on a host-side sibling
-checkout. For bit-for-bit reproducible images later, pin a `git` **rev** in that Dockerfile.
+**Addendum (Showcase S1 — Docker):** [`demo/Dockerfile`](demo/Dockerfile) originally cloned
+**IsomorphicAlgo/Ephemerust** at image build time to satisfy the D-005 sibling path. Since **D-037**
+the image build resolves `ephemerust` from **crates.io** like every other dependency, pinned by the
+committed `Cargo.lock` — the clone step and its `git` install are gone.
 
 ### D-026 — Showcase S2 demo dashboard (Vite + TypeScript)
 **Decision:** Ship **Track B** first as [`demo/dashboard/`](demo/dashboard/) (Vite + TS) consuming the existing
@@ -411,6 +412,52 @@ per **D-025**. CI uses **Node 22 LTS** and runs `npm install && npm run build` t
 **Why:** Satisfies **B.3** — visitors get “why” on GitHub/crates.io first page, “how to run” in one maintained doc.
 **Maintenance:** Change operator steps or alarm text in **USER_GUIDE** first; README links only.
 
+### D-037 — Dependency source for Ephemerust: crates.io (supersedes D-005)
+**Decision:** `ephemerust = "0.7"` from **crates.io** replaces the `path = "../Ephemerust"` sibling
+checkout. CI (`ci.yml`, `bench.yml`) drops the "Checkout Ephemerust (upstream sibling)" steps —
+`cargo` resolves the published crate like any other dependency.
+**Why:** Ephemerust **0.6.0+** is published by the same maintainer, so the D-005 rationale (tight
+local co-development before publication) no longer applies. A published pin simplifies CI, makes
+third-party builds work with a plain `git clone && cargo test`, and is the honest showcase story —
+the gateway consumes its maintainer's published crate. Local co-development remains possible at any
+time with a temporary `[patch.crates-io]` entry.
+**Reproducibility:** still a `0.x` crate: the `0.7` pin accepts compatible patches only (Cargo
+treats 0.x minors as breaking); bump the minor deliberately and record it here.
+
+### D-038 — CV-4 eclipse upgraded to conical umbra/penumbra (amends D-021)
+**Decision:** `nadir_sun_illumination_cos` now uses **Ephemerust 0.7.0's `eclipse` module** —
+`sun_vector_km` (geocentric Sun position with distance) + `shadow_state_from_vectors` (conical
+apparent-disk-overlap test, Vallado §5.3) — instead of the in-house RA/Dec direction + ray–sphere
+occultation toy, which is deleted. Mapping: **Sunlit** → full nadir-cosine factor, **Penumbra** →
+factor × 0.5 (first-order partial solar disk; LEO crossings last seconds), **Umbra** → 0. The
+nadir-fixed panel-cosine model and the D-021 linear voltage/thermal maps, tolerances, and flag bits
+are unchanged.
+**Why:** Upgrades the shadow check from proxy to physics with *less* gateway code, and keeps the
+gateway and `chronus-hil-sim` self-consistent automatically — the HIL simulator calls the same
+gateway function, so both sides of CV-4 moved together.
+**Tested by:** existing `propagator::nadir_sun_illumination_cos_is_deterministic` and
+`validate::hil_cv4_*` suites (no tolerance changes needed); Ephemerust's own eclipse unit,
+integration, and doctest coverage backs the geometry.
+
+### D-039 — Rust edition 2024 + MSRV-aware resolver + dependency currency pass
+**Decision:** Migrate the workspace from **edition 2021** to **edition 2024** (matching
+Ephemerust) and switch `[workspace] resolver` from `"2"` to `"3"` (MSRV-aware — Cargo selects
+dependency versions compatible with `rust-version`). **MSRV stays 1.89** (D-006 rationale
+unchanged; already above Ephemerust's 1.88 floor and edition 2024's 1.85 minimum), so the CI
+toolchain pins, the Dockerfile base image, and consumer expectations are untouched. In the same
+pass, bring dependencies to current majors: **axum 0.8** (`ws::Message::Text` now carries
+`Utf8Bytes`), **tower 0.5**, **tower-http 0.7**, **base64 0.23**, **thiserror 2**, **toml 1**,
+**spacepackets 0.18**, and dev-deps **criterion 0.8** (`std::hint::black_box` replaces the
+deprecated re-export) and **tokio-tungstenite 0.30**, plus a full `cargo update` lockfile refresh.
+**Why:** Keeps the gateway on the same edition as its astrodynamics backend and on maintained
+dependency lines ahead of first publish; edition 2024's let-chains replaced four nested-`if`
+pyramids in `validate`/`config` with flat `if let … && …` chains (clippy `collapsible_if` fixes),
+and resolver v3 makes the declared MSRV an enforced contract instead of a hope.
+**Migration evidence:** `cargo fix --edition` produced **zero** source changes (code was already
+edition-2024 clean); rustfmt style edition 2024 applied. Verified green on stable (1.97.1):
+`cargo test --workspace`, `cargo clippy --all-targets -- -D warnings`, `cargo bench --no-run`;
+MSRV floor proven with `cargo +1.89 check --workspace --all-targets` on the real 1.89 toolchain.
+
 ---
 
 ## Open decisions (to resolve as milestones land)
@@ -427,7 +474,7 @@ docs when dependencies change (finalization **B.2**, **D-035**).
 
 | Work | Role here | Source / License |
 |------|-----------|------------------|
-| **Ephemerust** (owner) | SGP4 propagation, look-angles, range-rate, low-precision Sun position (**CV-4** illumination) | [GitHub IsomorphicAlgo/Ephemerust](https://github.com/IsomorphicAlgo/Ephemerust), MIT (sibling path dep) |
+| **Ephemerust** (owner) | SGP4 propagation, look-angles, range-rate, Sun vector + conical umbra/penumbra eclipse model (**CV-4** illumination; **D-038**) | [crates.io `ephemerust`](https://crates.io/crates/ephemerust) `0.7` pin (**D-037**), MIT ([GitHub](https://github.com/IsomorphicAlgo/Ephemerust)) |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | Maintainer sibling project; **D-002** |
 | [`sgp4`](https://crates.io/crates/sgp4) | SGP4/SDP4 numerics (via Ephemerust) | crates.io, MIT/Apache-2.0 |
 | [`spacepackets`](https://crates.io/crates/spacepackets) ([us-irs](https://github.com/us-irs/spacepackets)) | CCSDS Space Packet parsing (**M2**, **D-010**) | crates.io, Apache-2.0/MIT |

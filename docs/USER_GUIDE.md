@@ -60,9 +60,9 @@ TOML landed).
 ### What you need first
 
 - **Rust** at the workspace MSRV or newer (see root `Cargo.toml` / `README.md`).
-- **Ephemerust** as a **sibling checkout** next to this repo (`../Ephemerust`), because the
-  gateway links it by path for propagation. If that folder is missing, `cargo build` fails until
-  you clone it — same layout the README illustrates.
+
+That's it — the [Ephemerust](https://crates.io/crates/ephemerust) propagation backend and every
+other dependency resolve from crates.io during `cargo build` (**Methodology D-037**).
 
 ### Build
 

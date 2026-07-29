@@ -3,9 +3,10 @@
 //! Drives [`chronus_gateway`] over UDP with CCSDS TM packets whose **data field** uses the
 //! versioned **`chronus.hil.tm.v1`** layout (`chronus_gateway::hil_tm`) for abstract EPS / thermal /
 //! ADCS scalars (no mission-specific data; synthetic demo only). **CV-4:** EPS voltage and panel
-//! temperature follow the same linear **Sun-illumination** proxy as the gateway’s
+//! temperature follow the same linear **Sun-illumination** factor as the gateway’s
 //! [`chronus_gateway::nadir_sun_illumination_cos`] check so HIL passes are self-consistent with
-//! Ephemerust SGP4 + low-precision Sun geometry (public ISS TLE only).
+//! Ephemerust SGP4 + the conical umbra/penumbra eclipse model (Ephemerust 0.7.0, Methodology
+//! **D-038**; public ISS TLE only).
 //!
 //! **Credit:** [NeXosim](https://github.com/asynchronics/nexosim) (asynchronics) — MIT OR Apache-2.0.
 //!
@@ -19,12 +20,12 @@ use std::net::SocketAddr;
 use std::sync::OnceLock;
 
 use chrono::{Duration, TimeZone, Utc};
-use chronus_gateway::encode_synthetic_tm;
 use chronus_gateway::config::DEFAULT_ISS_TLE;
+use chronus_gateway::encode_synthetic_tm;
 use chronus_gateway::hil_tm::encode_hil_tm_v1_payload;
 use chronus_gateway::nadir_sun_illumination_cos;
 use ephemerust::satellite::Tle;
-use nexosim::model::{schedulable, BuildContext, Context, Model, ProtoModel};
+use nexosim::model::{BuildContext, Context, Model, ProtoModel, schedulable};
 use nexosim::ports::Output;
 use nexosim::simulation::{ExecutionError, Mailbox, SimInit};
 use nexosim::time::MonotonicTime;

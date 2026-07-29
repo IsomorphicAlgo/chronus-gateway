@@ -10,22 +10,28 @@
 //! high-fidelity backend (e.g. `nyx-space`) drop in without a rewrite. See `Methodology.md`
 //! → "Trait-based astrodynamics (Ephemerust now, nyx-space later)".
 //!
-//! **CV-4:** [`TrackingState::nadir_sun_illum_cos`] is a **toy** nadir-fixed solar-array
-//! illumination factor in \([0, 1]\) from geocentric TEME geometry + Ephemerust’s low-precision
-//! Sun vector ([`nadir_sun_illumination_cos`]). Non-physics backends should set this to `NaN` so
-//! subsystem checks are skipped.
+//! Since Ephemerust 0.6.0, [`EphemerustPropagator`] holds an initialized
+//! [`ephemerust::Propagator`]: the SGP4 element parsing and constants derivation happen
+//! **once at construction**, and each per-frame [`OrbitalPropagator::tracking_state`] call is
+//! a cheap propagation step (previously every call re-initialized SGP4 — twice, counting the
+//! CV-4 illumination path). `ephemerust::Propagator` is `Send + Sync` with `&self` methods,
+//! so this backend shares across Tokio workers without locking, as the trait requires.
+//!
+//! **CV-4:** [`TrackingState::nadir_sun_illum_cos`] is a nadir-fixed solar-array illumination
+//! factor in \([0, 1]\) ([`nadir_sun_illumination_cos`]). Since Ephemerust 0.7.0 the eclipse
+//! part is **real physics** — the conical umbra/penumbra model in [`ephemerust::eclipse`]
+//! (apparent-disk overlap, Vallado §5.3) — replacing the in-house ray–sphere shadow toy; the
+//! nadir-fixed panel-normal cosine remains a deliberately simple demo model (D-021/D-038).
+//! Non-physics backends should set this to `NaN` so subsystem checks are skipped.
 
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use ephemerust::celestial::{calculate_position, CelestialObject};
-use ephemerust::{look_angles, propagate, ObserverLocation, Tle};
+use ephemerust::eclipse::{ShadowState, shadow_state_from_vectors};
+use ephemerust::{ObserverLocation, Propagator, Tle, sun_vector_km};
 
 use crate::config::StationConfig;
-
-/// WGS84 equatorial Earth radius (km); occultation uses a **spherical** Earth (CV-4 toy).
-const EARTH_EQUATORIAL_RADIUS_KM: f64 = 6378.137;
 
 /// Topocentric tracking state of a spacecraft relative to a fixed ground station.
 ///
@@ -54,89 +60,70 @@ pub trait OrbitalPropagator: Send + Sync {
     fn tracking_state(&self, time: DateTime<Utc>) -> Result<TrackingState>;
 }
 
-/// Unit vector in **geocentric equatorial** coordinates (TEME-as-inertial) from right ascension
-/// (hours) and declination (degrees), matching Ephemerust’s Sun pipeline conventions.
-fn equatorial_dir_from_ra_dec_hours(ra_hours: f64, dec_deg: f64) -> Option<[f64; 3]> {
-    if !(ra_hours.is_finite() && dec_deg.is_finite()) {
-        return None;
-    }
-    let ra_rad = ra_hours * (std::f64::consts::PI / 12.0);
-    let dec_rad = dec_deg.to_radians();
-    let cd = dec_rad.cos();
-    let sd = dec_rad.sin();
-    let (sr, cr) = ra_rad.sin_cos();
-    let x = cd * cr;
-    let y = cd * sr;
-    let z = sd;
-    if x.is_finite() && y.is_finite() && z.is_finite() {
-        Some([x, y, z])
-    } else {
-        None
-    }
-}
-
-/// `true` if the half-line **sat → Sun** (direction `u_sun`, geocentric, unit) first intersects the
-/// solid Earth sphere before reaching open space — toy cylindrical / ray–sphere umbra (**CV-4**).
-fn sun_ray_intersects_earth_sphere(r_sat_km: [f64; 3], u_sun: [f64; 3]) -> bool {
-    let rd = r_sat_km[0] * u_sun[0] + r_sat_km[1] * u_sun[1] + r_sat_km[2] * u_sun[2];
-    let r2 = r_sat_km[0] * r_sat_km[0] + r_sat_km[1] * r_sat_km[1] + r_sat_km[2] * r_sat_km[2];
-    if r2 < EARTH_EQUATORIAL_RADIUS_KM * EARTH_EQUATORIAL_RADIUS_KM * 0.99 {
-        // Inside or grazing the Earth interior — treat as no Sun for the toy model.
-        return true;
-    }
-    let c = r2 - EARTH_EQUATORIAL_RADIUS_KM * EARTH_EQUATORIAL_RADIUS_KM;
-    let disc = rd * rd - c;
-    if disc <= 0.0 {
-        return false;
-    }
-    let s = disc.sqrt();
-    let t0 = -rd - s;
-    let t1 = -rd + s;
-    let mut t_hit = f64::INFINITY;
-    for t in [t0, t1] {
-        if t > 1e-6 {
-            t_hit = t_hit.min(t);
-        }
-    }
-    t_hit.is_finite() && t_hit < f64::INFINITY
-}
-
 /// Nadir-fixed solar-array illumination factor for **subsystem co-validation (CV-4)**.
 ///
-/// Uses SGP4 [`propagate`] position in **TEME** (km) and Ephemerust’s low-precision geocentric Sun
-/// direction from [`calculate_position`](ephemerust::celestial::calculate_position) (see
-/// `Methodology.md` **D-021**). Combines:
+/// Uses the SGP4 position in **TEME** (km) and Ephemerust's geocentric Sun position vector
+/// ([`sun_vector_km`], direction **and** distance). Combines:
 ///
-/// 1. **Terminator / panel normal:** `max(0, −û_sat · û_sun)` with `û_sat` the geocentric satellite
+/// 1. **Terminator / panel normal (toy):** `max(0, −û_sat · û_sun)` with `û_sat` the geocentric satellite
 ///    radial (nadir normal ≈ **−**`û_sat` for a nadir-pointing panel).
-/// 2. **Toy eclipse:** zero illumination if the Sun ray from the satellite intersects the Earth
-///    sphere (spherical WGS84 equatorial radius).
+/// 2. **Eclipse (real physics since Ephemerust 0.7.0):** the conical umbra/penumbra model
+///    ([`shadow_state_from_vectors`], apparent-disk-overlap test). **Umbra** zeroes the
+///    factor; **penumbra** halves it, a first-order stand-in for the partially covered
+///    solar disk during the seconds-long LEO crossing.
 ///
-/// This is **not** flight-array or umbra-penumbra fidelity; it exists for deterministic HIL
-/// cross-checks only.
+/// The panel model is still **not** flight-array fidelity; it exists for deterministic HIL
+/// cross-checks. See `Methodology.md` **D-038** (amending **D-021**).
+///
+/// One-shot convenience: initializes an [`ephemerust::Propagator`] for a single evaluation.
+/// Loops (like [`EphemerustPropagator`]) should build the propagator once and call
+/// [`nadir_sun_illumination_cos_from`] instead.
 #[must_use]
 pub fn nadir_sun_illumination_cos(tle: &Tle, time: DateTime<Utc>) -> Option<f64> {
-    let state = propagate(tle, time).ok()?;
+    let prop = Propagator::new(tle).ok()?;
+    nadir_sun_illumination_cos_from(&prop, time)
+}
+
+/// Like [`nadir_sun_illumination_cos`], but reuses an already-initialized
+/// [`ephemerust::Propagator`] so per-frame callers pay only a propagation step.
+#[must_use]
+pub fn nadir_sun_illumination_cos_from(prop: &Propagator, time: DateTime<Utc>) -> Option<f64> {
+    let state = prop.propagate(time).ok()?;
     let r = state.position_km;
-    let r2 = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
-    let rn = r2.sqrt();
+    let rn = (r[0] * r[0] + r[1] * r[1] + r[2] * r[2]).sqrt();
     if !(rn.is_finite() && rn > 1.0) {
         return None;
     }
-    let ra_dec = calculate_position(CelestialObject::Sun, time).ok()?;
-    let u_sun = equatorial_dir_from_ra_dec_hours(ra_dec.ra, ra_dec.dec)?;
-    let u_sat = [r[0] / rn, r[1] / rn, r[2] / rn];
-    let dot = u_sat[0] * u_sun[0] + u_sat[1] * u_sun[1] + u_sat[2] * u_sun[2];
-    let mut illum = (-dot).clamp(0.0, 1.0);
-    if sun_ray_intersects_earth_sphere(r, u_sun) {
-        illum = 0.0;
+    let sun = sun_vector_km(time).ok()?;
+    let sn = (sun[0] * sun[0] + sun[1] * sun[1] + sun[2] * sun[2]).sqrt();
+    if !(sn.is_finite() && sn > 1.0) {
+        return None;
     }
+
+    // Toy nadir-panel cosine against the Sun direction.
+    let u_sat = [r[0] / rn, r[1] / rn, r[2] / rn];
+    let u_sun = [sun[0] / sn, sun[1] / sn, sun[2] / sn];
+    let dot = u_sat[0] * u_sun[0] + u_sat[1] * u_sun[1] + u_sat[2] * u_sun[2];
+    let cos_factor = (-dot).clamp(0.0, 1.0);
+
+    // Real conical shadow geometry from Ephemerust's eclipse module.
+    let illum = match shadow_state_from_vectors(r, sun) {
+        ShadowState::Sunlit => cos_factor,
+        ShadowState::Penumbra => 0.5 * cos_factor,
+        ShadowState::Umbra => 0.0,
+    };
     Some(illum)
 }
 
 /// Default SGP4 backend, driven by the `ephemerust` crate.
+///
+/// Holds an initialized [`ephemerust::Propagator`]: element parsing and SGP4 constants
+/// derivation happen once in [`EphemerustPropagator::new`], so every subsequent
+/// [`OrbitalPropagator::tracking_state`] call is a cheap propagation step. (Ephemerust's
+/// benchmarks put initialization at ~72% of a one-shot propagation call — see its
+/// `docs/rust-idioms.md` §1.)
 pub struct EphemerustPropagator {
-    tle: Tle,
+    propagator: Propagator,
     latitude_deg: f64,
     longitude_deg: f64,
     altitude_m: f64,
@@ -170,8 +157,10 @@ impl EphemerustPropagator {
         altitude_m: f64,
     ) -> Result<Self> {
         let tle = Tle::parse(tle_text)?;
+        // Pay SGP4 initialization once, here; per-frame calls are then propagation steps.
+        let propagator = Propagator::new(&tle)?;
         Ok(Self {
-            tle,
+            propagator,
             latitude_deg,
             longitude_deg,
             altitude_m,
@@ -218,10 +207,10 @@ impl TrackingProvider {
     pub fn tracking_state(&self, time: DateTime<Utc>) -> Result<TrackingState> {
         {
             let cache = self.last.lock().expect("tracking cache mutex poisoned");
-            if let Some((cached_at, state)) = cache.as_ref() {
-                if (time - *cached_at).num_milliseconds().abs() < self.min_interval_ms {
-                    return Ok(*state);
-                }
+            if let Some((cached_at, state)) = cache.as_ref()
+                && (time - *cached_at).num_milliseconds().abs() < self.min_interval_ms
+            {
+                return Ok(*state);
             }
         }
         // Compute outside the lock so SGP4 work never serializes other callers.
@@ -239,8 +228,8 @@ impl OrbitalPropagator for EphemerustPropagator {
             longitude: self.longitude_deg,
             elevation: self.altitude_m,
         };
-        let la = look_angles(&self.tle, time, observer)?;
-        let nadir_sun_illum_cos = nadir_sun_illumination_cos(&self.tle, time)
+        let la = self.propagator.look_angles(time, observer)?;
+        let nadir_sun_illum_cos = nadir_sun_illumination_cos_from(&self.propagator, time)
             .filter(|x| x.is_finite())
             .unwrap_or(f64::NAN);
         Ok(TrackingState {
@@ -347,8 +336,8 @@ mod tests {
 
     #[test]
     fn provider_uses_mock_and_throttles_recompute() {
-        use std::sync::atomic::{AtomicU64, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicU64, Ordering};
 
         // A scripted, counting propagator proves the trait seam and lets us observe caching.
         struct CountingPropagator {

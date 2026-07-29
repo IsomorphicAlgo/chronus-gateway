@@ -1,15 +1,11 @@
 # syntax=docker/dockerfile:1
 # Build context: **repository root** (parent of `demo/`), so `COPY . .` is the full chronus-gateway tree.
-# Ephemerust is cloned next to this crate inside the image (`../Ephemerust` matches Cargo.toml path).
+# Ephemerust resolves from crates.io like every other dependency (Methodology D-037), pinned by Cargo.lock.
 
 FROM rust:1.89-bookworm AS builder
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends pkg-config libssl-dev git \
+    && apt-get install -y --no-install-recommends pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /workspace
-# Same upstream source CI uses (see `.github/workflows/ci.yml`).
-RUN git clone --depth 1 https://github.com/IsomorphicAlgo/Ephemerust.git Ephemerust
 
 WORKDIR /workspace/chronus-gateway
 COPY . .

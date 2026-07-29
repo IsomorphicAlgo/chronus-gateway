@@ -173,9 +173,7 @@ impl TryFrom<StationToml> for StationConfig {
             hil_thermal_c_full_sun: t
                 .hil_thermal_c_full_sun
                 .unwrap_or(def.hil_thermal_c_full_sun),
-            hil_thermal_c_eclipse: t
-                .hil_thermal_c_eclipse
-                .unwrap_or(def.hil_thermal_c_eclipse),
+            hil_thermal_c_eclipse: t.hil_thermal_c_eclipse.unwrap_or(def.hil_thermal_c_eclipse),
             hil_eps_relative_tolerance: t
                 .hil_eps_relative_tolerance
                 .unwrap_or(def.hil_eps_relative_tolerance),
@@ -242,10 +240,10 @@ fn config_path_from_cli() -> Option<PathBuf> {
         if a == "--config" || a == "-c" {
             return args.next().map(PathBuf::from);
         }
-        if let Some(rest) = a.strip_prefix("--config=") {
-            if !rest.is_empty() {
-                return Some(PathBuf::from(rest));
-            }
+        if let Some(rest) = a.strip_prefix("--config=")
+            && !rest.is_empty()
+        {
+            return Some(PathBuf::from(rest));
         }
     }
     None

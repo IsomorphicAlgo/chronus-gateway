@@ -210,12 +210,13 @@ pub fn expected_rx_power_dbm(
 ///
 /// Returns `None` if any input is non-finite.
 #[must_use]
-pub fn angular_separation_deg(az1_deg: f64, el1_deg: f64, az2_deg: f64, el2_deg: f64) -> Option<f64> {
-    if !(az1_deg.is_finite()
-        && el1_deg.is_finite()
-        && az2_deg.is_finite()
-        && el2_deg.is_finite())
-    {
+pub fn angular_separation_deg(
+    az1_deg: f64,
+    el1_deg: f64,
+    az2_deg: f64,
+    el2_deg: f64,
+) -> Option<f64> {
+    if !(az1_deg.is_finite() && el1_deg.is_finite() && az2_deg.is_finite() && el2_deg.is_finite()) {
         return None;
     }
     let u1 = az_el_to_enu_unit(az1_deg, el1_deg)?;
@@ -271,60 +272,51 @@ pub fn apply_physics_validation(
         frame.physics_flags |= FLAG_BELOW_HORIZON;
     }
 
-    if let Some(measured) = rf.measured_carrier_hz {
-        if measured.is_finite()
-            && nominal_carrier_hz.is_finite()
-            && state.range_rate_km_s.is_finite()
-        {
-            let expected = expected_carrier_hz(nominal_carrier_hz, state.range_rate_km_s);
-            if (measured - expected).abs() > doppler_tolerance_hz {
-                frame.physics_flags |= FLAG_DOPPLER_ANOMALY;
-            }
+    if let Some(measured) = rf.measured_carrier_hz
+        && measured.is_finite()
+        && nominal_carrier_hz.is_finite()
+        && state.range_rate_km_s.is_finite()
+    {
+        let expected = expected_carrier_hz(nominal_carrier_hz, state.range_rate_km_s);
+        if (measured - expected).abs() > doppler_tolerance_hz {
+            frame.physics_flags |= FLAG_DOPPLER_ANOMALY;
         }
     }
 
-    if let Some(meas_dbm) = rf.measured_rx_power_dbm {
-        if meas_dbm.is_finite() {
-            if let Some(lb) = link_budget {
-                if lb.tolerance_db.is_finite()
-                    && lb.tolerance_db > 0.0
-                    && lb.tx_power_dbm.is_finite()
-                    && lb.tx_gain_dbi.is_finite()
-                    && lb.rx_gain_dbi.is_finite()
-                    && state.range_km.is_finite()
-                {
-                    if let Some(pred) = expected_rx_power_dbm(
-                        state.range_km,
-                        nominal_carrier_hz,
-                        lb.tx_power_dbm,
-                        lb.tx_gain_dbi,
-                        lb.rx_gain_dbi,
-                    ) {
-                        if pred.is_finite() && (meas_dbm - pred).abs() > lb.tolerance_db {
-                            frame.physics_flags |= FLAG_LINK_BUDGET_ANOMALY;
-                        }
-                    }
-                }
-            }
-        }
+    if let Some(meas_dbm) = rf.measured_rx_power_dbm
+        && meas_dbm.is_finite()
+        && let Some(lb) = link_budget
+        && lb.tolerance_db.is_finite()
+        && lb.tolerance_db > 0.0
+        && lb.tx_power_dbm.is_finite()
+        && lb.tx_gain_dbi.is_finite()
+        && lb.rx_gain_dbi.is_finite()
+        && state.range_km.is_finite()
+        && let Some(pred) = expected_rx_power_dbm(
+            state.range_km,
+            nominal_carrier_hz,
+            lb.tx_power_dbm,
+            lb.tx_gain_dbi,
+            lb.rx_gain_dbi,
+        )
+        && pred.is_finite()
+        && (meas_dbm - pred).abs() > lb.tolerance_db
+    {
+        frame.physics_flags |= FLAG_LINK_BUDGET_ANOMALY;
     }
 
-    if pointing_tolerance_deg.is_finite() && pointing_tolerance_deg > 0.0 {
-        if let (Some(maz), Some(mel)) = (rf.measured_azimuth_deg, rf.measured_elevation_deg) {
-            if maz.is_finite()
-                && mel.is_finite()
-                && state.azimuth_deg.is_finite()
-                && state.elevation_deg.is_finite()
-            {
-                if let Some(sep) =
-                    angular_separation_deg(maz, mel, state.azimuth_deg, state.elevation_deg)
-                {
-                    if sep.is_finite() && sep > pointing_tolerance_deg {
-                        frame.physics_flags |= FLAG_POINTING_ANOMALY;
-                    }
-                }
-            }
-        }
+    if pointing_tolerance_deg.is_finite()
+        && pointing_tolerance_deg > 0.0
+        && let (Some(maz), Some(mel)) = (rf.measured_azimuth_deg, rf.measured_elevation_deg)
+        && maz.is_finite()
+        && mel.is_finite()
+        && state.azimuth_deg.is_finite()
+        && state.elevation_deg.is_finite()
+        && let Some(sep) = angular_separation_deg(maz, mel, state.azimuth_deg, state.elevation_deg)
+        && sep.is_finite()
+        && sep > pointing_tolerance_deg
+    {
+        frame.physics_flags |= FLAG_POINTING_ANOMALY;
     }
 
     // CV-4 / CV-5 — decoded HIL v1 (skip unless params valid; never panic on floats).
@@ -1043,7 +1035,10 @@ mod tests {
             Some(hil),
             Some(p),
         );
-        assert_eq!(tm.physics_flags & (FLAG_EPS_SUBSYSTEM_ANOMALY | FLAG_THERMAL_SUBSYSTEM_ANOMALY), 0);
+        assert_eq!(
+            tm.physics_flags & (FLAG_EPS_SUBSYSTEM_ANOMALY | FLAG_THERMAL_SUBSYSTEM_ANOMALY),
+            0
+        );
     }
 
     #[test]

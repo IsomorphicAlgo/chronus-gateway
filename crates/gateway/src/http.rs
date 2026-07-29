@@ -9,11 +9,11 @@
 //! - `GET /api/v1/chronus/history` — stub (empty); future persistence / query API.
 //! - `GET /api/v1/chronus/openmct/dictionary` — stub dictionary of telemetry point identifiers.
 
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::get;
@@ -24,12 +24,14 @@ use serde::Serialize;
 use tower_http::trace::TraceLayer;
 
 use crate::ccsds;
+use crate::hil_tm::decode_hil_tm_v1;
 use crate::ingest::RawFrame;
 use crate::metrics::GatewayMetricsSnapshot;
 use crate::propagator::TrackingState;
 use crate::state::SharedGateway;
-use crate::hil_tm::decode_hil_tm_v1;
-use crate::validate::{apply_physics_validation, HilSubsystemCvParams, LinkBudgetStationParams, RfMetadata};
+use crate::validate::{
+    HilSubsystemCvParams, LinkBudgetStationParams, RfMetadata, apply_physics_validation,
+};
 
 /// JSON envelope for each WebSocket text message (one line per telemetry frame).
 ///
@@ -149,7 +151,8 @@ async fn handle_openmct_socket(mut socket: WebSocket, state: Arc<SharedGateway>)
                 match recv {
                     Ok(frame) => {
                         if let Some(json) = process_frame(&state, &frame) {
-                            if socket.send(Message::Text(json)).await.is_err() {
+                            // axum 0.8: `Message::Text` carries `Utf8Bytes` (cheap byte-buffer text).
+                            if socket.send(Message::Text(json.into())).await.is_err() {
                                 break;
                             }
                             state.gateway_metrics.ws_messages_sent.fetch_add(1, Ordering::Relaxed);

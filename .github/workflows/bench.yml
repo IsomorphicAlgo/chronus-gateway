@@ -16,12 +16,6 @@ jobs:
         with:
           path: chronus-gateway
 
-      - name: Checkout Ephemerust (upstream sibling)
-        uses: actions/checkout@v5
-        with:
-          repository: IsomorphicAlgo/Ephemerust
-          path: Ephemerust
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:

@@ -1,11 +1,14 @@
 [workspace]
-resolver = "2"
+# Edition 2024 default: MSRV-aware resolver — dependency selection respects `rust-version` below.
+resolver = "3"
 members = ["crates/gateway", "crates/chronus-hil-sim", "crates/chronus-replay"]
 
 # Shared metadata + dependency versions. Member crates opt in with `field.workspace = true`
 # (see Methodology.md → "Workspace + centralized dependency versions").
 [workspace.package]
-edition = "2021"
+# First real version line (finalization plan D.1): pre-1.0, minor = breaking during 0.x.
+version = "0.1.0"
+edition = "2024"
 rust-version = "1.89"
 license = "MIT"
 authors = ["MichaelHansen"]
@@ -19,15 +22,15 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # HTTP / WebSocket (Milestone 5; OD-B)
-axum = { version = "0.7", features = ["macros", "ws"] }
-tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5", features = ["trace", "limit"] }
+axum = { version = "0.8", features = ["macros", "ws"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.7", features = ["trace", "limit"] }
 futures-util = "0.3"
-base64 = { version = "0.22", default-features = false, features = ["std"] }
+base64 = { version = "0.23", default-features = false, features = ["std"] }
 
 # Error handling
 anyhow = "1"
-thiserror = "1"
+thiserror = "2"
 
 # CLI (Showcase S3 replay tool)
 clap = { version = "4", features = ["derive"] }
@@ -36,14 +39,16 @@ clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
+toml = "1"
 
 # CCSDS / ECSS packet standards (Space Packet primary header parsing). See Methodology D-010.
-spacepackets = "0.17"
+spacepackets = "0.18"
 
 # HIL / Milestone 7 — discrete-event spacecraft driver (asynchronics/NeXosim).
 nexosim = "1"
 
-# Astrodynamics backend — sibling checkout (SGP4 look-angles + range-rate for the
-# Physics-Telemetry Co-Validation engine). Path is relative to this workspace root.
-ephemerust = { path = "../Ephemerust" }
+# Astrodynamics backend — published crate (SGP4 look-angles + range-rate + conical
+# umbra/penumbra eclipse model for the Physics-Telemetry Co-Validation engine).
+# Pinned to the 0.7 minor because Ephemerust is 0.x (minor = breaking); bump deliberately.
+# See Methodology D-037 (supersedes the D-005 sibling-checkout arrangement).
+ephemerust = "0.7"

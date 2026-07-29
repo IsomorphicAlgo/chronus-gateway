@@ -77,7 +77,7 @@ for screen recording and CI-smoke (optional).
 **Deliverables**
 
 - [x] **Containerized or scripted stack** — `demo/docker-compose.yml` + `demo/Dockerfile` (build context =
-      repo root; clones upstream Ephemerust in-image). Native path documented in [`docs/DEMO.md`](DEMO.md).
+      repo root; Ephemerust from crates.io since **D-037**). Native path documented in [`docs/DEMO.md`](DEMO.md).
 - [x] [`docs/DEMO.md`](DEMO.md) + [`demo/README.md`](../demo/README.md) — commands, ports, expected WebSocket JSON keys, troubleshooting.
 - [x] **CI hook:** `docker compose … config --quiet` in `.github/workflows/ci.yml` (validates spec without a
       full image build each PR). Full `docker compose up --build` remains manual / release workflow.

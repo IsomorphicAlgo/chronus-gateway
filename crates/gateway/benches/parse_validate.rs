@@ -1,5 +1,6 @@
 //! Criterion benchmarks for CCSDS parse + physics validation hot paths (Milestone 6).
 
+use std::hint::black_box;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -7,8 +8,8 @@ use chrono::Utc;
 use chronus_gateway::ccsds::{self, CCSDS_PRIMARY_HEADER_LEN};
 use chronus_gateway::ingest::RawFrame;
 use chronus_gateway::propagator::TrackingState;
-use chronus_gateway::validate::{apply_physics_validation, LinkBudgetStationParams, RfMetadata};
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use chronus_gateway::validate::{LinkBudgetStationParams, RfMetadata, apply_physics_validation};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 fn tm_bytes(apid: u16, seq: u16, payload: &[u8]) -> Vec<u8> {
     assert!(!payload.is_empty());

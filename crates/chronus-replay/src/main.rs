@@ -10,14 +10,18 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 use tokio::fs::read_to_string;
 use tokio::net::UdpSocket;
 use tokio::time::sleep;
 
 #[derive(Parser, Debug)]
-#[command(name = "chronus-replay", version, about = "Replay UDP CCSDS TM datagrams from a hex/JSONL fixture")]
+#[command(
+    name = "chronus-replay",
+    version,
+    about = "Replay UDP CCSDS TM datagrams from a hex/JSONL fixture"
+)]
 struct Cli {
     /// Fixture file (hex lines or JSONL with `udp_hex` per line).
     #[arg(short = 'f', long = "file")]
@@ -47,7 +51,8 @@ fn parse_hex_bytes(s: &str) -> Result<Vec<u8>> {
     let mut out = Vec::with_capacity(compact.len() / 2);
     for chunk in compact.as_bytes().chunks(2) {
         let pair = std::str::from_utf8(chunk).context("hex must be ASCII")?;
-        let b = u8::from_str_radix(pair, 16).with_context(|| format!("invalid hex pair `{pair}`"))?;
+        let b =
+            u8::from_str_radix(pair, 16).with_context(|| format!("invalid hex pair `{pair}`"))?;
         out.push(b);
     }
     Ok(out)
@@ -78,7 +83,10 @@ fn load_datagrams(text: &str) -> Result<Vec<Vec<u8>>> {
             Ok(None) => {}
             Ok(Some(pkt)) => {
                 if pkt.len() < 7 {
-                    bail!("line {n}: datagram too short for a CCSDS primary header ({})", pkt.len());
+                    bail!(
+                        "line {n}: datagram too short for a CCSDS primary header ({})",
+                        pkt.len()
+                    );
                 }
                 out.push(pkt);
             }
@@ -135,7 +143,12 @@ mod tests {
     fn hex_line_round_trip() {
         let s = "00 2A C0 07 00 04 68 65 6C 6C 6F";
         let v = line_to_datagram(s).unwrap().unwrap();
-        assert_eq!(v, vec![0x00, 0x2A, 0xC0, 0x07, 0x00, 0x04, b'h', b'e', b'l', b'l', b'o']);
+        assert_eq!(
+            v,
+            vec![
+                0x00, 0x2A, 0xC0, 0x07, 0x00, 0x04, b'h', b'e', b'l', b'l', b'o'
+            ]
+        );
     }
 
     #[test]

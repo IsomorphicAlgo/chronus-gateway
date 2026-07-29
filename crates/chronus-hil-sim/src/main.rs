@@ -6,10 +6,10 @@
 use std::net::SocketAddr;
 
 use anyhow::Context;
-use clap::{Parser, ValueEnum};
 use chronus_hil_sim::{
     HilScriptedAnomaly, HilScriptedAnomalyKind, run_nexosim_udp_hil_with_script,
 };
+use clap::{Parser, ValueEnum};
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, ValueEnum)]
 enum ScriptedAnomalyCli {
@@ -25,7 +25,11 @@ enum ScriptedAnomalyCli {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "chronus-hil-sim", version, about = "NeXosim synthetic HIL → UDP CCSDS TM")]
+#[command(
+    name = "chronus-hil-sim",
+    version,
+    about = "NeXosim synthetic HIL → UDP CCSDS TM"
+)]
 struct Cli {
     /// Gateway UDP ingest `HOST:PORT` (positional **1**; default `127.0.0.1:7301`).
     #[arg(index = 1)]
@@ -69,8 +73,7 @@ fn main() -> anyhow::Result<()> {
         ?script,
         "starting NeXosim HIL downlink"
     );
-    run_nexosim_udp_hil_with_script(dest, frames, cli.apid, script)
-        .context("NeXosim UDP HIL")?;
+    run_nexosim_udp_hil_with_script(dest, frames, cli.apid, script).context("NeXosim UDP HIL")?;
     tracing::info!("NeXosim HIL run complete");
     Ok(())
 }

@@ -40,7 +40,9 @@ pub enum CcsdsError {
     Header(#[from] ByteConversionError),
 
     /// The header declares more data than the datagram contains.
-    #[error("packet data field truncated: header declares {declared} byte(s) but datagram has {available}")]
+    #[error(
+        "packet data field truncated: header declares {declared} byte(s) but datagram has {available}"
+    )]
     Truncated {
         /// Total packet length declared by the header (`6 + data_len + 1`).
         declared: usize,
