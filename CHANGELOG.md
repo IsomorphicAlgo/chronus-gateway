@@ -6,6 +6,21 @@ the Ephemerust backend); a `1.0.0` release is reserved for a deliberately commit
 Versions cover all three workspace crates (`chronus-gateway`, `chronus-hil-sim`,
 `chronus-replay`), which share one version via `[workspace.package]`.
 
+## 0.1.3 — 2026-07-29
+
+Finalization **Tranche D** — crates.io release mechanics. No code changes.
+
+- **License shipped (D.2):** MIT `LICENSE` file created at the repo root — it was missing
+  entirely despite the manifest's SPDX declaration — and copied into each crate root, so all
+  three crates.io tarballs now contain the license text.
+- **crates.io READMEs (D.3):** `chronus-gateway` packages the root narrative README
+  (`readme = "../../README.md"`); `chronus-hil-sim` and `chronus-replay` ship small dedicated
+  READMEs. Verified present in all three `cargo package` listings.
+- **Community one-pager (D.4):** paste-ready project summary with the synthetic-CCSDS compliance
+  line added as an appendix to `PROJECT_FINALIZATION_PLAN.md`.
+- **Publish-order note:** `chronus-hil-sim` depends on `chronus-gateway` from the registry —
+  publish the gateway first.
+
 ## 0.1.2 — 2026-07-29
 
 Finalization **Tranche C** — housekeeping + Tranche R findings (F-1…F-5 all landed). Compatible

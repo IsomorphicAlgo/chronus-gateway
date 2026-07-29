@@ -120,14 +120,23 @@ crates at **0.1.0** via shared `[workspace.package] version`; semver policy + re
 [`CHANGELOG.md`](CHANGELOG.md); full `cargo package` verified on all three crates. Git tag at owner's
 discretion on the release commit. |
 | D.2 | **LICENSE:** MIT already; ensure `LICENSE` file at repo root is what crates.io will ship
-(workspace members inherit or duplicate per Cargo rules — verify). | `cargo package` contains
-license text. |
+(workspace members inherit or duplicate per Cargo rules — verify). | Done (0.1.3): MIT `LICENSE`
+created at repo root (was **missing** despite the manifest SPDX claim) and copied into each crate
+root; `cargo package --list` confirms `LICENSE` in all three tarballs. |
 | D.3 | **README on crates.io:** Crates.io displays README from the **crate root**; ensure
 `crates/gateway/README.md` exists if the root README should not be the packaged one (Cargo picks
-package readme field). | Published page looks correct. |
+package readme field). | Done (0.1.3): `chronus-gateway` packages the root narrative README via
+`readme = "../../README.md"`; `chronus-hil-sim` and `chronus-replay` ship small dedicated crate
+READMEs. All three verified in `cargo package --list`. |
 | D.4 | **Discord / social one-pager:** Prepare 3–5 bullets + link to repo + “synthetic CCSDS only”
-compliance line; store in this file’s appendix or a private note if it should not be public. | Owner can paste
-without rereading the whole repo. |
+compliance line; store in this file’s appendix or a private note if it should not be public. | Done (0.1.3):
+see [Appendix — community one-pager](#appendix--community-one-pager) below. |
+
+**Tranche D status:** **Complete** (D.1–D.4, shipped as **0.1.3**). Publishing itself (`cargo publish`,
+git tag) stays an owner action. **Publish order matters:** `chronus-gateway` (and `chronus-replay`)
+first, then `chronus-hil-sim` — its registry dependency on `chronus-gateway 0.1.x` must already
+exist on crates.io, so a `publish --dry-run` of `chronus-hil-sim` is expected to fail until the
+gateway is up. **E** covers post-release upkeep.
 
 ---
 
@@ -148,6 +157,33 @@ without rereading the whole repo. |
    feed the housekeeping pass instead of following it.  
 4. **C** (comments/layout) — incremental; folds in R's fix items and the R.6 strengths map.  
 5. **D** then **E** — mechanical publish steps.
+
+---
+
+## Appendix — community one-pager
+
+Paste-ready for Discord / forums / social (D.4). Adjust the opener to taste.
+
+> **ChronusGateway-RS** — a Rust gateway that turns satellite telemetry into trusted, web-ready
+> data, and checks it against real orbital physics before your dashboard sees it.
+>
+> - **Physics as a sanity check:** every CCSDS frame is co-validated against a live SGP4 solution
+>   (Doppler, elevation, link budget, eclipse-aware power) — spoofed or corrupt telemetry gets
+>   `physics_flags`, not silent trust.
+> - **Mission-grade Rust, measurably:** zero `unsafe` (compiler-enforced), panic-free hot path,
+>   lock-free fan-out, ~17 ns CCSDS parse — the audit trail is in the repo
+>   (`docs/RUST_MISSION_READY.md`).
+> - **Batteries included:** NeXosim hardware-in-the-loop simulator, deterministic UDP replay tool,
+>   Docker demo stack, and an Open MCT–compatible WebSocket JSON feed.
+> - **Built on published work:** SGP4 propagation via the maintainer's
+>   [Ephemerust](https://crates.io/crates/ephemerust) crate; CCSDS parsing via `spacepackets`;
+>   Tokio/Axum async core.
+> - **Teaching-grade docs:** every design decision logged with rationale (`Methodology.md`),
+>   tolerances registered per test (`TEST_PLAN.md`).
+>
+> Repo: <https://github.com/IsomorphicAlgo/chronus-gateway> — MIT licensed.
+> *All demo traffic is synthetic CCSDS only; built strictly on open international standards
+> (ITAR/EAR public-domain posture — see the README).*
 
 ---
 

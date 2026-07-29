@@ -98,6 +98,7 @@ The reasoning behind these and other choices is recorded in `[Methodology.md](Me
 chronus-gateway/
 ├── Cargo.toml              Workspace manifest (centralized dependency versions, edition 2024, MSRV 1.89)
 ├── CHANGELOG.md            Version history + semver policy (0.x: minor = breaking)
+├── LICENSE                 MIT (copied into each crate root so crates.io tarballs ship it)
 ├── deny.toml               cargo-deny policy (CI supply-chain gate)
 ├── gateway.example.toml    Example TOML for `chronus-gateway --config` (M8)
 ├── .github/workflows/ci.yml Tests, clippy, audit, deny (Ephemerust resolved from crates.io)
@@ -241,7 +242,7 @@ Full dependency rationale lives in [`Methodology.md`](Methodology.md) § Attribu
 
 ## License and compliance
 
-Licensed under the MIT License.
+Licensed under the MIT License — see [`LICENSE`](LICENSE) (also shipped inside each published crate).
 
 This project is designed strictly around open international standards (CCSDS) and is published
 openly to comply with the Public Domain and Fundamental Research exclusions of ITAR/EAR. See

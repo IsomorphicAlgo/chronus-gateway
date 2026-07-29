@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Fast Rust TMTC gateway: CCSDS ingest, physics co-validation (Ephemerust), Open MCT JSON fan-out"
+# Packaged into the tarball root as README.md; crates.io renders it (relative links resolve
+# against `repository`). See finalization plan D.3.
+readme = "../../README.md"
 # Showcase/demo assets must live at workspace root (`demo/`), not here — defensive if paths appear
 # inside this crate directory (`Methodology.md` D-025).
 exclude = ["demo", "showcase"]
