@@ -1,5 +1,15 @@
 # ChronusGateway-RS
 
+### TLDR
+
+ChronusGateway-RS combines **high-throughput async I/O** (the Rusty_Server lineage) with **real-time space math** (Ephemerust) so telemetry is not only delivered quickly, but **cross-checked against physics** before it reaches your dashboard.
+
+**To install, run, and interpret `physics_flags`, see the operator guide [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)** — step-by-step first run, defaults, and alarm bits live there; this README stays at the “why” level.
+
+
+### Intro
+
+
 **A fast Rust gateway that turns satellite telemetry into trusted, web-ready data — and checks it against real orbital physics.**
 
 Imagine a satellite circling Earth, constantly whispering raw binary back to a ground station: a long stream of ones and zeros. ChronusGateway-RS is a **translator and sanity-checker** for those whispers. It ingests CCSDS packets over UDP, validates them against physics computed in real time, and streams clean JSON to mission-control-style dashboards (including [NASA Open MCT](https://nasa.github.io/openmct/)–compatible clients).
@@ -42,17 +52,9 @@ If a measured carrier (when provided) disagrees with that physics by more than a
 
 Extended checks (link budget, pointing residual, synthetic HIL subsystem envelopes) are documented in [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md).
 
-### In short
-
-ChronusGateway-RS combines **high-throughput async I/O** (the Rusty_Server lineage) with **real-time space math** (Ephemerust) so telemetry is not only delivered quickly, but **cross-checked against physics** before it reaches your dashboard.
-
-**To install, run, and interpret `physics_flags`, see the operator guide [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)** — step-by-step first run, defaults, and alarm bits live there; this README stays at the “why” level.
 
 ---
-
-## Current status
-
-Roadmap **M0–M8** is implemented (UDP ingest → CCSDS parse → co-validation → WebSocket distribution, metrics, NeXosim HIL, optional TOML config). Post-M8 **extended co-validation CV-1…CV-5** is implemented; see [`docs/BUILD_PLAN.md`](docs/BUILD_PLAN.md) and [`Methodology.md`](Methodology.md).
+### Doc Contents
 
 | Topic | Doc |
 |-------|-----|
@@ -63,9 +65,7 @@ Roadmap **M0–M8** is implemented (UDP ingest → CCSDS parse → co-validation
 | Config file | [`gateway.example.toml`](gateway.example.toml) |
 | Version history | [`CHANGELOG.md`](CHANGELOG.md) — semver policy + `0.1.0` notes |
 
-Showcase gates **S0–S4** approved (2026-06-19). Project finalization: **Tranche B** in progress (B.1–B.3 complete) — see [`PROJECT_FINALIZATION_PLAN.md`](PROJECT_FINALIZATION_PLAN.md).
 
----
 
 ## Architecture
 
