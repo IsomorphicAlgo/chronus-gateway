@@ -6,6 +6,22 @@ the Ephemerust backend); a `1.0.0` release is reserved for a deliberately commit
 Versions cover all three workspace crates (`chronus-gateway`, `chronus-hil-sim`,
 `chronus-replay`), which share one version via `[workspace.package]`.
 
+## 0.1.1 — 2026-07-29
+
+Finalization **Tranche R** — mission-readiness review (Rust-strengths audit). Documentation and
+measurement only; no code behavior changed.
+
+- **New:** [`docs/RUST_MISSION_READY.md`](docs/RUST_MISSION_READY.md) — the map from each Rust
+  mission-critical strength (memory safety, fearless concurrency, typed errors, zero-cost
+  abstractions, compile-time contracts, graceful degradation) to the code that demonstrates it,
+  plus review findings **F-1…F-5** with dispositions (scheduled into Tranche C).
+- **Measured:** zero `unsafe` across all crates; hot-path panic surface limited to two
+  invariant-backed sites; fresh Criterion baseline `chronus-0.1.x-2026-07-29`
+  (`parse_telemetry` ≈ 17 ns, `apply_physics_validation` ≈ 15 ns). Recorded as Methodology
+  **D-040**; owner gate on findings pending.
+- **Policy:** each finalization-plan tranche now bumps the shared workspace version with a
+  changelog entry (patch = compatible, minor = breaking during 0.x).
+
 ## 0.1.0 — 2026-07-29
 
 First versioned release line (previously `0.0.0` pre-release development). Not yet on crates.io.

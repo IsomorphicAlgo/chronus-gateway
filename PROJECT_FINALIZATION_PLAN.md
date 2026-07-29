@@ -8,6 +8,39 @@ public compliance posture (ITAR/EAR, open standards only).
 tranche, run `cargo test`, `cargo clippy --all-targets`, and (before release) `cargo publish
 --dry-run` for each crate you intend to publish.
 
+**Versioning through this plan:** each tranche that lands bumps the shared
+`[workspace.package] version` — **patch** for compatible work (docs, review, hardening), **minor**
+for anything breaking (0.x policy, see [`CHANGELOG.md`](CHANGELOG.md)) — with a matching changelog
+entry, so the version history mirrors the plan's progress.
+
+---
+
+## Tranche R — Mission-readiness review (Rust-strengths audit)
+
+**Goal:** Before the remaining release tranches, audit the codebase against the reasons Rust is
+chosen for mission-critical space software — memory safety without garbage collection, fearless
+concurrency, exhaustive compile-time error modeling, and zero-cost abstractions — and confirm the
+project **demonstrates** each one well enough to teach from. Every finding becomes either a fix
+item in a later tranche or a documented, deliberate exception in `Methodology.md`. This is a
+**review** gate: read, measure, record — code changes land in their own tranche afterward.
+
+| Step | Action | Exit criterion |
+| ---- | ------ | ---------------- |
+| R.1 | **Memory-safety posture.** Confirm the workspace is `unsafe`-free (grep; if any appears later it needs a Methodology entry). Audit panic discipline on the flight-style hot path (ingest → parse → validate → distribute): `unwrap`/`expect`/indexing panics belong at **startup/config only**, never per-frame. Consider `#![forbid(unsafe_code)]` + scoped `clippy::unwrap_used` lints as enforcement. | Done (2026-07-29): **zero `unsafe`** in all three crates; hot-path panic surface = two invariant-backed sites (**F-1**, **F-5** in [`docs/RUST_MISSION_READY.md`](docs/RUST_MISSION_READY.md)); enforcement (`forbid(unsafe_code)`, scoped lints) ticketed as **F-2** → Tranche C. |
+| R.2 | **Fearless concurrency.** Verify the sharing story the docs claim: propagator shared `Arc<dyn OrbitalPropagator>` across Tokio workers via `&self` (`Send + Sync`), metrics as atomics, fan-out via `broadcast` with defined lag/drop behavior — **no locks on the per-frame path**. | Done: inventory in [`docs/RUST_MISSION_READY.md`](docs/RUST_MISSION_READY.md); the one `Mutex` (`TrackingProvider` throttle cache) **justified** — `Copy`-only critical sections, SGP4 computed outside the lock (**D-040**); poison-tolerance ticketed (**F-1**). |
+| R.3 | **Errors as types, faults as data.** Every boundary fault is a typed `thiserror` enum with a teaching-grade message (Ephemerust's structured-diagnostics standard); telemetry anomalies are **flags, not panics** (`physics_flags`); nothing is silently dropped without a counter. | Done: `CcsdsError` / `HilTmV1DecodeError` / `ConfigError` / `ConfigLoadError` inventory checks out at the Ephemerust bar; two counter gaps found (**F-3** JSON-serialize drop, **F-4** silent propagator degrade) → Tranche C. |
+| R.4 | **Zero-cost + determinism.** Re-run Criterion baselines post-0.1.0 (edition 2024 + dep bumps); confirm the parse path stays zero-copy/allocation-lean and physics tests use fixed epochs (no wall-clock flake). | Done: baseline **`chronus-0.1.x-2026-07-29`** saved — `parse_telemetry` ≈ 17 ns, `apply_physics_validation` ≈ 15 ns; physics tests use fixed epochs (HIL clock pinned at `2020-07-12T21:00:00Z`). |
+| R.5 | **Compile-time contracts as ops discipline.** Confirm the "if it compiles and CI is green, it deploys" chain: MSRV 1.89 + resolver v3 (enforced floor), edition 2024, clippy `-D warnings`, `cargo audit`/`cargo deny` supply-chain gates, loopback-only defaults. This mirrors how a mission toolchain would gate a build. | Done: `ci.yml` chain verified (MSRV-pinned toolchain → test → clippy `-D warnings` → bench compile → pinned audit/deny → Compose + dashboard guards); MSRV floor proven locally via `cargo +1.89 check` (**D-039**). |
+| R.6 | **Educational overlay.** Map each strength above to where the code shows it (let-chains in `validate`, trait-object propagator seam, typed CCSDS errors, …) so docs can point at **living examples**, not claims. Feeds the Ephemerust-style "physical reasoning alongside the code" doc pass. | Done: [`docs/RUST_MISSION_READY.md`](docs/RUST_MISSION_READY.md) — six-strength map + findings table; doc-pass backlog = F-1…F-5 dispositions folded into Tranche C. |
+
+**Tranche R status:** Review **executed** (R.1–R.6, findings **F-1…F-5** recorded in
+[`docs/RUST_MISSION_READY.md`](docs/RUST_MISSION_READY.md) and **Methodology D-040**). **Gate:
+awaiting owner sign-off** on the findings; fixes are scheduled into Tranche C, not patched ad hoc
+during review.
+
+**Dependencies:** None — read/measure/record only. Best done **before** Tranche C (housekeeping)
+so the comment/layout pass can fold in R.6's map.
+
 ---
 
 ## Tranche A — Secondary testing plan (beyond primary `cargo test`)
@@ -59,6 +92,7 @@ pattern stays canonical. | Done: Ephemerust **0.7** published; workspace pins it
 
 | Step | Action | Exit criterion |
 | ---- | ------ | ---------------- |
+| C.0 | **Tranche R findings (F-1…F-5):** poison-tolerant lock in `TrackingProvider` (F-1); `#![forbid(unsafe_code)]` on all three crates + scoped `clippy::unwrap_used` consideration (F-2); counter for the JSON-serialize drop path (F-3); `tracking_errors` counter / rate-limited warn for silent propagator degrade (F-4); invariant comment at `TelemetryFrame::payload` index (F-5). See [`docs/RUST_MISSION_READY.md`](docs/RUST_MISSION_READY.md). | All five dispositions landed (or re-dispositioned with a Methodology note); tests + clippy green. |
 | C.1 | **Comment voice pass:** Prefer “Computes …”, “Returns … on error”, not “we/I”. Scan
 `crates/gateway/src/**/*.rs`, `crates/chronus-hil-sim`, `chronus-replay` for second-person or
 rambling TODOs; convert to imperative or neutral third person per AGENTS.md tone. | Spot-check:
@@ -109,8 +143,10 @@ without rereading the whole repo. |
 
 1. **A** (secondary test charter + package dry-runs) — low risk, high clarity for release day. **✅ Complete.**  
 2. **B** (narrative + acks) — maximizes first-impression quality for GitHub + Discord.  
-3. **C** (comments/layout) — incremental; can run in parallel with B on different branches.  
-4. **D** then **E** — mechanical publish steps.
+3. **R** (mission-readiness / Rust-strengths review) — read-only audit; do **before C** so findings
+   feed the housekeeping pass instead of following it.  
+4. **C** (comments/layout) — incremental; folds in R's fix items and the R.6 strengths map.  
+5. **D** then **E** — mechanical publish steps.
 
 ---
 

@@ -458,6 +458,20 @@ edition-2024 clean); rustfmt style edition 2024 applied. Verified green on stabl
 `cargo test --workspace`, `cargo clippy --all-targets -- -D warnings`, `cargo bench --no-run`;
 MSRV floor proven with `cargo +1.89 check --workspace --all-targets` on the real 1.89 toolchain.
 
+### D-040 — Tranche R mission-readiness review: findings + accepted exceptions
+**Decision:** Tranche R (Rust-strengths audit, `PROJECT_FINALIZATION_PLAN.md`) executed 2026-07-29.
+Deliverable: [`docs/RUST_MISSION_READY.md`](docs/RUST_MISSION_READY.md) — the strength → code map
+plus findings **F-1…F-5** (all hardening/observability polish, no design flaws; fixes scheduled
+into Tranche C). Measured facts recorded here so later claims stay honest:
+**zero `unsafe`** in all three crates; hot-path panic surface limited to two invariant-backed
+sites (F-1 mutex-poison `expect`, F-5 constructor-guaranteed slice index); the single `Mutex`
+(`TrackingProvider` throttle cache) holds only `Copy` reads/writes and computes SGP4 outside the
+lock — **accepted** as a justified lock pending F-1 poison-tolerance; Criterion baseline
+`chronus-0.1.x-2026-07-29` saved (`parse_telemetry` ≈ 17 ns, `apply_physics_validation` ≈ 15 ns).
+**Why:** The review gate exists to convert "Rust is mission-ready" from marketing into an
+auditable inventory with dispositions — same honesty bar as the tolerance register.
+**Gate:** Owner sign-off pending on findings + Tranche C scheduling.
+
 ---
 
 ## Open decisions (to resolve as milestones land)

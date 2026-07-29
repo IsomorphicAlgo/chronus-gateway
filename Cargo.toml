@@ -7,7 +7,8 @@ members = ["crates/gateway", "crates/chronus-hil-sim", "crates/chronus-replay"]
 # (see Methodology.md → "Workspace + centralized dependency versions").
 [workspace.package]
 # First real version line (finalization plan D.1): pre-1.0, minor = breaking during 0.x.
-version = "0.1.0"
+# Bumped per tranche as the finalization plan progresses (see CHANGELOG.md).
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT"

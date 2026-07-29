@@ -1,0 +1,31 @@
+# Rust strengths → where this codebase shows them
+
+**Tranche R deliverable (R.6)** — the map from each reason Rust is chosen for mission-critical
+space software to the **living code** that demonstrates it here. Use it to teach from real lines,
+not claims. Findings from the review are listed at the bottom; fixes land via
+`PROJECT_FINALIZATION_PLAN.md` Tranche C. Review record: `Methodology.md` **D-040**.
+
+## The map
+
+| Rust strength | Where this project shows it | Why it matters in this domain |
+|---|---|---|
+| **Memory safety without garbage collection** | **Zero `unsafe`** across all three crates (verified by grep, enforcement pending F-2). Ingest reads into one fixed buffer sized by config, never by attacker-declared length (`crates/gateway/src/ingest.rs`, `run`). Payloads travel as `Arc<[u8]>` — fan-out clones are refcount bumps, and `TelemetryFrame::payload()` is a borrowed slice into the original datagram (`crates/gateway/src/ccsds.rs`). | No GC pauses on a real-time downlink; no buffer overruns from hostile RF input; the borrow checker proves the zero-copy parse is sound. |
+| **Fearless concurrency** | `OrbitalPropagator: Send + Sync` with `&self` methods — one propagator shared lock-free across every Tokio worker (`crates/gateway/src/propagator.rs`). Counters are `AtomicU64` (`metrics.rs`, `ingest.rs`). Fan-out is a `tokio::sync::broadcast` with **documented lossy backpressure**: slow clients observe `Lagged`, the socket loop is never throttled (`ingest.rs` module docs). The one `Mutex` (throttle cache in `TrackingProvider`) holds only a `Copy` read/write and computes SGP4 **outside** the lock. | Concurrent telemetry channels and operator screens cannot data-race — the compiler checks it. A slow dashboard cannot stall the downlink. |
+| **Errors as types, faults as data** | Every boundary fault is a `thiserror` enum with a teaching-grade message: `CcsdsError` ("All variants are recoverable … No input can cause a panic or an unbounded allocation"), `HilTmV1DecodeError`, `ConfigError`/`ConfigLoadError`. Physics anomalies become **`physics_flags` bits**, never panics (`validate.rs`). Every drop path has a counter (`IngestStats`, `GatewayMetrics::telemetry_parse_errors`). | Flight software distinguishes *bad input* (count it, flag it, keep flying) from *program error* (crash loudly in test). The type system enforces that triage at compile time. |
+| **Zero-cost abstractions** | The pipeline depends on the `OrbitalPropagator` **trait**, not on Ephemerust — and the abstraction costs nothing measurable: `parse_telemetry` ≈ **17 ns**, `apply_physics_validation` ≈ **15 ns** (Criterion baseline `chronus-0.1.x-2026-07-29`). Edition-2024 let-chains flattened the validation guard pyramids (`validate.rs`) with zero runtime cost. | Clean seams (swap in `nyx-space` later) usually cost performance in other languages. Here the abstraction and the nanosecond hot path coexist, and the bench guard proves it stays that way. |
+| **Compile-time contracts as ops discipline** | Edition 2024 + resolver v3 make the MSRV (1.89) an *enforced* floor, proven by `cargo +1.89 check --workspace --all-targets`. CI gates every push: tests, clippy `-D warnings`, bench compile, pinned `cargo audit` + `cargo deny` (`.github/workflows/ci.yml`). Raw TOML deserializes into *unvalidated* mirror types that must pass `TryFrom` into the real `IngestConfig`/`StationConfig` (`config/file.rs`) — invalid configs are unrepresentable downstream. | Mirrors how a mission toolchain gates a build: if it compiles and CI is green, the contract (versions, lints, licenses, advisories) held. Parse-don't-validate keeps bad ground config out of the flight path. |
+| **Graceful degradation & bounded resources** | Propagator construction failure ⇒ warn + physics-free frames, not an abort (`main.rs`). Broadcast channel is bounded; ingest buffer is bounded; defaults bind loopback only. Shutdown is a `CancellationToken` race, not a kill. | Missions prefer degraded observability over dead gateways. Bounded everything is the DDoS posture a ground segment needs. |
+
+## Review findings (R.1–R.5, 2026-07-29)
+
+| # | Finding | Disposition |
+|---|---------|-------------|
+| F-1 | `TrackingProvider::tracking_state` calls `.expect("tracking cache mutex poisoned")` twice on the per-frame path. Poisoning requires a panic *while holding the lock*; both critical sections only read/write a `Copy` value, so it is unreachable in practice — but it is still a panic-capable call on the hot path. | Tranche C: make poison-tolerant (`unwrap_or_else(PoisonError::into_inner)`) or document the invariant at the call sites. |
+| F-2 | Zero `unsafe` exists, but nothing *enforces* that (no `#![forbid(unsafe_code)]`). | Tranche C: add `#![forbid(unsafe_code)]` to all three crates; consider scoped `clippy::unwrap_used` for `src/` (tests exempt). |
+| F-3 | `process_frame` drops a frame on `serde_json::to_string(...).ok()?` with no counter. Serialization of `OpenMctRealtimeMessageV1` is practically infallible, but this is the one drop path without a metric. | Tranche C: count it or document why not. |
+| F-4 | Per-frame propagator errors degrade silently (`tracking_state(...).ok()`): frames flow without physics fields, by design — but **no counter** distinguishes "physics off" from "physics failing" (e.g. stale TLE out of SGP4 validity). | Tranche C: add a `tracking_errors` counter (and/or rate-limited warn) so operators can see it in `/metrics`. |
+| F-5 | `TelemetryFrame::payload()` uses slice indexing — panic-capable in principle, but the constructor bounds-check (`parse_telemetry` length validation) makes the invariant airtight. | Accept: add an invariant comment at the index site (Tranche C, cosmetic). |
+
+**Verdict:** the architecture already walks the mission-critical walk — the findings are hardening
+and observability polish, not design flaws. All test/lint/bench gates were green at review time
+(v0.1.1, edition 2024, Ephemerust 0.7).
