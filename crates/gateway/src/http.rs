@@ -199,10 +199,22 @@ fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
     };
 
     let station = state.station.as_ref();
-    let physics: Option<TrackingState> = state
-        .tracking
-        .as_ref()
-        .and_then(|t| t.tracking_state(tm.received_at).ok());
+    // F-4: a propagator failure degrades to a physics-free frame (never drops it), but is
+    // counted so operators can tell "physics off" from "physics failing" (e.g. stale TLE).
+    let physics: Option<TrackingState> = match state.tracking.as_ref() {
+        None => None,
+        Some(t) => match t.tracking_state(tm.received_at) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                state
+                    .gateway_metrics
+                    .tracking_errors
+                    .fetch_add(1, Ordering::Relaxed);
+                tracing::debug!(error = %e, "propagator failed; frame emitted without physics fields");
+                None
+            }
+        },
+    };
 
     if let Some(s) = physics.as_ref() {
         let link_budget = Some(LinkBudgetStationParams {
@@ -266,7 +278,19 @@ fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
         payload_base64: payload_b64,
     };
 
-    let json = serde_json::to_string(&msg).ok()?;
+    // F-3: serialization of this struct is practically infallible, but if it ever fails the
+    // drop is counted rather than silent.
+    let json = match serde_json::to_string(&msg) {
+        Ok(j) => j,
+        Err(e) => {
+            state
+                .gateway_metrics
+                .serialize_errors
+                .fetch_add(1, Ordering::Relaxed);
+            tracing::warn!(error = %e, "telemetry JSON serialization failed; frame dropped");
+            return None;
+        }
+    };
     state
         .gateway_metrics
         .telemetry_frames_emitted

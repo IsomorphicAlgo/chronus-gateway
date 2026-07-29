@@ -2,6 +2,8 @@
 //!
 //! Runs the UDP ingest loop and the Axum HTTP/WebSocket server until Ctrl-C (Milestones 5–8).
 
+#![forbid(unsafe_code)]
+
 use std::sync::Arc;
 
 use anyhow::Context;

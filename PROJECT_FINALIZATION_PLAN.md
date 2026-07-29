@@ -34,9 +34,9 @@ item in a later tranche or a documented, deliberate exception in `Methodology.md
 | R.6 | **Educational overlay.** Map each strength above to where the code shows it (let-chains in `validate`, trait-object propagator seam, typed CCSDS errors, …) so docs can point at **living examples**, not claims. Feeds the Ephemerust-style "physical reasoning alongside the code" doc pass. | Done: [`docs/RUST_MISSION_READY.md`](docs/RUST_MISSION_READY.md) — six-strength map + findings table; doc-pass backlog = F-1…F-5 dispositions folded into Tranche C. |
 
 **Tranche R status:** Review **executed** (R.1–R.6, findings **F-1…F-5** recorded in
-[`docs/RUST_MISSION_READY.md`](docs/RUST_MISSION_READY.md) and **Methodology D-040**). **Gate:
-awaiting owner sign-off** on the findings; fixes are scheduled into Tranche C, not patched ad hoc
-during review.
+[`docs/RUST_MISSION_READY.md`](docs/RUST_MISSION_READY.md) and **Methodology D-040**). **Gate
+approved 2026-07-29** (owner directed Tranche C execution); all findings landed via **C.0** in
+**0.1.2**.
 
 **Dependencies:** None — read/measure/record only. Best done **before** Tranche C (housekeeping)
 so the comment/layout pass can fold in R.6's map.
@@ -92,18 +92,19 @@ pattern stays canonical. | Done: Ephemerust **0.7** published; workspace pins it
 
 | Step | Action | Exit criterion |
 | ---- | ------ | ---------------- |
-| C.0 | **Tranche R findings (F-1…F-5):** poison-tolerant lock in `TrackingProvider` (F-1); `#![forbid(unsafe_code)]` on all three crates + scoped `clippy::unwrap_used` consideration (F-2); counter for the JSON-serialize drop path (F-3); `tracking_errors` counter / rate-limited warn for silent propagator degrade (F-4); invariant comment at `TelemetryFrame::payload` index (F-5). See [`docs/RUST_MISSION_READY.md`](docs/RUST_MISSION_READY.md). | All five dispositions landed (or re-dispositioned with a Methodology note); tests + clippy green. |
+| C.0 | **Tranche R findings (F-1…F-5):** poison-tolerant lock in `TrackingProvider` (F-1); `#![forbid(unsafe_code)]` on all three crates + scoped `clippy::unwrap_used` consideration (F-2); counter for the JSON-serialize drop path (F-3); `tracking_errors` counter / rate-limited warn for silent propagator degrade (F-4); invariant comment at `TelemetryFrame::payload` index (F-5). See [`docs/RUST_MISSION_READY.md`](docs/RUST_MISSION_READY.md). | Done (0.1.2): all five landed — poison-tolerant lock; `forbid(unsafe_code)` on **all five crate roots** + `cfg_attr(not(test), warn(clippy::unwrap_used))` on the gateway lib; `serialize_errors` + `tracking_errors` counters in `/metrics`; invariant comment. Tests + clippy (with new lints) green. |
 | C.1 | **Comment voice pass:** Prefer “Computes …”, “Returns … on error”, not “we/I”. Scan
 `crates/gateway/src/**/*.rs`, `crates/chronus-hil-sim`, `chronus-replay` for second-person or
-rambling TODOs; convert to imperative or neutral third person per AGENTS.md tone. | Spot-check:
-no large blocks of “I” in library code. |
+rambling TODOs; convert to imperative or neutral third person per AGENTS.md tone. | Done (0.1.2): full-workspace scan found **one** first-person comment (a test in `tests/ingest.rs`) — reworded; library comments already third-person. |
 | C.2 | **Module boundaries:** Confirm each `src/*.rs` has a one-line module doc where public
 surface is non-obvious; keep `config/`, `hil_tm` split as today unless a future extract to a
-`chronus-ccsds` crate is chartered. | `lib.rs` module list matches on-disk layout. |
+`chronus-ccsds` crate is chartered. | Done (0.1.2): every module carries a `//!` doc header; `lib.rs` module list matches on-disk layout exactly. |
 | C.3 | **Dead paths / naming:** Grep for `TODO|FIXME|HACK`; either resolve, ticket in BUILD_PLAN,
-or delete stale comments. | Grep results are intentional. |
+or delete stale comments. | Done (0.1.2): grep returns **zero** `TODO`/`FIXME`/`HACK` across `crates/`. |
 | C.4 | **demo/ vs crates:** Ensure no `demo/` paths referenced from published crate roots (already
-guarded by `exclude`); re-verify after any refactor. | `cargo package` tree inspection clean. |
+guarded by `exclude`); re-verify after any refactor. | Done (0.1.2): `cargo package --list` on all three crates contains no `demo/`/`showcase/` paths. |
+
+**Tranche C status:** **Complete** (C.0–C.4, shipped as **0.1.2**). Next: **Tranche D** (publish mechanics).
 
 ---
 

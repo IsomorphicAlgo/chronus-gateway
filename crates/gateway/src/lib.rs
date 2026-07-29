@@ -24,6 +24,12 @@
 //!
 //! **Operators:** install, first run, and `physics_flags` — `docs/USER_GUIDE.md` (repository root).
 
+// Mission-readiness enforcement (Tranche R finding F-2, docs/RUST_MISSION_READY.md): the crate is
+// unsafe-free by construction, and library (non-test) code must justify panics — prefer `Result`
+// or an invariant-documented `expect`.
+#![forbid(unsafe_code)]
+#![cfg_attr(not(test), warn(clippy::unwrap_used))]
+
 pub mod ccsds;
 pub mod config;
 pub mod hil_tm;

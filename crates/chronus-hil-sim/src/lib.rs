@@ -16,6 +16,9 @@
 //! for a bounded window of frame indices so the gateway’s **CV-4 / CV-5** checks set `physics_flags`
 //! bits **4–6** — useful for repeatable alarm demos without editing replay fixtures.
 
+// Unsafe-free by construction (gateway Tranche R finding F-2).
+#![forbid(unsafe_code)]
+
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 

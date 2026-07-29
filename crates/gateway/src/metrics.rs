@@ -14,6 +14,11 @@ pub struct GatewayMetrics {
     pub telemetry_parse_errors: AtomicU64,
     /// Frames with non-zero [`crate::ccsds::TelemetryFrame::physics_flags`].
     pub anomaly_frames: AtomicU64,
+    /// Per-frame propagator failures: the frame was emitted **without** physics fields (F-4).
+    /// A rising rate with tracking configured usually means a stale TLE outside SGP4 validity.
+    pub tracking_errors: AtomicU64,
+    /// Frames dropped because JSON serialization failed (F-3; expected to stay at zero).
+    pub serialize_errors: AtomicU64,
     /// WebSocket text messages successfully sent to clients.
     pub ws_messages_sent: AtomicU64,
     /// Sum of processing latency (receive → JSON ready) in milliseconds.
@@ -31,6 +36,8 @@ impl GatewayMetrics {
             telemetry_frames_emitted: self.telemetry_frames_emitted.load(Ordering::Relaxed),
             telemetry_parse_errors: self.telemetry_parse_errors.load(Ordering::Relaxed),
             anomaly_frames: self.anomaly_frames.load(Ordering::Relaxed),
+            tracking_errors: self.tracking_errors.load(Ordering::Relaxed),
+            serialize_errors: self.serialize_errors.load(Ordering::Relaxed),
             ws_messages_sent: self.ws_messages_sent.load(Ordering::Relaxed),
             processing_latency_ms_sum: self.processing_latency_ms_sum.load(Ordering::Relaxed),
             processing_latency_ms_count: self.processing_latency_ms_count.load(Ordering::Relaxed),
@@ -45,6 +52,8 @@ pub struct GatewayMetricsSnapshot {
     pub telemetry_frames_emitted: u64,
     pub telemetry_parse_errors: u64,
     pub anomaly_frames: u64,
+    pub tracking_errors: u64,
+    pub serialize_errors: u64,
     pub ws_messages_sent: u64,
     pub processing_latency_ms_sum: u64,
     pub processing_latency_ms_count: u64,

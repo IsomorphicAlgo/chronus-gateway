@@ -3,6 +3,8 @@
 //! Positional: `[DEST] [FRAMES]` — UDP destination and packet count (defaults `127.0.0.1:7301`, `100`).
 //! Optional **scripted anomaly** (Showcase S3): inject synthetic CV-4/CV-5 faults for a bounded frame window.
 
+#![forbid(unsafe_code)]
+
 use std::net::SocketAddr;
 
 use anyhow::Context;

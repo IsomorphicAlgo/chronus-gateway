@@ -116,7 +116,7 @@ async fn oversized_datagram_does_not_break_loop() {
     let valid = [0x42u8; 4];
     client.send(&valid).await.expect("send valid");
 
-    // Drain until we observe the valid payload (on Unix the oversized one is truncated and may
+    // Drain until the valid payload is observed (on Unix the oversized one is truncated and may
     // appear first; on Windows it is dropped via WSAEMSGSIZE). Either way the loop survives.
     let mut saw_valid = false;
     for _ in 0..4 {

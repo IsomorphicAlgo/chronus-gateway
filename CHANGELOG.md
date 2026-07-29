@@ -6,6 +6,24 @@ the Ephemerust backend); a `1.0.0` release is reserved for a deliberately commit
 Versions cover all three workspace crates (`chronus-gateway`, `chronus-hil-sim`,
 `chronus-replay`), which share one version via `[workspace.package]`.
 
+## 0.1.2 — 2026-07-29
+
+Finalization **Tranche C** — housekeeping + Tranche R findings (F-1…F-5 all landed). Compatible
+changes only; the metrics JSON gains two additive fields.
+
+- **Hardening (F-1, F-2):** `TrackingProvider`'s throttle-cache lock is now poison-tolerant
+  (`PoisonError::into_inner`) with the invariant documented; `#![forbid(unsafe_code)]` added to
+  **all five crate roots** and `#![cfg_attr(not(test), warn(clippy::unwrap_used))]` to the gateway
+  library — CI's `-D warnings` makes both enforced, and the workspace passes with zero violations.
+- **Observability (F-3, F-4):** new `GatewayMetrics` counters exposed at
+  `/api/v1/chronus/metrics` — `serialize_errors` (JSON-encode drop path, expected zero) and
+  `tracking_errors` (per-frame propagator failures, distinguishing "physics off" from "physics
+  failing", e.g. a stale TLE outside SGP4 validity).
+- **Housekeeping (C.1–C.4):** comment-voice pass (one first-person test comment reworded; zero
+  `TODO`/`FIXME`/`HACK` in `crates/`); module docs verified against `lib.rs` layout; `cargo
+  package` listings re-verified clean of demo/showcase paths. Tranche R gate approved; findings
+  dispositions updated in [`docs/RUST_MISSION_READY.md`](docs/RUST_MISSION_READY.md).
+
 ## 0.1.1 — 2026-07-29
 
 Finalization **Tranche R** — mission-readiness review (Rust-strengths audit). Documentation and

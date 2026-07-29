@@ -351,7 +351,7 @@ dependencies = [
 
 [[package]]
 name = "chronus-gateway"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -378,7 +378,7 @@ dependencies = [
 
 [[package]]
 name = "chronus-hil-sim"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -394,7 +394,7 @@ dependencies = [
 
 [[package]]
 name = "chronus-replay"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "clap",

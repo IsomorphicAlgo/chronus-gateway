@@ -86,6 +86,8 @@ pub struct TelemetryFrame {
 impl TelemetryFrame {
     /// The packet data field (secondary header + user data), borrowed zero-copy.
     pub fn payload(&self) -> &[u8] {
+        // Invariant (F-5): `parse_telemetry` only constructs a frame after verifying
+        // `raw.len() >= CCSDS_PRIMARY_HEADER_LEN + payload_len`, so this index cannot panic.
         &self.raw[CCSDS_PRIMARY_HEADER_LEN..CCSDS_PRIMARY_HEADER_LEN + self.payload_len]
     }
 

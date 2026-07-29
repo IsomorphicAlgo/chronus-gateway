@@ -470,7 +470,9 @@ lock — **accepted** as a justified lock pending F-1 poison-tolerance; Criterio
 `chronus-0.1.x-2026-07-29` saved (`parse_telemetry` ≈ 17 ns, `apply_physics_validation` ≈ 15 ns).
 **Why:** The review gate exists to convert "Rust is mission-ready" from marketing into an
 auditable inventory with dispositions — same honesty bar as the tolerance register.
-**Gate:** Owner sign-off pending on findings + Tranche C scheduling.
+**Gate:** Approved 2026-07-29 — owner directed Tranche C execution; all five dispositions landed
+in **0.1.2** (plan **C.0**), including `#![forbid(unsafe_code)]` on every crate root and the
+scoped `clippy::unwrap_used` lint on the gateway library.
 
 ---
 

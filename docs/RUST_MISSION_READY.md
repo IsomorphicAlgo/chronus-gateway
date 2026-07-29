@@ -20,12 +20,12 @@ not claims. Findings from the review are listed at the bottom; fixes land via
 
 | # | Finding | Disposition |
 |---|---------|-------------|
-| F-1 | `TrackingProvider::tracking_state` calls `.expect("tracking cache mutex poisoned")` twice on the per-frame path. Poisoning requires a panic *while holding the lock*; both critical sections only read/write a `Copy` value, so it is unreachable in practice — but it is still a panic-capable call on the hot path. | Tranche C: make poison-tolerant (`unwrap_or_else(PoisonError::into_inner)`) or document the invariant at the call sites. |
-| F-2 | Zero `unsafe` exists, but nothing *enforces* that (no `#![forbid(unsafe_code)]`). | Tranche C: add `#![forbid(unsafe_code)]` to all three crates; consider scoped `clippy::unwrap_used` for `src/` (tests exempt). |
-| F-3 | `process_frame` drops a frame on `serde_json::to_string(...).ok()?` with no counter. Serialization of `OpenMctRealtimeMessageV1` is practically infallible, but this is the one drop path without a metric. | Tranche C: count it or document why not. |
-| F-4 | Per-frame propagator errors degrade silently (`tracking_state(...).ok()`): frames flow without physics fields, by design — but **no counter** distinguishes "physics off" from "physics failing" (e.g. stale TLE out of SGP4 validity). | Tranche C: add a `tracking_errors` counter (and/or rate-limited warn) so operators can see it in `/metrics`. |
-| F-5 | `TelemetryFrame::payload()` uses slice indexing — panic-capable in principle, but the constructor bounds-check (`parse_telemetry` length validation) makes the invariant airtight. | Accept: add an invariant comment at the index site (Tranche C, cosmetic). |
+| F-1 | `TrackingProvider::tracking_state` calls `.expect("tracking cache mutex poisoned")` twice on the per-frame path. Poisoning requires a panic *while holding the lock*; both critical sections only read/write a `Copy` value, so it is unreachable in practice — but it is still a panic-capable call on the hot path. | **Landed 0.1.2:** poison-tolerant `unwrap_or_else(PoisonError::into_inner)` with the invariant documented at the method (`propagator.rs`). |
+| F-2 | Zero `unsafe` exists, but nothing *enforces* that (no `#![forbid(unsafe_code)]`). | **Landed 0.1.2:** `#![forbid(unsafe_code)]` on all five crate roots (both libs + all three binaries); `#![cfg_attr(not(test), warn(clippy::unwrap_used))]` on the gateway library — CI's `-D warnings` promotes it to an error for non-test code. |
+| F-3 | `process_frame` drops a frame on `serde_json::to_string(...).ok()?` with no counter. Serialization of `OpenMctRealtimeMessageV1` is practically infallible, but this is the one drop path without a metric. | **Landed 0.1.2:** `GatewayMetrics::serialize_errors` counter + warn log (`http.rs`, `metrics.rs`). |
+| F-4 | Per-frame propagator errors degrade silently (`tracking_state(...).ok()`): frames flow without physics fields, by design — but **no counter** distinguishes "physics off" from "physics failing" (e.g. stale TLE out of SGP4 validity). | **Landed 0.1.2:** `GatewayMetrics::tracking_errors` counter (visible in `/api/v1/chronus/metrics`) + debug log; counter chosen over per-frame warn to avoid log spam at frame rate. |
+| F-5 | `TelemetryFrame::payload()` uses slice indexing — panic-capable in principle, but the constructor bounds-check (`parse_telemetry` length validation) makes the invariant airtight. | **Landed 0.1.2:** invariant comment at the index site (`ccsds.rs`). |
 
-**Verdict:** the architecture already walks the mission-critical walk — the findings are hardening
-and observability polish, not design flaws. All test/lint/bench gates were green at review time
-(v0.1.1, edition 2024, Ephemerust 0.7).
+**Verdict:** the architecture already walks the mission-critical walk — the findings were hardening
+and observability polish, not design flaws. All five dispositions landed in **0.1.2** (Tranche C.0)
+with tests and clippy — including the new enforcement lints — green.

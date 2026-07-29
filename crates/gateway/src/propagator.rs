@@ -204,9 +204,17 @@ impl TrackingProvider {
     }
 
     /// Returns the tracking state at `time`, served from cache when within the throttle window.
+    ///
+    /// Poison-tolerant locking (**F-1**, `docs/RUST_MISSION_READY.md`): both critical sections
+    /// only read/write a `Copy` value, so a panic while holding the lock is unreachable — but if
+    /// one ever occurred, the cache content would still be a valid (at worst stale) state, so the
+    /// poison flag is safely ignored rather than panicking the telemetry hot path.
     pub fn tracking_state(&self, time: DateTime<Utc>) -> Result<TrackingState> {
         {
-            let cache = self.last.lock().expect("tracking cache mutex poisoned");
+            let cache = self
+                .last
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some((cached_at, state)) = cache.as_ref()
                 && (time - *cached_at).num_milliseconds().abs() < self.min_interval_ms
             {
@@ -215,7 +223,10 @@ impl TrackingProvider {
         }
         // Compute outside the lock so SGP4 work never serializes other callers.
         let state = self.propagator.tracking_state(time)?;
-        let mut cache = self.last.lock().expect("tracking cache mutex poisoned");
+        let mut cache = self
+            .last
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *cache = Some((time, state));
         Ok(state)
     }

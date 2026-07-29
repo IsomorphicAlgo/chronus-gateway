@@ -6,6 +6,8 @@
 //!
 //! **Credit:** [`clap`](https://crates.io/crates/clap), [`tokio`](https://crates.io/crates/tokio), [`anyhow`](https://crates.io/crates/anyhow), [`serde_json`](https://crates.io/crates/serde_json) — see repository `README.md` § Acknowledgements.
 
+#![forbid(unsafe_code)]
+
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
