@@ -6,6 +6,14 @@ the Ephemerust backend); a `1.0.0` release is reserved for a deliberately commit
 Versions cover all three workspace crates (`chronus-gateway`, `chronus-hil-sim`,
 `chronus-replay`), which share one version via `[workspace.package]`.
 
+## 0.1.4 — 2026-07-29
+
+crates.io discoverability polish. No code changes.
+
+- **Keywords + categories** added to all three crate manifests (e.g. `ccsds`, `telemetry`,
+  `sgp4`, `hil`; categories under `aerospace::*`, `network-programming`, `simulation`,
+  `development-tools::testing`) so the crates surface in crates.io keyword and category browsing.
+
 ## 0.1.3 — 2026-07-29
 
 Finalization **Tranche D** — crates.io release mechanics. No code changes.

@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "NeXosim HIL driver: synthetic spacecraft telemetry as CCSDS TM over UDP (Milestone 7)"
+# crates.io discoverability (max 5 keywords; categories from the official slug list).
+keywords = ["hil", "simulation", "ccsds", "telemetry", "spacecraft"]
+categories = ["aerospace::simulation", "simulation"]
 exclude = ["demo", "showcase"]
 
 [[bin]]

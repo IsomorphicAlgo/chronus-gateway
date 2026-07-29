@@ -10,6 +10,9 @@ description = "Fast Rust TMTC gateway: CCSDS ingest, physics co-validation (Ephe
 # Packaged into the tarball root as README.md; crates.io renders it (relative links resolve
 # against `repository`). See finalization plan D.3.
 readme = "../../README.md"
+# crates.io discoverability (max 5 keywords; categories from the official slug list).
+keywords = ["ccsds", "telemetry", "sgp4", "aerospace", "gateway"]
+categories = ["aerospace", "aerospace::space-protocols", "network-programming"]
 # Showcase/demo assets must live at workspace root (`demo/`), not here — defensive if paths appear
 # inside this crate directory (`Methodology.md` D-025).
 exclude = ["demo", "showcase"]
