@@ -6,17 +6,17 @@ silently rewrite history (mark superseded entries). Required reading + maintenan
 contributor expectations in `README.md` (keep this file current when decisions change).
 
 > Status: **M1–M8** complete. **CV-0** charter is documented in
-> [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md) and **D-016**; **Gate CV-0** is approved.
+> `docs/EXTENDED_COVALIDATION_PLAN.md` (now consolidated into the maintainer's local `PLANS.md`, not part of this repository) and **D-016**; **Gate CV-0** is approved.
 > **Gate CV-2** is approved; **CV-3** (synthetic HIL TM v1 payload + decoder + APID policy) is **implemented** — **Gate CV-3** approved.
 > **CV-4** (HIL subsystem vs toy Sun proxy) is **implemented** — **Gate CV-4** approved.
 > **CV-5** (HIL ADCS body-rate envelope) is **implemented** — **Gate CV-5** pending owner sign-off.
-> **Showcase track (S0–S4):** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) + [`docs/Demo_Test.md`](docs/Demo_Test.md); **Gate S-0** through **Gate S-4** approved (2026-06-19). **S3:** `chronus-replay`, scripted `chronus-hil-sim`, `demo/replay/`. **S4:** `demo/fixtures/` (ISS + AMSAT).
+> **Showcase track (S0–S4):** `docs/SHOWCASE_PLAN.md` (now in local `PLANS.md`) + [`docs/Demo_Test.md`](docs/Demo_Test.md); **Gate S-0** through **Gate S-4** approved (2026-06-19). **S3:** `chronus-replay`, scripted `chronus-hil-sim`, `demo/replay/`. **S4:** `demo/fixtures/` (ISS + AMSAT).
 > **Manual demo path (finalization A.5):** [`docs/DEMO.md`](docs/DEMO.md) ↔ [`docs/Demo_Test.md`](docs/Demo_Test.md) runbook alignment — **D-033**.
-> **Secondary testing** (optional pre-release depth): [`TEST_PLAN.md`](TEST_PLAN.md) + **D-029** (`cargo-mutants`, `cargo-hack` when features exist, Miri scope, Loom deferred).
-> **Release rehearsal** (`cargo package`): [`TEST_PLAN.md`](TEST_PLAN.md) — **§ Release rehearsal**; **`chronus-replay`** full package verified; gateway/HIL gated on Ephemerust crates.io (**D-005** / **E.2**).
-> **Criterion / benches:** [`TEST_PLAN.md`](TEST_PLAN.md) — **§ Performance regression guard**; optional **`bench`** workflow (**D-030**); PR CI stays **`cargo bench --no-run`** only.
-> **Cross-target smoke:** [`TEST_PLAN.md`](TEST_PLAN.md) — **§ Cross-target smoke (Linux publish shape)**; reference **`x86_64-unknown-linux-gnu`** via **`ci.yml`** on `ubuntu-latest` (**D-031**).
-> **Finalization Tranche A:** secondary testing + release rehearsal + cross-target smoke + manual demo alignment — **complete** (**A.1–A.5**, **D-033**). **Tranche B.1** README narrative — **complete** (**D-034**). **Tranche B.2** acknowledgments audit — **complete** (**D-035**). **Tranche B.3** operator doc split — **complete** (**D-036**). Next: **B.4** ([`PROJECT_FINALIZATION_PLAN.md`](PROJECT_FINALIZATION_PLAN.md)).
+> **Secondary testing** (optional pre-release depth): `TEST_PLAN.md` (now in local `PLANS.md`) + **D-029** (`cargo-mutants`, `cargo-hack` when features exist, Miri scope, Loom deferred).
+> **Release rehearsal** (`cargo package`): `TEST_PLAN.md` — **§ Release rehearsal**; **`chronus-replay`** full package verified; gateway/HIL gated on Ephemerust crates.io (**D-005** / **E.2**).
+> **Criterion / benches:** `TEST_PLAN.md` — **§ Performance regression guard**; optional **`bench`** workflow (**D-030**); PR CI stays **`cargo bench --no-run`** only.
+> **Cross-target smoke:** `TEST_PLAN.md` — **§ Cross-target smoke (Linux publish shape)**; reference **`x86_64-unknown-linux-gnu`** via **`ci.yml`** on `ubuntu-latest` (**D-031**).
+> **Finalization Tranche A:** secondary testing + release rehearsal + cross-target smoke + manual demo alignment — **complete** (**A.1–A.5**, **D-033**). **Tranche B.1** README narrative — **complete** (**D-034**). **Tranche B.2** acknowledgments audit — **complete** (**D-035**). **Tranche B.3** operator doc split — **complete** (**D-036**). Next: **B.4** (`PROJECT_FINALIZATION_PLAN.md`, now in local `PLANS.md`).
 
 ---
 
@@ -162,7 +162,7 @@ state, counting-mock trait-swap + throttle).
   `rx_gain_dbi`, slant range, and carrier wavelength; if `|P_{rx,\mathrm{meas}} - P_{rx,\mathrm{pred}}| >`
   `link_budget_tolerance_db` (default **3 dB**, **T-RSSI**), set **`FLAG_LINK_BUDGET_ANOMALY`**
   (same value as legacy **`FLAG_RSSI_RESERVED`**). `None` measured power skips the check.
-  **Charter:** bits 3–7 remain per **D-016** / [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md).
+  **Charter:** bits 3–7 remain per **D-016** / `docs/EXTENDED_COVALIDATION_PLAN.md` (now in local `PLANS.md`).
 - **`RfMetadata::measured_carrier_hz == None`:** Doppler check skipped (no bit 0); production SDR
   wiring comes with M5 or a side channel.
 **Why OD-C is closed:** Ephemerust documents `range_rate_km_s` to ~0.25 km/s vs a 1 s central
@@ -213,7 +213,7 @@ config only (TLE files remain subject to `max_datagram_size` on the UDP path, un
 
 ### D-016 — Extended co-validation charter (CV-0; `physics_flags`, `RfMetadata`, tolerances)
 **Decision:** Freeze contracts for post-M4 co-validation work (**CV-1…CV-5** in
-[`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md)). This entry **supplements**
+`docs/EXTENDED_COVALIDATION_PLAN.md`, now in local `PLANS.md`). This entry **supplements**
 D-012; it does not change shipped Doppler/elevation behavior. **CV-1** implements bit 2; **CV-2** implements bit 3; **CV-4** implements bits 4–5; **CV-5** implements bit 6 per this charter.
 
 **`physics_flags` (u8) — bit assignment**
@@ -346,7 +346,7 @@ publishable crates set **`[package] exclude = ["demo", "showcase"]`** so those d
 dropped if mistakenly created under the crate folder.
 **Why:** `cargo publish` only packages the crate directory; keeping demos out of `crates/*` avoids
 bloat, accidental IP drift, and confusion for dependents who only need the gateway API/binary.
-**Companion:** [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) → *Crates.io vs showcase distribution*.
+**Companion:** `docs/SHOWCASE_PLAN.md` (now in local `PLANS.md`) → *Crates.io vs showcase distribution*.
 
 **Addendum (Showcase S1 — Docker):** [`demo/Dockerfile`](demo/Dockerfile) originally cloned
 **IsomorphicAlgo/Ephemerust** at image build time to satisfy the D-005 sibling path. Since **D-037**
@@ -372,17 +372,17 @@ per **D-025**. CI uses **Node 22 LTS** and runs `npm install && npm run build` t
 **Limits:** Does not set Doppler / RSSI / pointing bits (**0–3**); those still require measured RF fields in [`RfMetadata`](crates/gateway/src/validate.rs) if we extend the ingest path later.
 
 ### D-029 — Secondary testing charter (mutation, feature matrix, Miri, Loom)
-**Decision:** Charter **optional** depth checks in [`TEST_PLAN.md`](TEST_PLAN.md) under **Secondary testing plan**: [`cargo-mutants`](https://mutants.rs/), [`cargo-hack`](https://github.com/taiki-e/cargo-hack) when `[features]` exist, **`cargo miri`** on a scoped subset (library tests first), and **Loom** only if bespoke atomics/lock-free code appears. **`cargo test`** remains the **primary** stage-gate; secondary tools are **pre-release / periodic** until explicitly promoted to required CI.
+**Decision:** Charter **optional** depth checks in `TEST_PLAN.md` (now in local `PLANS.md`) under **Secondary testing plan**: [`cargo-mutants`](https://mutants.rs/), [`cargo-hack`](https://github.com/taiki-e/cargo-hack) when `[features]` exist, **`cargo miri`** on a scoped subset (library tests first), and **Loom** only if bespoke atomics/lock-free code appears. **`cargo test`** remains the **primary** stage-gate; secondary tools are **pre-release / periodic** until explicitly promoted to required CI.
 **Why:** Strengthens confidence before crates.io and public discussion without inflating every PR’s latency or flaking on environment-specific Miri/mutants runs.
 **CI:** Optional `workflow_dispatch` / scheduled jobs are listed in `TEST_PLAN.md`; promotion to required checks needs a new Methodology note.
 
 ### D-030 — Performance regression guard (Criterion baselines + optional bench workflow)
-**Decision:** Document **local** Criterion **baseline save/compare** in [`TEST_PLAN.md`](TEST_PLAN.md) under **Performance regression guard (Criterion)**; keep PR CI at **`cargo bench --no-run`** (compile-only) per existing [`ci.yml`](.github/workflows/ci.yml). Add optional [`.github/workflows/bench.yml`](.github/workflows/bench.yml) on **`workflow_dispatch`** that runs **`cargo bench -p chronus-gateway`** and uploads the **HTML** report from **`target/criterion/report`** as an artifact.
+**Decision:** Document **local** Criterion **baseline save/compare** in `TEST_PLAN.md` (now in local `PLANS.md`) under **Performance regression guard (Criterion)**; keep PR CI at **`cargo bench --no-run`** (compile-only) per existing [`ci.yml`](.github/workflows/ci.yml). Add optional [`.github/workflows/bench.yml`](.github/workflows/bench.yml) on **`workflow_dispatch`** that runs **`cargo bench -p chronus-gateway`** and uploads the **HTML** report from **`target/criterion/report`** as an artifact.
 **Why:** Gives the owner a repeatable **pre-release** comparison on a **reference machine** without turning noisy full benches into a merge blocker. Shared runners are unsuitable for strict regression thresholds.
 **Credit:** **Criterion** ([user guide / book](https://bheisler.github.io/criterion.rs/book/criterion_rs.html)) — same crate as M6 benches.
 
 ### D-031 — Cross-target smoke (`x86_64-unknown-linux-gnu` publish shape)
-**Decision:** Treat **`x86_64-unknown-linux-gnu`** on GitHub Actions **`ubuntu-latest`** as the **reference publish shape** for pre-crates.io verification. Document commands and pass criteria in [`TEST_PLAN.md`](TEST_PLAN.md) under **Cross-target smoke (Linux publish shape)**. The existing **`test`** job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (`cargo test`, clippy, `cargo bench --no-run`, audit/deny, demo Compose + dashboard build) is the **canonical** recorded Linux build; optional local reproduction via **WSL2** uses the same triple without the Windows-only **`rust-lld`** linker override (**D-008**).
+**Decision:** Treat **`x86_64-unknown-linux-gnu`** on GitHub Actions **`ubuntu-latest`** as the **reference publish shape** for pre-crates.io verification. Document commands and pass criteria in `TEST_PLAN.md` (now in local `PLANS.md`) under **Cross-target smoke (Linux publish shape)**. The existing **`test`** job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (`cargo test`, clippy, `cargo bench --no-run`, audit/deny, demo Compose + dashboard build) is the **canonical** recorded Linux build; optional local reproduction via **WSL2** uses the same triple without the Windows-only **`rust-lld`** linker override (**D-008**).
 **Why:** Downstream consumers and crates.io CI overwhelmingly build on Linux; the owner’s MSVC **`link.exe`** policy is host-specific and must not be mistaken for publish requirements. One documented non-Windows target satisfies finalization plan **A.4** without adding a second mandatory workflow.
 **Exit:** Green **`ci.yml`** `test` on `ubuntu-latest` before first publish; no extra artifact beyond CI run history.
 

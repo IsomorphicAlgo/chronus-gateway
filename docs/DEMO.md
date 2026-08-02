@@ -194,4 +194,4 @@ Use **synthetic** HIL traffic and **public reference** TLE defaults for public d
 
 ---
 
-*Companion: [`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md) (S0–S4), [`Demo_Test.md`](Demo_Test.md) (acceptance ↔ this runbook).*
+*Companion: `SHOWCASE_PLAN.md` (S0–S4, now in the maintainer's local `PLANS.md`), [`Demo_Test.md`](Demo_Test.md) (acceptance ↔ this runbook).*

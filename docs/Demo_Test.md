@@ -1,7 +1,8 @@
 # ChronusGateway-RS — Demo & Showcase Acceptance
 
-**Companion:** [`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md) (iterative, **owner-gated** roadmap),
-[`TEST_PLAN.md`](../TEST_PLAN.md) (checkbox gates S0–S4). Operator runbook: [`DEMO.md`](DEMO.md).
+**Companion:** `SHOWCASE_PLAN.md` (iterative, **owner-gated** roadmap) and `TEST_PLAN.md` (checkbox
+gates S0–S4) — both now consolidated into the maintainer's local `PLANS.md` (not part of this
+repository). Operator runbook: [`DEMO.md`](DEMO.md).
 
 This document holds **manual and semi-automated acceptance** for showcase work. It is **not** a
 replacement for `cargo test` on the gateway library — it defines what “demo-ready” means for each
@@ -42,13 +43,13 @@ aligned with `DEMO.md` paths, ports, and commands (recorded in **`Methodology.md
 
 **Procedure**
 
-1. Confirm [`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md) lists S0–S4 and governance matches `BUILD_PLAN` style.
-2. Confirm [`TEST_PLAN.md`](../TEST_PLAN.md) includes **Showcase tracks** with S0–S4 headings (anchors for links).
+1. Confirm `SHOWCASE_PLAN.md` (local `PLANS.md`) lists S0–S4 and governance matches `BUILD_PLAN` style.
+2. Confirm `TEST_PLAN.md` (local `PLANS.md`) includes **Showcase tracks** with S0–S4 headings (anchors for links).
 3. Confirm this file (`Demo_Test.md`) exists and is linked from [`README.md`](../README.md).
 
 **Pass:** All three confirmed; owner records **Gate S-0** approval in `SHOWCASE_PLAN.md` / project notes.
 
-**Status:** **Gate S-0** approved 2026-06-04 — proceed to S1 per [`SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md).
+**Status:** **Gate S-0** approved 2026-06-04 — proceed to S1 per `SHOWCASE_PLAN.md`.
 
 ---
 

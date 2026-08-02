@@ -1,4 +1,5 @@
-# Optional Criterion run — manual dispatch only (not a PR gate). See TEST_PLAN.md → Performance regression guard.
+# Optional Criterion run — manual dispatch only (not a PR gate). Rationale in the maintainer's
+# local test plan (PLANS.md, not part of this repository) → Performance regression guard.
 name: Benchmark
 
 on:

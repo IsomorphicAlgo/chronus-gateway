@@ -27,3 +27,7 @@ demo/dashboard/.env.local
 
 Personal/
 personal.md
+
+# Combined local planning doc (merged from the former BUILD_PLAN / EXTENDED_COVALIDATION_PLAN /
+# SHOWCASE_PLAN / TEST_PLAN / PROJECT_FINALIZATION_PLAN files; not distributed via git)
+PLANS.md

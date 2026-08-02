@@ -12,4 +12,4 @@ When this Track A item is picked up, expected artifacts here (or in a sibling re
   **telemetry objects** and **limits** driven by `physics_flags`.
 - Documented Open MCT **release tag** and install steps pinned in [`../../docs/DEMO.md`](../../docs/DEMO.md).
 
-Companion plan: [`../../docs/SHOWCASE_PLAN.md`](../../docs/SHOWCASE_PLAN.md) §S2.
+Companion plan: the maintainer's local `PLANS.md` (formerly `docs/SHOWCASE_PLAN.md`, not part of this repository) §S2.

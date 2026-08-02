@@ -53,7 +53,7 @@ example Open MCT).
 
 ## First run — see it working on your laptop
 
-This section tracks **Milestone 8** in [`docs/BUILD_PLAN.md`](BUILD_PLAN.md): file-backed config
+This section tracks **Milestone 8** in `docs/BUILD_PLAN.md` (now consolidated into the maintainer's local `PLANS.md`, not part of this repository): file-backed config
 exists, but you can still start with **built-in defaults** (same numbers the project used before
 TOML landed).
 
@@ -166,12 +166,12 @@ mission is healthy — it only means **this gateway** did not flag those specifi
 
 If you ever need **more than eight** independent alarms, the project charter says to add a **new
 field** (for example `physics_flags_v2`) in the JSON contract — **not** to silently repurpose bit
-**7**. See **`Methodology.md` D-016** and [`docs/EXTENDED_COVALIDATION_PLAN.md`](EXTENDED_COVALIDATION_PLAN.md).
+**7**. See **`Methodology.md` D-016** and `docs/EXTENDED_COVALIDATION_PLAN.md` (now in local `PLANS.md`).
 
 ### Where the numbers come from
 
 The **`T-*`** names (**T-DOPPLER**, **T-RSSI**, **T-POINT**, **T-EPS**, **T-THERMAL**,
-**T-BODYRATE**) are the **tolerance register** in [`TEST_PLAN.md`](../TEST_PLAN.md). When you tune
+**T-BODYRATE**) are the **tolerance register** in `TEST_PLAN.md` (now in local `PLANS.md`). When you tune
 a station or argue about pass/fail in test or ops, that table is the shared vocabulary.
 
 ---
@@ -183,13 +183,11 @@ the same milestones and tolerances the project tests against:
 
 | When you want to… | Start here |
 |-------------------|------------|
-| Understand **what was built in which order** and what “done” means per stage | [`docs/BUILD_PLAN.md`](BUILD_PLAN.md) |
-| See **what is tested**, **default tolerances** (T-DOPPLER, T-RSSI, …), and test commands | [`TEST_PLAN.md`](../TEST_PLAN.md) |
-| Read the **extended co-validation** story after M8 (CV milestones, flags, charter) | [`docs/EXTENDED_COVALIDATION_PLAN.md`](EXTENDED_COVALIDATION_PLAN.md) |
+| Understand **what was built in which order**, what's tested, and the extended co-validation / showcase roadmap | Maintainer's local `PLANS.md` (not part of this repository) |
 | Run the **NeXosim HIL** driver and interpret gateway metrics during a soak | [`docs/HIL.md`](HIL.md) |
 | Run a **repeatable demo** (native, Docker, replay, S4 fixtures) | [`docs/DEMO.md`](DEMO.md) |
 | Use the **Vite demo dashboard** (live `physics_flags` + geometry) | [`demo/dashboard/README.md`](../demo/dashboard/README.md), [`docs/DEMO.md`](DEMO.md) Path C |
-| Plan **portfolio demos** (Compose, dashboard, replay) and manual acceptance gates | [`docs/SHOWCASE_PLAN.md`](SHOWCASE_PLAN.md), [`docs/Demo_Test.md`](Demo_Test.md) |
+| Manual acceptance gates for showcase stages | [`docs/Demo_Test.md`](Demo_Test.md) |
 | Understand **why** a major choice was made (dependencies, seams, deferrals) | [`Methodology.md`](../Methodology.md) |
 | Configure a real run (bind addresses, station, TLE path) | [`gateway.example.toml`](../gateway.example.toml), `--config` / `-c`, and `CHRONUS_GATEWAY_CONFIG` (see **First run** above) |
 

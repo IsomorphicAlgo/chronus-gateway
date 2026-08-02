@@ -30,4 +30,4 @@ Then `curl http://127.0.0.1:8080/health` and open `ws://127.0.0.1:8080/telemetry
 ## Separate download (future)
 
 Optional **GitHub Release** zip containing only `demo/**` + pointers to crates.io — see
-*Crates.io vs showcase distribution* in [`../docs/SHOWCASE_PLAN.md`](../docs/SHOWCASE_PLAN.md).
+*Crates.io vs showcase distribution* in the maintainer's local `PLANS.md` (formerly `docs/SHOWCASE_PLAN.md`, not part of this repository).

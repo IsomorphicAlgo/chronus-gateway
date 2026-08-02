@@ -10,7 +10,9 @@ description = "NeXosim HIL driver: synthetic spacecraft telemetry as CCSDS TM ov
 # crates.io discoverability (max 5 keywords; categories from the official slug list).
 keywords = ["hil", "simulation", "ccsds", "telemetry", "spacecraft"]
 categories = ["aerospace::simulation", "simulation"]
-exclude = ["demo", "showcase"]
+# PLANS.md is local-only (gitignored) and already lives outside this crate dir; excluded here too
+# as a defensive no-op, same as the demo/showcase guards (`Methodology.md` D-025).
+exclude = ["demo", "showcase", "PLANS.md"]
 
 [[bin]]
 name = "chronus-hil-sim"

@@ -1,6 +1,7 @@
 # CI: tests, clippy, supply-chain gates. Ephemerust comes from crates.io (see Methodology
 # D-037); no sibling checkout is needed anymore.
-# Cross-target smoke (x86_64-unknown-linux-gnu publish shape): TEST_PLAN.md → Cross-target smoke; D-031.
+# Cross-target smoke (x86_64-unknown-linux-gnu publish shape): rationale in the maintainer's local
+# test plan (PLANS.md, not part of this repository) → Cross-target smoke; D-031.
 #
 # cargo test exits with code 101 when tests fail; compile/link errors use other codes.
 name: CI

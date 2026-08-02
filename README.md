@@ -50,7 +50,7 @@ Instead of trusting every field on the wire, the gateway runs **Physics–Teleme
 
 If a measured carrier (when provided) disagrees with that physics by more than a configured tolerance, the frame is flagged. A static or wrong-frequency spoof does not line up with the live orbital solution.
 
-Extended checks (link budget, pointing residual, synthetic HIL subsystem envelopes) are documented in [`docs/EXTENDED_COVALIDATION_PLAN.md`](docs/EXTENDED_COVALIDATION_PLAN.md).
+Extended checks (link budget, pointing residual, synthetic HIL subsystem envelopes) are documented in the maintainer's local Extended Co-validation Plan (not part of this repository).
 
 
 ---
@@ -59,9 +59,9 @@ Extended checks (link budget, pointing residual, synthetic HIL subsystem envelop
 | Topic | Doc |
 |-------|-----|
 | **Operators** (install, run, alarms) | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — canonical; README links here after the narrative |
-| Demo / Docker / dashboard / replay | [`docs/DEMO.md`](docs/DEMO.md), [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md) |
+| Demo / Docker / dashboard / replay | [`docs/DEMO.md`](docs/DEMO.md) |
 | HIL profiling | [`docs/HIL.md`](docs/HIL.md) |
-| Tests + tolerances | [`TEST_PLAN.md`](TEST_PLAN.md) |
+| Tests + tolerances, showcase stages | Maintained in the maintainer's local plans doc (not part of this repository) |
 | Config file | [`gateway.example.toml`](gateway.example.toml) |
 | Version history | [`CHANGELOG.md`](CHANGELOG.md) — semver policy + `0.1.0` notes |
 
@@ -134,14 +134,15 @@ chronus-gateway/
 │   ├── assets/             Screenshots for README / docs (not in crates.io packages)
 │   ├── DEMO.md             Operator demo runbook (native + Docker + Vite + replay + S4 fixtures)
 │   ├── USER_GUIDE.md       **Operator guide** (first run, `physics_flags`; canonical — README points here)
-│   ├── BUILD_PLAN.md       Iterative, stage-gated implementation roadmap
-│   ├── SHOWCASE_PLAN.md    Owner-gated demo/showcase stages (S0–S4; Docker, dashboard, replay)
-│   ├── Demo_Test.md        Manual acceptance for showcase gates (companion to SHOWCASE_PLAN)
-│   ├── EXTENDED_COVALIDATION_PLAN.md  Post-M8 co-validation milestones (CV-0…CV-5)
+│   ├── Demo_Test.md        Manual acceptance for showcase gates
 │   └── HIL.md              Manual profiling recipe (gateway metrics)
-├── Methodology.md          Decision log: the reasoning behind major choices
-└── TEST_PLAN.md            Companion test plan and tolerance register
+└── Methodology.md          Decision log: the reasoning behind major choices
 ```
+
+Build/test/showcase planning docs (formerly `docs/BUILD_PLAN.md`, `docs/SHOWCASE_PLAN.md`,
+`docs/EXTENDED_COVALIDATION_PLAN.md`, `TEST_PLAN.md`, `PROJECT_FINALIZATION_PLAN.md`) are
+consolidated into a single local `PLANS.md` at the repo root, which is git-ignored and not part of
+this repository.
 
 ### crates.io packages vs this repository
 
@@ -149,7 +150,7 @@ Publishing **`chronus-gateway`** (and **`chronus-hil-sim`**) to [crates.io](http
 the source tree under `crates/<name>/` — not `docs/`, `demo/`, or the root `README.md`. Showcase
 materials should stay under **`demo/`** (or a **GitHub Release zip** / sibling repo) so dependents
 who `cargo add chronus-gateway` get a **lean library/binary** without demo assets. Policy and
-`exclude` guards: [`Methodology.md`](Methodology.md) **D-025**, [`docs/SHOWCASE_PLAN.md`](docs/SHOWCASE_PLAN.md).
+`exclude` guards: [`Methodology.md`](Methodology.md) **D-025**.
 
 ---
 
@@ -186,8 +187,8 @@ Testing is a first-class deliverable. The project follows a layered strategy —
 integration tests over loopback UDP and in-process WebSockets, NeXosim HIL tests in
 `chronus-hil-sim`, doctests, and physics
 co-validation tests with explicitly documented tolerances — enforced at every milestone's stage
-gate. The roadmap lives in `[docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)`; the full strategy and
-per-milestone test matrix are in `[TEST_PLAN.md](TEST_PLAN.md)`.
+gate. The roadmap and full per-milestone test matrix live in the maintainer's local plans doc
+(not part of this repository).
 
 ---
 
