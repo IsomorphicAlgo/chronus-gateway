@@ -53,6 +53,42 @@ impl Default for IngestConfig {
     }
 }
 
+/// Smallest datagram buffer that can hold a CCSDS primary header (6 bytes).
+pub const MIN_DATAGRAM_SIZE: usize = 6;
+/// Upper bound on [`IngestConfig::max_datagram_size`] (1 MiB). Larger values only waste memory:
+/// a single UDP datagram can never exceed ~64 KiB.
+pub const MAX_DATAGRAM_SIZE_LIMIT: usize = 1 << 20;
+
+impl IngestConfig {
+    /// Checks the ingest settings before any socket or channel is created.
+    ///
+    /// This catches values that would otherwise crash the gateway at startup (a zero-capacity
+    /// broadcast channel panics inside Tokio) or silently drop every packet (a receive buffer
+    /// smaller than a CCSDS header).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronus_gateway::config::{ConfigError, IngestConfig};
+    ///
+    /// assert!(IngestConfig::default().validate().is_ok());
+    ///
+    /// let bad = IngestConfig { channel_capacity: 0, ..IngestConfig::default() };
+    /// assert!(matches!(bad.validate(), Err(ConfigError::InvalidChannelCapacity(0))));
+    /// ```
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.channel_capacity == 0 {
+            return Err(ConfigError::InvalidChannelCapacity(self.channel_capacity));
+        }
+        if self.max_datagram_size < MIN_DATAGRAM_SIZE
+            || self.max_datagram_size > MAX_DATAGRAM_SIZE_LIMIT
+        {
+            return Err(ConfigError::InvalidMaxDatagramSize(self.max_datagram_size));
+        }
+        Ok(())
+    }
+}
+
 /// Reference ISS (ZARYA) element set used as the default TLE (valid checksums; epoch ~2020-07-12).
 /// Public reference data only — synthetic/public data per project compliance posture (README).
 pub const DEFAULT_ISS_TLE: &str = "ISS (ZARYA)\n\
@@ -220,6 +256,14 @@ pub enum ConfigError {
     /// HIL CV-5 body-rate ceiling (deg/s) is not a finite positive value.
     #[error("HIL body-rate ceiling {0} deg/s is invalid (expected a finite value > 0)")]
     InvalidHilBodyRateMaxAbs(f64),
+    /// `ingest.channel_capacity` is zero (Tokio's broadcast channel requires at least 1 slot).
+    #[error("channel capacity {0} is invalid (expected at least 1)")]
+    InvalidChannelCapacity(usize),
+    /// `ingest.max_datagram_size` is smaller than a CCSDS header or unreasonably large.
+    #[error(
+        "max datagram size {0} bytes is invalid (expected {MIN_DATAGRAM_SIZE}..={MAX_DATAGRAM_SIZE_LIMIT})"
+    )]
+    InvalidMaxDatagramSize(usize),
     /// A TLE file could not be read.
     #[error("failed to read TLE file {path}: {source}")]
     TleRead {
@@ -235,6 +279,21 @@ impl StationConfig {
     /// Validates the numeric fields and (for inline TLEs) that text is present.
     ///
     /// File-based TLEs are only checked for readability by [`StationConfig::resolve_tle_text`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronus_gateway::config::{ConfigError, StationConfig};
+    /// use chronus_gateway::diagnose::Explain;
+    ///
+    /// assert!(StationConfig::default().validate().is_ok());
+    ///
+    /// let swapped = StationConfig { latitude_deg: -122.3, longitude_deg: 47.6, ..Default::default() };
+    /// let err = swapped.validate().unwrap_err();
+    /// assert!(matches!(err, ConfigError::InvalidLatitude(_)));
+    /// // Every config error can explain itself in plain English.
+    /// assert!(err.explain().cause.contains("swapped"));
+    /// ```
     pub fn validate(&self) -> Result<(), ConfigError> {
         if !self.latitude_deg.is_finite() || !(-90.0..=90.0).contains(&self.latitude_deg) {
             return Err(ConfigError::InvalidLatitude(self.latitude_deg));
@@ -341,12 +400,38 @@ impl StationConfig {
     }
 
     /// Returns `true` if `apid` lies in the configured inclusive **HIL TM v1** synthetic band (**CV-3**).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronus_gateway::config::StationConfig;
+    ///
+    /// let s = StationConfig { hil_tm_v1_apid_min: 0x100, hil_tm_v1_apid_max: 0x10F, ..Default::default() };
+    /// assert!(s.apid_allows_hil_tm_v1(0x100));
+    /// assert!(s.apid_allows_hil_tm_v1(0x10F));
+    /// assert!(!s.apid_allows_hil_tm_v1(0x110));
+    /// ```
     #[must_use]
     pub fn apid_allows_hil_tm_v1(&self, apid: u16) -> bool {
         (self.hil_tm_v1_apid_min..=self.hil_tm_v1_apid_max).contains(&apid)
     }
 
     /// Resolves the configured [`TleSource`] to TLE text (reading the file if necessary).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronus_gateway::config::{ConfigError, StationConfig, TleSource};
+    ///
+    /// let inline = StationConfig::default();
+    /// assert!(inline.resolve_tle_text().unwrap().contains("25544"));
+    ///
+    /// let missing = StationConfig {
+    ///     tle: TleSource::File("no/such/file.tle".into()),
+    ///     ..Default::default()
+    /// };
+    /// assert!(matches!(missing.resolve_tle_text(), Err(ConfigError::TleRead { .. })));
+    /// ```
     pub fn resolve_tle_text(&self) -> Result<String, ConfigError> {
         match &self.tle {
             TleSource::Inline(text) if text.trim().is_empty() => Err(ConfigError::EmptyTle),
@@ -546,5 +631,45 @@ mod tests {
             cfg.resolve_tle_text(),
             Err(ConfigError::TleRead { .. })
         ));
+    }
+
+    #[test]
+    fn default_ingest_is_valid() {
+        IngestConfig::default()
+            .validate()
+            .expect("default ingest validates");
+    }
+
+    #[test]
+    fn zero_channel_capacity_is_rejected_before_tokio_panics() {
+        let cfg = IngestConfig {
+            channel_capacity: 0,
+            ..IngestConfig::default()
+        };
+        assert!(matches!(
+            cfg.validate(),
+            Err(ConfigError::InvalidChannelCapacity(0))
+        ));
+    }
+
+    #[test]
+    fn datagram_size_bounds_are_enforced() {
+        for bad in [0, MIN_DATAGRAM_SIZE - 1, MAX_DATAGRAM_SIZE_LIMIT + 1] {
+            let cfg = IngestConfig {
+                max_datagram_size: bad,
+                ..IngestConfig::default()
+            };
+            assert!(
+                matches!(cfg.validate(), Err(ConfigError::InvalidMaxDatagramSize(v)) if v == bad),
+                "{bad} should be rejected"
+            );
+        }
+        for ok in [MIN_DATAGRAM_SIZE, MAX_DATAGRAM_SIZE_LIMIT] {
+            let cfg = IngestConfig {
+                max_datagram_size: ok,
+                ..IngestConfig::default()
+            };
+            assert!(cfg.validate().is_ok(), "{ok} should be accepted");
+        }
     }
 }

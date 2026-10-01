@@ -205,6 +205,7 @@ pub fn load_gateway_from_path(
         Some(t) => StationConfig::try_from(t)?,
         None => StationConfig::default(),
     };
+    ingest.validate()?;
     station.validate()?;
     let _tle = station.resolve_tle_text()?;
     drop(_tle);
@@ -219,6 +220,7 @@ pub fn load_effective_gateway_config() -> Result<(IngestConfig, StationConfig), 
         None => {
             let ingest = IngestConfig::default();
             let station = StationConfig::default();
+            ingest.validate()?;
             station.validate()?;
             let _ = station.resolve_tle_text()?;
             Ok((ingest, station))
@@ -458,5 +460,30 @@ tle_file = "nope-not-here.tle"
     fn deny_unknown_top_level_key() {
         let bad = "foo = 1\n";
         assert!(toml::from_str::<GatewayToml>(bad).is_err());
+    }
+
+    #[test]
+    fn zero_channel_capacity_in_file_is_a_clear_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let p = dir.path().join("gw.toml");
+        let text = MINIMAL_VALID.replace("channel_capacity = 512", "channel_capacity = 0");
+        std::fs::write(&p, text).expect("write");
+        let err = load_gateway_from_path(&p).unwrap_err();
+        assert!(matches!(
+            err,
+            ConfigLoadError::Station(ConfigError::InvalidChannelCapacity(0))
+        ));
+    }
+
+    #[test]
+    fn missing_config_file_is_an_io_error_with_path() {
+        let err = load_gateway_from_path(Path::new("does/not/exist.toml")).unwrap_err();
+        match err {
+            ConfigLoadError::Io { path, source } => {
+                assert!(path.contains("exist.toml"));
+                assert_eq!(source.kind(), std::io::ErrorKind::NotFound);
+            }
+            other => panic!("expected Io, got {other:?}"),
+        }
     }
 }

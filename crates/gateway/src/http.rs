@@ -6,6 +6,8 @@
 //!   (`chronus_schema: "openmct.realtime.v1"`) suitable for a thin Open MCT plugin or external
 //!   bridge (OD-B: Axum + documented JSON contract).
 //! - `GET /api/v1/chronus/metrics` — combined UDP ingest + gateway counters (Milestone 6).
+//! - `GET /api/v1/chronus/status` — plain-English health report: overall status, a one-line
+//!   headline, and findings with *why* and *how to fix* (see [`crate::diagnose`]).
 //! - `GET /api/v1/chronus/history` — stub (empty); future persistence / query API.
 //! - `GET /api/v1/chronus/openmct/dictionary` — stub dictionary of telemetry point identifiers.
 
@@ -85,6 +87,7 @@ pub fn router(state: Arc<SharedGateway>) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/api/v1/chronus/metrics", get(metrics))
+        .route("/api/v1/chronus/status", get(status))
         .route("/api/v1/chronus/history", get(history_stub))
         .route("/api/v1/chronus/openmct/dictionary", get(dictionary_stub))
         .route("/telemetry/openmct", get(openmct_ws))
@@ -105,6 +108,10 @@ async fn metrics(State(state): State<Arc<SharedGateway>>) -> Json<CombinedMetric
         gateway,
         avg_processing_latency_ms: avg,
     })
+}
+
+async fn status(State(state): State<Arc<SharedGateway>>) -> Json<crate::diagnose::HealthReport> {
+    Json(state.health_report())
 }
 
 async fn history_stub() -> (StatusCode, Json<HistoryStubResponse>) {
@@ -189,11 +196,21 @@ async fn handle_openmct_socket(mut socket: WebSocket, state: Arc<SharedGateway>)
 fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
     let mut tm = match ccsds::parse_telemetry(frame) {
         Ok(tm) => tm,
-        Err(_) => {
-            state
+        Err(e) => {
+            let prior = state
                 .gateway_metrics
                 .telemetry_parse_errors
                 .fetch_add(1, Ordering::Relaxed);
+            // Explain the *first* rejected packet in full; afterwards only count (no log spam).
+            if prior == 0 {
+                tracing::warn!(
+                    "first invalid packet from {}:\n{}",
+                    frame.source,
+                    crate::diagnose::Explain::explain(&e)
+                );
+            } else {
+                tracing::debug!(error = %e, "invalid packet dropped");
+            }
             return None;
         }
     };
@@ -206,11 +223,15 @@ fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
         Some(t) => match t.tracking_state(tm.received_at) {
             Ok(s) => Some(s),
             Err(e) => {
-                state
+                let prior = state
                     .gateway_metrics
                     .tracking_errors
                     .fetch_add(1, Ordering::Relaxed);
-                tracing::debug!(error = %e, "propagator failed; frame emitted without physics fields");
+                if prior == 0 {
+                    tracing::warn!("{}", crate::diagnose::explain_tracking_error(&e));
+                } else {
+                    tracing::debug!(error = %e, "propagator failed; frame emitted without physics fields");
+                }
                 None
             }
         },
@@ -304,4 +325,134 @@ fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
         .processing_latency_ms_count
         .fetch_add(1, Ordering::Relaxed);
     Some(json)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::StationConfig;
+    use crate::ingest::IngestStats;
+    use crate::metrics::GatewayMetrics;
+    use axum::body::{Body, to_bytes};
+    use axum::http::Request;
+    use std::net::SocketAddr;
+    use tokio::sync::broadcast;
+    use tower::ServiceExt;
+
+    fn gateway() -> Arc<SharedGateway> {
+        let (tx, _rx) = broadcast::channel(4);
+        Arc::new(SharedGateway::new(
+            tx,
+            Arc::new(IngestStats::default()),
+            Arc::new(GatewayMetrics::default()),
+            Arc::new(StationConfig::default()),
+            None,
+        ))
+    }
+
+    fn raw(bytes: Vec<u8>) -> RawFrame {
+        RawFrame {
+            bytes: Arc::from(bytes.as_slice()),
+            received_at: Utc::now(),
+            source: SocketAddr::from(([127, 0, 0, 1], 4242)),
+        }
+    }
+
+    async fn get_json(app: Router, uri: &str) -> (StatusCode, serde_json::Value) {
+        let res = app
+            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .expect("response");
+        let status = res.status();
+        let body = to_bytes(res.into_body(), 1 << 20).await.expect("body");
+        (status, serde_json::from_slice(&body).expect("json body"))
+    }
+
+    #[test]
+    fn process_frame_emits_openmct_json_for_valid_tm() {
+        let g = gateway();
+        let json = process_frame(&g, &raw(ccsds::encode_synthetic_tm(42, 7, b"hi")))
+            .expect("valid TM is emitted");
+        let v: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(v["chronus_schema"], "openmct.realtime.v1");
+        assert_eq!(v["apid"], 42);
+        assert_eq!(v["seq_count"], 7);
+        assert_eq!(v["payload_base64"], "aGk=");
+        assert_eq!(v["source"], "127.0.0.1:4242");
+        // No tracking configured -> physics fields are null, not missing.
+        assert!(v["elevation_deg"].is_null());
+        assert_eq!(g.gateway_metrics.snapshot().telemetry_frames_emitted, 1);
+    }
+
+    #[test]
+    fn process_frame_counts_and_drops_garbage() {
+        let g = gateway();
+        assert!(process_frame(&g, &raw(vec![1, 2])).is_none());
+        assert!(process_frame(&g, &raw(vec![0xFF; 3])).is_none());
+        let s = g.gateway_metrics.snapshot();
+        assert_eq!(s.telemetry_parse_errors, 2);
+        assert_eq!(s.telemetry_frames_emitted, 0);
+    }
+
+    #[test]
+    fn process_frame_records_latency_sample() {
+        let g = gateway();
+        process_frame(&g, &raw(ccsds::encode_synthetic_tm(1, 1, b"x"))).expect("emit");
+        let s = g.gateway_metrics.snapshot();
+        assert_eq!(s.processing_latency_ms_count, 1);
+        assert!(s.avg_processing_latency_ms().is_some());
+    }
+
+    #[tokio::test]
+    async fn health_route_says_ok() {
+        let (code, v) = get_json(router(gateway()), "/health").await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(v["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn metrics_route_combines_ingest_and_gateway() {
+        let (code, v) = get_json(router(gateway()), "/api/v1/chronus/metrics").await;
+        assert_eq!(code, StatusCode::OK);
+        assert!(v["ingest"]["frames_received"].is_u64());
+        assert!(v["gateway"]["tracking_errors"].is_u64());
+        assert!(v["avg_processing_latency_ms"].is_null());
+    }
+
+    #[tokio::test]
+    async fn status_route_explains_in_plain_english() {
+        let g = gateway();
+        let (code, v) = get_json(router(Arc::clone(&g)), "/api/v1/chronus/status").await;
+        assert_eq!(code, StatusCode::OK);
+        // No tracking in the test gateway -> warning, plus the waiting-for-data note.
+        assert_eq!(v["status"], "attention");
+        assert!(v["headline"].as_str().unwrap().len() > 10);
+        let codes: Vec<_> = v["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["code"].as_str().unwrap().to_string())
+            .collect();
+        assert!(codes.contains(&"CG-506".to_string()));
+        assert!(codes.contains(&"CG-501".to_string()));
+        assert!(!v["findings"][0]["fixes"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn stub_routes_respond() {
+        let (code, v) = get_json(router(gateway()), "/api/v1/chronus/history").await;
+        assert_eq!(code, StatusCode::OK);
+        assert!(v["packets"].as_array().unwrap().is_empty());
+        let (_, v) = get_json(router(gateway()), "/api/v1/chronus/openmct/dictionary").await;
+        assert!(v["points"].as_array().unwrap().len() >= 5);
+    }
+
+    #[tokio::test]
+    async fn unknown_route_is_404() {
+        let res = router(gateway())
+            .oneshot(Request::builder().uri("/nope").body(Body::empty()).unwrap())
+            .await
+            .expect("response");
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    }
 }

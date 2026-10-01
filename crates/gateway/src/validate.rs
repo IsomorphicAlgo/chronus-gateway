@@ -164,6 +164,19 @@ impl HilSubsystemCvParams {
 /// Expected received carrier (Hz) from nominal transmit frequency and line-of-sight range rate.
 ///
 /// `range_rate_km_s` follows Ephemerust: positive receding, negative approaching.
+///
+/// # Examples
+///
+/// ```
+/// use chronus_gateway::validate::expected_carrier_hz;
+///
+/// let f0 = 437_500_000.0;
+/// // Approaching at 7 km/s: received frequency is shifted up by roughly 10 kHz.
+/// let shift = expected_carrier_hz(f0, -7.0) - f0;
+/// assert!((shift - 10_215.0).abs() < 5.0, "shift = {shift}");
+/// // No relative motion: no shift.
+/// assert_eq!(expected_carrier_hz(f0, 0.0), f0);
+/// ```
 #[must_use]
 pub fn expected_carrier_hz(nominal_hz: f64, range_rate_km_s: f64) -> f64 {
     let v_m_s = range_rate_km_s * 1000.0;
@@ -173,6 +186,21 @@ pub fn expected_carrier_hz(nominal_hz: f64, range_rate_km_s: f64) -> f64 {
 /// Free-space path loss \(L_{fs}\) in dB: `20 log10(4π R / λ)` with `R` in metres, `λ = c / f`.
 ///
 /// Returns `None` if inputs are non-finite, non-positive, or the ratio is invalid.
+///
+/// # Examples
+///
+/// ```
+/// use chronus_gateway::validate::free_space_path_loss_db;
+///
+/// // 1000 km at 437.5 MHz is about 145 dB of loss.
+/// let l = free_space_path_loss_db(1.0e6, 437.5e6).unwrap();
+/// assert!((l - 145.27).abs() < 0.05, "L = {l}");
+/// // Doubling distance adds ~6 dB.
+/// let l2 = free_space_path_loss_db(2.0e6, 437.5e6).unwrap();
+/// assert!((l2 - l - 6.02).abs() < 0.01);
+/// // Nonsense input returns None instead of NaN.
+/// assert!(free_space_path_loss_db(-1.0, 437.5e6).is_none());
+/// ```
 #[must_use]
 pub fn free_space_path_loss_db(range_m: f64, carrier_hz: f64) -> Option<f64> {
     if !(range_m.is_finite() && carrier_hz.is_finite()) || range_m <= 0.0 || carrier_hz <= 0.0 {
@@ -190,6 +218,16 @@ pub fn free_space_path_loss_db(range_m: f64, carrier_hz: f64) -> Option<f64> {
 }
 
 /// Predicted received power (dBm) in free space: `P_tx + G_tx + G_rx − L_fs`.
+///
+/// # Examples
+///
+/// ```
+/// use chronus_gateway::validate::expected_rx_power_dbm;
+///
+/// // 30 dBm transmitter, 2 dBi + 5 dBi antennas, 1000 km away at 437.5 MHz.
+/// let p = expected_rx_power_dbm(1000.0, 437.5e6, 30.0, 2.0, 5.0).unwrap();
+/// assert!((p - (-108.27)).abs() < 0.05, "P = {p}");
+/// ```
 #[must_use]
 pub fn expected_rx_power_dbm(
     range_km: f64,
@@ -209,6 +247,20 @@ pub fn expected_rx_power_dbm(
 /// local horizon (degrees), matching [`TrackingState`].
 ///
 /// Returns `None` if any input is non-finite.
+///
+/// # Examples
+///
+/// ```
+/// use chronus_gateway::validate::angular_separation_deg;
+///
+/// // Due north on the horizon vs due east on the horizon: a quarter turn apart.
+/// let sep = angular_separation_deg(0.0, 0.0, 90.0, 0.0).unwrap();
+/// assert!((sep - 90.0).abs() < 1e-9);
+/// // At the zenith, azimuth doesn't matter.
+/// let sep = angular_separation_deg(0.0, 90.0, 180.0, 90.0).unwrap();
+/// assert!(sep < 1e-6);
+/// assert!(angular_separation_deg(f64::NAN, 0.0, 0.0, 0.0).is_none());
+/// ```
 #[must_use]
 pub fn angular_separation_deg(
     az1_deg: f64,

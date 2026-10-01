@@ -195,6 +195,24 @@ pub struct TrackingProvider {
 impl TrackingProvider {
     /// Wraps `propagator`, reusing a cached state for requests within `min_interval_ms`
     /// (`0` disables caching).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use chrono::{Duration, TimeZone, Utc};
+    /// use chronus_gateway::config::DEFAULT_ISS_TLE;
+    /// use chronus_gateway::propagator::{EphemerustPropagator, TrackingProvider};
+    ///
+    /// let prop = EphemerustPropagator::new(DEFAULT_ISS_TLE, 35.0, -116.0, 1000.0).unwrap();
+    /// let provider = TrackingProvider::new(Arc::new(prop), 10);
+    ///
+    /// let t = Utc.with_ymd_and_hms(2020, 7, 12, 21, 0, 0).unwrap();
+    /// let a = provider.tracking_state(t).unwrap();
+    /// // 5 ms later is inside the 10 ms window: served from cache, identical result.
+    /// let b = provider.tracking_state(t + Duration::milliseconds(5)).unwrap();
+    /// assert_eq!(a.range_km, b.range_km);
+    /// ```
     pub fn new(propagator: Arc<dyn OrbitalPropagator>, min_interval_ms: u64) -> Self {
         Self {
             propagator,

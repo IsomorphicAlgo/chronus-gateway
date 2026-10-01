@@ -176,6 +176,39 @@ a station or argue about pass/fail in test or ops, that table is the shared voca
 
 ---
 
+## When something goes wrong
+
+The gateway explains problems in plain English. Every message has a **code** (like `CG-201`), a
+**why** line and a numbered **fix** list, for example:
+
+```text
+error [CG-201]: Can't listen for telemetry on UDP 127.0.0.1:7301 -- the port is already in use.
+  why: Another program is already using port 7301. Most often this is a second copy of the
+       gateway that is still running.
+  fix: 1. Close the other copy of the gateway (check other terminal windows) and try again.
+       2. Or pick a different port: set `ingest.bind_addr = "127.0.0.1:7302"` in your config.
+       3. To see what is using the port: `netstat -ano | findstr :7301` (Windows) or
+          `lsof -i :7301` (macOS/Linux).
+```
+
+If the gateway **can't start**, it prints one of these and exits with code **2**. If it **is**
+running, open **`http://127.0.0.1:8080/api/v1/chronus/status`** in a browser at any time for a
+health check: an overall `status` (`ok`, `waiting`, `attention`, `problem`), a one-line
+`headline`, and the same what/why/fix `findings`.
+
+| Codes | Area | Typical examples |
+|-------|------|------------------|
+| `CG-1xx` | Configuration | latitude/longitude swapped, 10 entered instead of 0.1, missing config or TLE file, typo in a setting name, carrier entered in MHz instead of Hz |
+| `CG-2xx` | Network | port already in use, port below 1024, IP address not on this computer |
+| `CG-3xx` | Orbit data (TLE) | TLE too old to trust, dated in the future (clock wrong), bad checksum |
+| `CG-4xx` | Incoming data | packet too short, packet cut off, command packet on the telemetry port |
+| `CG-5xx` | Live health | no data yet, data arriving but not CCSDS, most frames flagged (usually a setup issue), no dashboard connected |
+
+The first invalid packet and the first orbit-calculation failure are explained in full in the log;
+after that they are only counted, so the log stays readable.
+
+---
+
 ## How the rest of this guide will grow (follow the plans)
 
 Deeper chapters will align with the repository’s existing plans so operators and developers read

@@ -6,6 +6,30 @@ the Ephemerust backend); a `1.0.0` release is reserved for a deliberately commit
 Versions cover all three workspace crates (`chronus-gateway`, `chronus-hil-sim`,
 `chronus-replay`), which share one version via `[workspace.package]`.
 
+## Unreleased
+
+Operator-facing diagnostics and test-suite expansion. Contains **breaking** API additions for
+exhaustive matches on `ConfigError` (two new variants), so this targets **0.2.0**.
+
+- **New `diagnose` module:** every error type (`ConfigError`, `ConfigLoadError`, `CcsdsError`,
+  `HilTmV1DecodeError`, socket bind failures, Ephemerust TLE/propagation errors) can explain
+  itself as a `Diagnosis` — a `CG-*` code, severity, what happened, likely cause and numbered
+  fixes. Reuses Ephemerust's `TleError::hint()` for TLE problems.
+- **Smart catches:** swapped latitude/longitude; tolerance entered as a percentage; carrier
+  frequency entered in MHz/kHz; stale (> 30 days) or future-dated TLE; port in use (suggests the
+  next port + `netstat`/`lsof`); privileged port; IP not on this machine; missing config/TLE file
+  (shows the working directory); TOML typo vs missing field vs syntax error.
+- **`IngestConfig::validate`:** rejects `channel_capacity = 0` (previously a Tokio panic at
+  startup) and `max_datagram_size` outside `6..=1 MiB`.
+- **`GET /api/v1/chronus/status`:** plain-English health report built from live counters
+  (waiting for data, nothing parses, high reject ratio, oversized packets, physics off/failing,
+  mostly-anomalous stream, no dashboard connected).
+- **Binary:** startup failures print a diagnosis and exit with code 2 instead of an error chain;
+  config warnings and TLE age are reported at startup; a "Gateway is running" banner lists the
+  UDP, WebSocket and status URLs. The first invalid packet / tracking failure is explained once.
+- **Tests:** 68 → 157 unit tests (new coverage for `diagnose`, `http`, `ingest`, `metrics`,
+  `state`, ingest validation); doctests 1 → 26.
+
 ## 0.1.4 — 2026-07-29
 
 crates.io discoverability polish. No code changes.

@@ -101,6 +101,30 @@ impl TelemetryFrame {
 ///
 /// Validation order: header length → header decode → declared-vs-available length → packet type.
 /// Bytes beyond the declared packet length (if any) are ignored.
+///
+/// # Examples
+///
+/// ```
+/// use std::sync::Arc;
+/// use chronus_gateway::ccsds::{CcsdsError, encode_synthetic_tm, parse_telemetry};
+/// use chronus_gateway::ingest::RawFrame;
+///
+/// let frame = |bytes: Vec<u8>| RawFrame {
+///     bytes: Arc::from(bytes.as_slice()),
+///     received_at: chrono::Utc::now(),
+///     source: "127.0.0.1:5000".parse().unwrap(),
+/// };
+///
+/// let tm = parse_telemetry(&frame(encode_synthetic_tm(0x42, 9, b"payload"))).unwrap();
+/// assert_eq!((tm.apid, tm.seq_count), (0x42, 9));
+/// assert_eq!(tm.payload(), b"payload");
+///
+/// // Two bytes can't be CCSDS: rejected with a typed, recoverable error (never a panic).
+/// assert!(matches!(
+///     parse_telemetry(&frame(vec![0, 1])),
+///     Err(CcsdsError::TooShort { len: 2 })
+/// ));
+/// ```
 pub fn parse_telemetry(frame: &RawFrame) -> Result<TelemetryFrame, CcsdsError> {
     let raw = frame.bytes.as_ref();
     if raw.len() < CCSDS_PRIMARY_HEADER_LEN {
@@ -143,6 +167,17 @@ pub fn parse_telemetry(frame: &RawFrame) -> Result<TelemetryFrame, CcsdsError> {
 /// For lab/HIL tools (Milestone 7): `apid` / `seq_count` are arbitrary test identifiers;
 /// `payload` must be non-empty per CCSDS. Not a full PUS/secondary-header encoder — see
 /// synthetic/public data only (project README / compliance posture).
+///
+/// # Examples
+///
+/// ```
+/// use chronus_gateway::ccsds::{CCSDS_PRIMARY_HEADER_LEN, encode_synthetic_tm};
+///
+/// let pkt = encode_synthetic_tm(100, 1, &[0xAB; 10]);
+/// assert_eq!(pkt.len(), CCSDS_PRIMARY_HEADER_LEN + 10);
+/// // Data-length field is (payload bytes - 1), big-endian, in bytes 4..6.
+/// assert_eq!(u16::from_be_bytes([pkt[4], pkt[5]]), 9);
+/// ```
 pub fn encode_synthetic_tm(apid: u16, seq_count: u16, payload: &[u8]) -> Vec<u8> {
     assert!(
         !payload.is_empty(),

@@ -32,6 +32,7 @@
 
 pub mod ccsds;
 pub mod config;
+pub mod diagnose;
 pub mod hil_tm;
 pub mod http;
 pub mod ingest;
@@ -45,6 +46,7 @@ pub use config::{
     ConfigError, ConfigLoadError, IngestConfig, StationConfig, TleSource,
     load_effective_gateway_config, load_gateway_from_path, resolve_config_path,
 };
+pub use diagnose::{Diagnosis, Explain, HealthReport, Severity, assess_health};
 pub use hil_tm::{
     CCSDS_APID_MAX, DEFAULT_HIL_TM_V1_APID_MAX, DEFAULT_HIL_TM_V1_APID_MIN, DecodedHilTmV1,
     HIL_TM_V1_MAGIC, HIL_TM_V1_PAYLOAD_LEN, HIL_TM_V1_SCHEMA_VERSION, HilTmV1DecodeError,

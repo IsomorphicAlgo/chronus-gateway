@@ -57,6 +57,18 @@ pub struct IngestStats {
 
 impl IngestStats {
     /// Convenience snapshot of `(frames, bytes, oversized, errors)` with `Relaxed` loads.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::atomic::Ordering;
+    /// use chronus_gateway::ingest::IngestStats;
+    ///
+    /// let stats = IngestStats::default();
+    /// stats.frames_received.fetch_add(2, Ordering::Relaxed);
+    /// stats.bytes_received.fetch_add(64, Ordering::Relaxed);
+    /// assert_eq!(stats.snapshot(), (2, 64, 0, 0));
+    /// ```
     pub fn snapshot(&self) -> (u64, u64, u64, u64) {
         (
             self.frames_received.load(Ordering::Relaxed),
@@ -161,4 +173,126 @@ pub async fn run(
     let (frames, bytes, oversized, errors) = stats.snapshot();
     tracing::info!(frames, bytes, oversized, errors, "ingestion loop stopped");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn loopback_config() -> IngestConfig {
+        IngestConfig {
+            bind_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
+            channel_capacity: 8,
+            max_datagram_size: 64,
+            ..IngestConfig::default()
+        }
+    }
+
+    #[test]
+    fn stats_snapshot_tuple_and_struct_agree() {
+        let s = IngestStats::default();
+        s.frames_received.store(4, Ordering::Relaxed);
+        s.bytes_received.store(100, Ordering::Relaxed);
+        s.oversized_dropped.store(1, Ordering::Relaxed);
+        s.recv_errors.store(2, Ordering::Relaxed);
+        assert_eq!(s.snapshot(), (4, 100, 1, 2));
+        let st = s.snapshot_struct();
+        assert_eq!(
+            (
+                st.frames_received,
+                st.bytes_received,
+                st.oversized_dropped,
+                st.recv_errors
+            ),
+            (4, 100, 1, 2)
+        );
+    }
+
+    #[test]
+    fn ingest_snapshot_serializes_with_stable_field_names() {
+        let v = serde_json::to_value(IngestStats::default().snapshot_struct()).expect("json");
+        for key in [
+            "frames_received",
+            "bytes_received",
+            "oversized_dropped",
+            "recv_errors",
+        ] {
+            assert!(v.get(key).is_some(), "missing {key}");
+        }
+    }
+
+    #[tokio::test]
+    async fn bind_port_zero_picks_an_ephemeral_port() {
+        let sock = bind(&loopback_config()).await.expect("bind");
+        assert_ne!(sock.local_addr().expect("addr").port(), 0);
+    }
+
+    #[tokio::test]
+    async fn run_forwards_datagrams_and_counts_bytes() {
+        let cfg = loopback_config();
+        let sock = bind(&cfg).await.expect("bind");
+        let target = sock.local_addr().expect("addr");
+        let (tx, mut rx) = broadcast::channel(cfg.channel_capacity);
+        let stats = Arc::new(IngestStats::default());
+        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+        let task = tokio::spawn(run(sock, tx, cfg, Arc::clone(&stats), async {
+            let _ = stop_rx.await;
+        }));
+
+        let sender = UdpSocket::bind("127.0.0.1:0").await.expect("sender");
+        sender.send_to(b"hello", target).await.expect("send");
+        let frame = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("frame within 2s")
+            .expect("recv");
+        assert_eq!(&*frame.bytes, b"hello");
+        assert_eq!(frame.source, sender.local_addr().expect("addr"));
+
+        stop_tx.send(()).expect("stop");
+        task.await.expect("join").expect("clean shutdown");
+        assert_eq!(stats.snapshot().0, 1);
+        assert_eq!(stats.snapshot().1, 5);
+    }
+
+    #[tokio::test]
+    async fn run_keeps_counting_with_no_subscribers() {
+        let cfg = loopback_config();
+        let sock = bind(&cfg).await.expect("bind");
+        let target = sock.local_addr().expect("addr");
+        let (tx, rx) = broadcast::channel(cfg.channel_capacity);
+        drop(rx); // nobody listening: sends fail, ingest must not care
+        let stats = Arc::new(IngestStats::default());
+        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+        let task = tokio::spawn(run(sock, tx, cfg, Arc::clone(&stats), async {
+            let _ = stop_rx.await;
+        }));
+        let sender = UdpSocket::bind("127.0.0.1:0").await.expect("sender");
+        for _ in 0..3 {
+            sender.send_to(b"x", target).await.expect("send");
+        }
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while stats.snapshot().0 < 3 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("3 frames counted");
+        stop_tx.send(()).expect("stop");
+        task.await.expect("join").expect("clean shutdown");
+    }
+
+    #[tokio::test]
+    async fn run_returns_promptly_when_shutdown_is_already_ready() {
+        let cfg = loopback_config();
+        let sock = bind(&cfg).await.expect("bind");
+        let (tx, _rx) = broadcast::channel(cfg.channel_capacity);
+        let res = tokio::time::timeout(
+            Duration::from_secs(1),
+            run(sock, tx, cfg, Arc::new(IngestStats::default()), async {}),
+        )
+        .await
+        .expect("shutdown should win the biased select");
+        assert!(res.is_ok());
+    }
 }

@@ -112,7 +112,8 @@ chronus-gateway/
 │   │   ├── ccsds.rs        CCSDS Space Packet parsing (TelemetryFrame, validation)
 │   │   ├── validate.rs     Physics–Telemetry Co-Validation (Doppler, elevation, link budget, `physics_flags`)
 │   │   ├── propagator.rs   OrbitalPropagator trait + Ephemerust-backed implementation
-│   │   ├── http.rs         Axum router: `/health`, metrics, Open MCT WebSocket
+│   │   ├── http.rs         Axum router: `/health`, metrics, `/status`, Open MCT WebSocket
+│   │   ├── diagnose.rs     Plain-English diagnostics: what happened / why / how to fix (`CG-*` codes)
 │   │   ├── metrics.rs      Gateway / WebSocket counters (M6)
 │   │   ├── state.rs        Shared Axum + ingest state (`SharedGateway`)
 │   │   └── main.rs         Entrypoint: UDP ingest + Axum HTTP/WebSocket (Ctrl-C shutdown)
@@ -189,6 +190,20 @@ integration tests over loopback UDP and in-process WebSockets, NeXosim HIL tests
 co-validation tests with explicitly documented tolerances — enforced at every milestone's stage
 gate. The roadmap and full per-milestone test matrix live in the maintainer's local plans doc
 (not part of this repository).
+
+Current suite (`cargo test --workspace`, all passing):
+
+| Layer | Count | Where |
+|-------|------:|-------|
+| Unit tests | **157** | inline `#[cfg(test)]` modules across all three crates |
+| Integration tests | **14** | `crates/gateway/tests/` (UDP, WebSocket, fixtures) + `crates/chronus-hil-sim/tests/` (NeXosim HIL) |
+| Doctests | **26** | runnable examples in the public API docs |
+| Benchmarks | Criterion | `crates/gateway/benches/parse_validate.rs` |
+
+Errors are tested for *what they tell the operator*, not just that they occur: each `CG-*`
+diagnostic in [`diagnose.rs`](crates/gateway/src/diagnose.rs) has tests asserting its cause and
+suggested fix (e.g. a latitude of -122.3 is recognised as a swapped latitude/longitude, and a
+port conflict suggests the next free port and the `netstat`/`lsof` command to find the culprit).
 
 ---
 

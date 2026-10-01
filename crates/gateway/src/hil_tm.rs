@@ -77,6 +77,16 @@ pub enum HilTmV1DecodeError {
 }
 
 /// Encodes one v1 payload into a fixed stack buffer (**no heap allocation**).
+///
+/// # Examples
+///
+/// ```
+/// use chronus_gateway::hil_tm::{HIL_TM_V1_MAGIC, HIL_TM_V1_PAYLOAD_LEN, encode_hil_tm_v1_payload};
+///
+/// let p = encode_hil_tm_v1_payload(1, 28.0, 20.0, 0.5);
+/// assert_eq!(p.len(), HIL_TM_V1_PAYLOAD_LEN);
+/// assert_eq!(&p[0..4], HIL_TM_V1_MAGIC);
+/// ```
 #[must_use]
 pub fn encode_hil_tm_v1_payload(
     seq: u32,
@@ -100,6 +110,22 @@ pub fn encode_hil_tm_v1_payload(
 /// Returns [`Err`] if `payload.len()` < [`HIL_TM_V1_PAYLOAD_LEN`] or header checks fail. Extra
 /// trailing bytes are ignored by the caller (this function only reads the first 24 bytes when
 /// `payload` is longer).
+///
+/// # Examples
+///
+/// ```
+/// use chronus_gateway::hil_tm::{HilTmV1DecodeError, decode_hil_tm_v1, encode_hil_tm_v1_payload};
+///
+/// let d = decode_hil_tm_v1(&encode_hil_tm_v1_payload(7, 27.5, 18.0, 1.25)).unwrap();
+/// assert_eq!(d.seq, 7);
+/// assert_eq!(d.eps_bus_voltage_v, 27.5);
+///
+/// // Random bytes are rejected, not misread.
+/// assert!(matches!(
+///     decode_hil_tm_v1(&[0u8; 24]),
+///     Err(HilTmV1DecodeError::BadMagic { .. })
+/// ));
+/// ```
 pub fn decode_hil_tm_v1(payload: &[u8]) -> Result<DecodedHilTmV1, HilTmV1DecodeError> {
     if payload.len() < HIL_TM_V1_PAYLOAD_LEN {
         return Err(HilTmV1DecodeError::TooShort {
