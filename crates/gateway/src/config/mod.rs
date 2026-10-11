@@ -95,18 +95,69 @@ pub const DEFAULT_ISS_TLE: &str = "ISS (ZARYA)\n\
     1 25544U 98067A   20194.88612269 -.00002218  00000-0 -31515-4 0  9992\n\
     2 25544  51.6461 221.2784 0001413  89.1723 280.4612 15.49507896236008";
 
-/// Where the tracked spacecraft's TLE comes from.
+/// Where the tracked spacecraft's ephemeris comes from.
+///
+/// One variant is active at a time; `#[non_exhaustive]` so more sources (for example a live
+/// CelesTrak fetch) can be added in 1.x.
 #[derive(Debug, Clone)]
-pub enum TleSource {
-    /// TLE text provided inline (2- or 3-line element set).
-    Inline(String),
-    /// TLE read from a file on disk. (CelesTrak/Space-Track fetch is deferred; see backlog.)
-    File(PathBuf),
+#[non_exhaustive]
+pub enum EphemerisSource {
+    /// TLE text provided inline (2- or 3-line element set), propagated with SGP4.
+    TleInline(String),
+    /// TLE read from a file on disk, propagated with SGP4.
+    TleFile(PathBuf),
+    /// Operator-supplied **CCSDS OEM** ephemeris file (KVN), used instead of a TLE
+    /// (see [`crate::oem`] and `Methodology.md` D-045).
+    OemFile(PathBuf),
+}
+
+impl Default for EphemerisSource {
+    fn default() -> Self {
+        Self::TleInline(DEFAULT_ISS_TLE.to_string())
+    }
 }
 
 /// Ground-station and tracked-spacecraft configuration for the co-validation engine.
-#[derive(Debug, Clone)]
+///
+/// Grouped by concern so each part can grow independently:
+///
+/// | Group | Type | Holds |
+/// |---|---|---|
+/// | [`site`](Self::site) | [`SiteConfig`] | where the antenna is and the nominal carrier |
+/// | [`tracking`](Self::tracking) | [`TrackingConfig`] | ephemeris source, Earth orientation, refraction, TLE-age margin |
+/// | [`tolerances`](Self::tolerances) | [`ToleranceConfig`] | check thresholds and link-budget model |
+/// | [`hil`](Self::hil) | [`HilConfig`] | synthetic HIL telemetry demo models (lab use) |
+///
+/// All config structs are `#[non_exhaustive]`: start from [`Default`] and assign the fields you
+/// need, so new fields in 1.x do not break callers.
+///
+/// ```
+/// use chronus_gateway::config::{EphemerisSource, StationConfig};
+///
+/// let mut cfg = StationConfig::default();
+/// cfg.site.latitude_deg = 47.9;
+/// cfg.site.longitude_deg = -122.25;
+/// cfg.tracking.ephemeris = EphemerisSource::TleFile("iss.tle".into());
+/// cfg.tolerances.doppler_tolerance_hz = 200.0;
+/// assert!(cfg.validate().is_ok());
+/// ```
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct StationConfig {
+    /// Antenna location and nominal downlink carrier.
+    pub site: SiteConfig,
+    /// What is tracked and how its position is computed.
+    pub tracking: TrackingConfig,
+    /// Thresholds and model parameters for the physics co-validation checks.
+    pub tolerances: ToleranceConfig,
+    /// Synthetic hardware-in-the-loop demo models (CV-3…CV-5).
+    pub hil: HilConfig,
+}
+
+/// Where the ground station is and the carrier it listens on.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct SiteConfig {
     /// Geodetic latitude in degrees, north positive (`[-90, 90]`).
     pub latitude_deg: f64,
     /// Geodetic longitude in degrees, east positive (`[-180, 180]`).
@@ -115,59 +166,28 @@ pub struct StationConfig {
     pub altitude_m: f64,
     /// Nominal (un-shifted) downlink carrier frequency, in Hz. Used by the Doppler check (M4).
     pub nominal_carrier_hz: f64,
-    /// Source of the tracked spacecraft's TLE.
-    pub tle: TleSource,
+}
+
+impl Default for SiteConfig {
+    fn default() -> Self {
+        Self {
+            latitude_deg: 35.0,
+            longitude_deg: -116.0,
+            altitude_m: 1000.0,
+            nominal_carrier_hz: 437_500_000.0,
+        }
+    }
+}
+
+/// What is tracked and how: ephemeris source, Earth orientation, refraction and TLE-age model.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct TrackingConfig {
+    /// Source of the tracked spacecraft's ephemeris (TLE inline, TLE file, or CCSDS OEM file).
+    pub ephemeris: EphemerisSource,
     /// Minimum interval between propagator recomputations, in milliseconds. Frames arriving within
     /// this window reuse the last tracking state (throttle; `0` disables caching). 10 ms ≈ 100 Hz.
     pub min_recompute_interval_ms: u64,
-
-    /// Maximum allowed |measured − expected| carrier deviation for the Doppler check (Hz).
-    /// Default **150 Hz** — see `TEST_PLAN.md` (T-DOPPLER) and `Methodology.md` (D-012).
-    pub doppler_tolerance_hz: f64,
-    /// Minimum elevation (degrees) for accepting telemetry as geometrically plausible at the
-    /// ground station. Frames with predicted elevation **strictly below** this value set
-    /// [`FLAG_BELOW_HORIZON`](crate::validate::FLAG_BELOW_HORIZON). Default `0` = at or above the
-    /// mathematical horizon is OK; negative values allow a refraction / mask margin.
-    pub minimum_elevation_deg: f64,
-
-    /// Synthetic **spacecraft transmit** power at the feed before the transmit antenna (dBm).
-    /// Used only for the free-space **link-budget** check (CV-1 / **T-RSSI**); not calibrated to
-    /// any real mission.
-    pub tx_power_dbm: f64,
-    /// Transmit antenna gain (dBi), synthetic default.
-    pub tx_gain_dbi: f64,
-    /// Receive antenna gain at the ground station (dBi), synthetic default.
-    pub rx_gain_dbi: f64,
-    /// Maximum allowed \|measured − predicted\| received power for the link-budget check (dB).
-    /// Default **3 dB** — see `TEST_PLAN.md` (**T-RSSI**) and `Methodology.md` D-016.
-    pub link_budget_tolerance_db: f64,
-    /// Great-circle angular tolerance (degrees) for measured vs computed azimuth/elevation (**CV-2** / **T-POINT**).
-    /// Default **0.25°** — see `TEST_PLAN.md` and `Methodology.md` D-016.
-    pub pointing_tolerance_deg: f64,
-    /// Inclusive lower bound of CCSDS APIDs carrying **chronus.hil.tm.v1** synthetic payloads (**CV-3**).
-    /// Default [`crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MIN`].
-    pub hil_tm_v1_apid_min: u16,
-    /// Inclusive upper bound (must be ≥ `hil_tm_v1_apid_min` and ≤ **0x7FF**).
-    pub hil_tm_v1_apid_max: u16,
-
-    /// **CV-4:** model bus voltage at full toy Sun illumination, volts (synthetic).
-    pub hil_eps_voltage_full_sun_v: f64,
-    /// **CV-4:** model bus voltage at zero illumination, volts.
-    pub hil_eps_voltage_eclipse_v: f64,
-    /// **CV-4:** model panel temperature at full illumination, °C.
-    pub hil_thermal_c_full_sun: f64,
-    /// **CV-4:** model panel temperature at eclipse, °C.
-    pub hil_thermal_c_eclipse: f64,
-    /// **T-EPS:** relative tolerance on the voltage span (default **0.1** = ±10 %).
-    pub hil_eps_relative_tolerance: f64,
-    /// **T-THERMAL:** absolute temperature band, kelvin (default **10**).
-    pub hil_thermal_absolute_tolerance_k: f64,
-    /// **CV-5 / T-BODYRATE:** maximum allowed magnitude of HIL v1 `body_rate_deg_s` (deg/s).
-    pub hil_body_rate_max_abs_deg_s: f64,
-
-    /// Operator-supplied **CCSDS OEM** ephemeris file (KVN). When set, tracking uses this
-    /// ephemeris instead of [`Self::tle`] (see [`crate::oem`] and `Methodology.md` D-045).
-    pub oem_file: Option<PathBuf>,
 
     /// **Earth orientation:** UT1−UTC in seconds (IERS Bulletin A; within ±0.9 s). Default `0`.
     pub ut1_minus_utc_s: f64,
@@ -194,33 +214,11 @@ pub struct StationConfig {
     pub tle_error_growth_km_per_day: f64,
 }
 
-impl Default for StationConfig {
+impl Default for TrackingConfig {
     fn default() -> Self {
         Self {
-            latitude_deg: 35.0,
-            longitude_deg: -116.0,
-            altitude_m: 1000.0,
-            nominal_carrier_hz: 437_500_000.0,
-            tle: TleSource::Inline(DEFAULT_ISS_TLE.to_string()),
+            ephemeris: EphemerisSource::default(),
             min_recompute_interval_ms: 10,
-            doppler_tolerance_hz: 150.0,
-            minimum_elevation_deg: 0.0,
-            // Synthetic demo link: ~1 W transmit + modest gains — not a real spacecraft EIRP.
-            tx_power_dbm: 30.0,
-            tx_gain_dbi: 2.0,
-            rx_gain_dbi: 5.0,
-            link_budget_tolerance_db: 3.0,
-            pointing_tolerance_deg: 0.25,
-            hil_tm_v1_apid_min: DEFAULT_HIL_TM_V1_APID_MIN,
-            hil_tm_v1_apid_max: DEFAULT_HIL_TM_V1_APID_MAX,
-            hil_eps_voltage_full_sun_v: 28.0,
-            hil_eps_voltage_eclipse_v: 24.0,
-            hil_thermal_c_full_sun: 32.0,
-            hil_thermal_c_eclipse: 12.0,
-            hil_eps_relative_tolerance: 0.1,
-            hil_thermal_absolute_tolerance_k: 10.0,
-            hil_body_rate_max_abs_deg_s: 5.0,
-            oem_file: None,
             ut1_minus_utc_s: 0.0,
             polar_motion_x_arcsec: 0.0,
             polar_motion_y_arcsec: 0.0,
@@ -234,8 +232,100 @@ impl Default for StationConfig {
     }
 }
 
+/// Thresholds and model parameters for the physics checks (Doppler, horizon, link budget,
+/// pointing).
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct ToleranceConfig {
+    /// Maximum allowed |measured − expected| carrier deviation for the Doppler check (Hz).
+    /// Default **150 Hz** — see `TEST_PLAN.md` (T-DOPPLER) and `Methodology.md` (D-012).
+    pub doppler_tolerance_hz: f64,
+    /// Minimum elevation (degrees) for accepting telemetry as geometrically plausible at the
+    /// ground station. Frames with predicted elevation **strictly below** this value set
+    /// [`FLAG_BELOW_HORIZON`](crate::validate::FLAG_BELOW_HORIZON). Default `0` = at or above the
+    /// mathematical horizon is OK; negative values allow a refraction / mask margin.
+    pub minimum_elevation_deg: f64,
+
+    /// Synthetic **spacecraft transmit** power at the feed before the transmit antenna (dBm).
+    /// Used only for the free-space **link-budget** check (CV-1 / **T-RSSI**); not calibrated to
+    /// any real mission.
+    pub tx_power_dbm: f64,
+    /// Transmit antenna gain (dBi), synthetic default.
+    pub tx_gain_dbi: f64,
+    /// Receive antenna gain at the ground station (dBi), synthetic default.
+    pub rx_gain_dbi: f64,
+    /// Maximum allowed |measured − predicted| received power for the link-budget check (dB).
+    /// Default **3 dB** — see `TEST_PLAN.md` (**T-RSSI**) and `Methodology.md` D-016.
+    pub link_budget_tolerance_db: f64,
+    /// Great-circle angular tolerance (degrees) for measured vs computed azimuth/elevation (**CV-2** / **T-POINT**).
+    /// Default **0.25°** — see `TEST_PLAN.md` and `Methodology.md` D-016.
+    pub pointing_tolerance_deg: f64,
+}
+
+impl Default for ToleranceConfig {
+    fn default() -> Self {
+        Self {
+            doppler_tolerance_hz: 150.0,
+            minimum_elevation_deg: 0.0,
+            // Synthetic demo link: ~1 W transmit + modest gains — not a real spacecraft EIRP.
+            tx_power_dbm: 30.0,
+            tx_gain_dbi: 2.0,
+            rx_gain_dbi: 5.0,
+            link_budget_tolerance_db: 3.0,
+            pointing_tolerance_deg: 0.25,
+        }
+    }
+}
+
+/// Synthetic hardware-in-the-loop (HIL) demo models: the `chronus.hil.tm.v1` payload band
+/// (**CV-3**) and the toy EPS / thermal / body-rate cross-checks (**CV-4** / **CV-5**).
+///
+/// These describe lab models, not flight-grade physics. The values are always parsed and
+/// validated so a config file stays portable, but the checks that use them only run when the
+/// crate is built with the **`hil`** cargo feature.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct HilConfig {
+    /// Inclusive lower bound of CCSDS APIDs carrying **chronus.hil.tm.v1** synthetic payloads (**CV-3**).
+    /// Default [`crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MIN`].
+    pub tm_v1_apid_min: u16,
+    /// Inclusive upper bound (must be ≥ `tm_v1_apid_min` and ≤ **0x7FF**).
+    pub tm_v1_apid_max: u16,
+    /// **CV-4:** model bus voltage at full toy Sun illumination, volts (synthetic).
+    pub eps_voltage_full_sun_v: f64,
+    /// **CV-4:** model bus voltage at zero illumination, volts.
+    pub eps_voltage_eclipse_v: f64,
+    /// **CV-4:** model panel temperature at full illumination, °C.
+    pub thermal_c_full_sun: f64,
+    /// **CV-4:** model panel temperature at eclipse, °C.
+    pub thermal_c_eclipse: f64,
+    /// **T-EPS:** relative tolerance on the voltage span (default **0.1** = ±10 %).
+    pub eps_relative_tolerance: f64,
+    /// **T-THERMAL:** absolute temperature band, kelvin (default **10**).
+    pub thermal_absolute_tolerance_k: f64,
+    /// **CV-5 / T-BODYRATE:** maximum allowed magnitude of HIL v1 `body_rate_deg_s` (deg/s).
+    pub body_rate_max_abs_deg_s: f64,
+}
+
+impl Default for HilConfig {
+    fn default() -> Self {
+        Self {
+            tm_v1_apid_min: DEFAULT_HIL_TM_V1_APID_MIN,
+            tm_v1_apid_max: DEFAULT_HIL_TM_V1_APID_MAX,
+            eps_voltage_full_sun_v: 28.0,
+            eps_voltage_eclipse_v: 24.0,
+            thermal_c_full_sun: 32.0,
+            thermal_c_eclipse: 12.0,
+            eps_relative_tolerance: 0.1,
+            thermal_absolute_tolerance_k: 10.0,
+            body_rate_max_abs_deg_s: 5.0,
+        }
+    }
+}
+
 /// Errors produced while validating or resolving [`StationConfig`].
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ConfigError {
     /// Latitude is non-finite or outside `[-90, 90]`.
     #[error("latitude {0}° is invalid (expected a finite value in [-90, 90])")]
@@ -276,7 +366,14 @@ pub enum ConfigError {
     #[error(
         "HIL TM v1 APID range {min:#x}..={max:#x} is invalid (expected min <= max and both <= {apid_max:#x})"
     )]
-    InvalidHilTmV1ApidRange { min: u16, max: u16, apid_max: u16 },
+    InvalidHilTmV1ApidRange {
+        /// Configured lower bound.
+        min: u16,
+        /// Configured upper bound.
+        max: u16,
+        /// Largest legal APID (`0x7FF`).
+        apid_max: u16,
+    },
     /// HIL CV-4 EPS relative tolerance is not finite or not in `(0, 1]`.
     #[error("HIL EPS relative tolerance {0} is invalid (expected a finite value in (0, 1])")]
     InvalidHilEpsRelativeTolerance(f64),
@@ -330,6 +427,9 @@ pub enum ConfigError {
         #[source]
         source: std::io::Error,
     },
+    /// The configured ephemeris is an OEM file, but TLE text was requested.
+    #[error("the configured ephemeris source is an OEM file, not a TLE")]
+    NotATleSource,
     /// A TLE file could not be read.
     #[error("failed to read TLE file {path}: {source}")]
     TleRead {
@@ -354,141 +454,151 @@ impl StationConfig {
     ///
     /// assert!(StationConfig::default().validate().is_ok());
     ///
-    /// let swapped = StationConfig { latitude_deg: -122.3, longitude_deg: 47.6, ..Default::default() };
+    /// let mut swapped = StationConfig::default();
+    /// swapped.site.latitude_deg = -122.3;
+    /// swapped.site.longitude_deg = 47.6;
     /// let err = swapped.validate().unwrap_err();
     /// assert!(matches!(err, ConfigError::InvalidLatitude(_)));
     /// // Every config error can explain itself in plain English.
     /// assert!(err.explain().cause.contains("swapped"));
     /// ```
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if !self.latitude_deg.is_finite() || !(-90.0..=90.0).contains(&self.latitude_deg) {
-            return Err(ConfigError::InvalidLatitude(self.latitude_deg));
+        if !self.site.latitude_deg.is_finite() || !(-90.0..=90.0).contains(&self.site.latitude_deg)
+        {
+            return Err(ConfigError::InvalidLatitude(self.site.latitude_deg));
         }
-        if !self.longitude_deg.is_finite() || !(-180.0..=180.0).contains(&self.longitude_deg) {
-            return Err(ConfigError::InvalidLongitude(self.longitude_deg));
+        if !self.site.longitude_deg.is_finite()
+            || !(-180.0..=180.0).contains(&self.site.longitude_deg)
+        {
+            return Err(ConfigError::InvalidLongitude(self.site.longitude_deg));
         }
-        if !self.altitude_m.is_finite() {
-            return Err(ConfigError::InvalidAltitude(self.altitude_m));
+        if !self.site.altitude_m.is_finite() {
+            return Err(ConfigError::InvalidAltitude(self.site.altitude_m));
         }
-        if !self.nominal_carrier_hz.is_finite() || self.nominal_carrier_hz <= 0.0 {
-            return Err(ConfigError::InvalidFrequency(self.nominal_carrier_hz));
+        if !self.site.nominal_carrier_hz.is_finite() || self.site.nominal_carrier_hz <= 0.0 {
+            return Err(ConfigError::InvalidFrequency(self.site.nominal_carrier_hz));
         }
-        if !self.doppler_tolerance_hz.is_finite() || self.doppler_tolerance_hz <= 0.0 {
+        if !self.tolerances.doppler_tolerance_hz.is_finite()
+            || self.tolerances.doppler_tolerance_hz <= 0.0
+        {
             return Err(ConfigError::InvalidDopplerTolerance(
-                self.doppler_tolerance_hz,
+                self.tolerances.doppler_tolerance_hz,
             ));
         }
-        if !self.minimum_elevation_deg.is_finite()
-            || !(-90.0..=90.0).contains(&self.minimum_elevation_deg)
+        if !self.tolerances.minimum_elevation_deg.is_finite()
+            || !(-90.0..=90.0).contains(&self.tolerances.minimum_elevation_deg)
         {
             return Err(ConfigError::InvalidMinimumElevation(
-                self.minimum_elevation_deg,
+                self.tolerances.minimum_elevation_deg,
             ));
         }
-        if self.oem_file.is_none()
-            && let TleSource::Inline(text) = &self.tle
+        if let EphemerisSource::TleInline(text) = &self.tracking.ephemeris
             && text.trim().is_empty()
         {
             return Err(ConfigError::EmptyTle);
         }
         self.earth_orientation()?;
-        if !self.refraction_pressure_hpa.is_finite()
-            || !(1.0..=1100.0).contains(&self.refraction_pressure_hpa)
+        if !self.tracking.refraction_pressure_hpa.is_finite()
+            || !(1.0..=1100.0).contains(&self.tracking.refraction_pressure_hpa)
         {
             return Err(ConfigError::InvalidRefraction {
                 field: "refraction_pressure_hpa",
-                value: self.refraction_pressure_hpa,
+                value: self.tracking.refraction_pressure_hpa,
             });
         }
-        if !self.refraction_temperature_c.is_finite()
-            || !(-90.0..=60.0).contains(&self.refraction_temperature_c)
+        if !self.tracking.refraction_temperature_c.is_finite()
+            || !(-90.0..=60.0).contains(&self.tracking.refraction_temperature_c)
         {
             return Err(ConfigError::InvalidRefraction {
                 field: "refraction_temperature_c",
-                value: self.refraction_temperature_c,
+                value: self.tracking.refraction_temperature_c,
             });
         }
         for (field, v) in [
-            ("tle_error_km_at_epoch", self.tle_error_km_at_epoch),
+            ("tle_error_km_at_epoch", self.tracking.tle_error_km_at_epoch),
             (
                 "tle_error_growth_km_per_day",
-                self.tle_error_growth_km_per_day,
+                self.tracking.tle_error_growth_km_per_day,
             ),
         ] {
             if !v.is_finite() || v < 0.0 {
                 return Err(ConfigError::InvalidTleErrorModel { field, value: v });
             }
         }
-        if !self.tx_power_dbm.is_finite() {
+        if !self.tolerances.tx_power_dbm.is_finite() {
             return Err(ConfigError::InvalidLinkBudgetField {
                 field: "tx_power_dbm",
-                value: self.tx_power_dbm,
+                value: self.tolerances.tx_power_dbm,
             });
         }
-        if !self.tx_gain_dbi.is_finite() {
+        if !self.tolerances.tx_gain_dbi.is_finite() {
             return Err(ConfigError::InvalidLinkBudgetField {
                 field: "tx_gain_dbi",
-                value: self.tx_gain_dbi,
+                value: self.tolerances.tx_gain_dbi,
             });
         }
-        if !self.rx_gain_dbi.is_finite() {
+        if !self.tolerances.rx_gain_dbi.is_finite() {
             return Err(ConfigError::InvalidLinkBudgetField {
                 field: "rx_gain_dbi",
-                value: self.rx_gain_dbi,
+                value: self.tolerances.rx_gain_dbi,
             });
         }
-        if !self.link_budget_tolerance_db.is_finite() || self.link_budget_tolerance_db <= 0.0 {
+        if !self.tolerances.link_budget_tolerance_db.is_finite()
+            || self.tolerances.link_budget_tolerance_db <= 0.0
+        {
             return Err(ConfigError::InvalidLinkBudgetTolerance(
-                self.link_budget_tolerance_db,
+                self.tolerances.link_budget_tolerance_db,
             ));
         }
-        if !self.pointing_tolerance_deg.is_finite() || self.pointing_tolerance_deg <= 0.0 {
+        if !self.tolerances.pointing_tolerance_deg.is_finite()
+            || self.tolerances.pointing_tolerance_deg <= 0.0
+        {
             return Err(ConfigError::InvalidPointingTolerance(
-                self.pointing_tolerance_deg,
+                self.tolerances.pointing_tolerance_deg,
             ));
         }
-        if self.hil_tm_v1_apid_min > self.hil_tm_v1_apid_max
-            || self.hil_tm_v1_apid_min > CCSDS_APID_MAX
-            || self.hil_tm_v1_apid_max > CCSDS_APID_MAX
+        if self.hil.tm_v1_apid_min > self.hil.tm_v1_apid_max
+            || self.hil.tm_v1_apid_min > CCSDS_APID_MAX
+            || self.hil.tm_v1_apid_max > CCSDS_APID_MAX
         {
             return Err(ConfigError::InvalidHilTmV1ApidRange {
-                min: self.hil_tm_v1_apid_min,
-                max: self.hil_tm_v1_apid_max,
+                min: self.hil.tm_v1_apid_min,
+                max: self.hil.tm_v1_apid_max,
                 apid_max: CCSDS_APID_MAX,
             });
         }
         for (field, v) in [
             (
                 "hil_eps_voltage_full_sun_v",
-                self.hil_eps_voltage_full_sun_v,
+                self.hil.eps_voltage_full_sun_v,
             ),
-            ("hil_eps_voltage_eclipse_v", self.hil_eps_voltage_eclipse_v),
-            ("hil_thermal_c_full_sun", self.hil_thermal_c_full_sun),
-            ("hil_thermal_c_eclipse", self.hil_thermal_c_eclipse),
+            ("hil_eps_voltage_eclipse_v", self.hil.eps_voltage_eclipse_v),
+            ("hil_thermal_c_full_sun", self.hil.thermal_c_full_sun),
+            ("hil_thermal_c_eclipse", self.hil.thermal_c_eclipse),
         ] {
             if !v.is_finite() {
                 return Err(ConfigError::InvalidHilSubsystemField { field, value: v });
             }
         }
-        if !self.hil_eps_relative_tolerance.is_finite()
-            || self.hil_eps_relative_tolerance <= 0.0
-            || self.hil_eps_relative_tolerance > 1.0
+        if !self.hil.eps_relative_tolerance.is_finite()
+            || self.hil.eps_relative_tolerance <= 0.0
+            || self.hil.eps_relative_tolerance > 1.0
         {
             return Err(ConfigError::InvalidHilEpsRelativeTolerance(
-                self.hil_eps_relative_tolerance,
+                self.hil.eps_relative_tolerance,
             ));
         }
-        if !self.hil_thermal_absolute_tolerance_k.is_finite()
-            || self.hil_thermal_absolute_tolerance_k <= 0.0
+        if !self.hil.thermal_absolute_tolerance_k.is_finite()
+            || self.hil.thermal_absolute_tolerance_k <= 0.0
         {
             return Err(ConfigError::InvalidHilThermalTolerance(
-                self.hil_thermal_absolute_tolerance_k,
+                self.hil.thermal_absolute_tolerance_k,
             ));
         }
-        if !self.hil_body_rate_max_abs_deg_s.is_finite() || self.hil_body_rate_max_abs_deg_s <= 0.0
+        if !self.hil.body_rate_max_abs_deg_s.is_finite() || self.hil.body_rate_max_abs_deg_s <= 0.0
         {
             return Err(ConfigError::InvalidHilBodyRateMaxAbs(
-                self.hil_body_rate_max_abs_deg_s,
+                self.hil.body_rate_max_abs_deg_s,
             ));
         }
         Ok(())
@@ -506,16 +616,17 @@ impl StationConfig {
     /// ```
     /// use chronus_gateway::config::StationConfig;
     ///
-    /// let ok = StationConfig { ut1_minus_utc_s: -0.2273, ..Default::default() };
-    /// assert!(ok.earth_orientation().is_ok());
-    /// let ms = StationConfig { ut1_minus_utc_s: -227.3, ..Default::default() };
-    /// assert!(ms.earth_orientation().is_err());
+    /// let mut cfg = StationConfig::default();
+    /// cfg.tracking.ut1_minus_utc_s = -0.2273;
+    /// assert!(cfg.earth_orientation().is_ok());
+    /// cfg.tracking.ut1_minus_utc_s = -227.3; // milliseconds entered by mistake
+    /// assert!(cfg.earth_orientation().is_err());
     /// ```
     pub fn earth_orientation(&self) -> Result<ephemerust::EarthOrientation, ConfigError> {
         ephemerust::EarthOrientation::new(
-            self.ut1_minus_utc_s,
-            self.polar_motion_x_arcsec,
-            self.polar_motion_y_arcsec,
+            self.tracking.ut1_minus_utc_s,
+            self.tracking.polar_motion_x_arcsec,
+            self.tracking.polar_motion_y_arcsec,
         )
         .map_err(|e| ConfigError::InvalidEarthOrientation(e.to_string()))
     }
@@ -527,37 +638,47 @@ impl StationConfig {
     /// ```
     /// use chronus_gateway::config::StationConfig;
     ///
-    /// let s = StationConfig { hil_tm_v1_apid_min: 0x100, hil_tm_v1_apid_max: 0x10F, ..Default::default() };
+    /// let mut s = StationConfig::default();
+    /// s.hil.tm_v1_apid_min = 0x100;
+    /// s.hil.tm_v1_apid_max = 0x10F;
     /// assert!(s.apid_allows_hil_tm_v1(0x100));
     /// assert!(s.apid_allows_hil_tm_v1(0x10F));
     /// assert!(!s.apid_allows_hil_tm_v1(0x110));
     /// ```
     #[must_use]
     pub fn apid_allows_hil_tm_v1(&self, apid: u16) -> bool {
-        (self.hil_tm_v1_apid_min..=self.hil_tm_v1_apid_max).contains(&apid)
+        (self.hil.tm_v1_apid_min..=self.hil.tm_v1_apid_max).contains(&apid)
     }
 
-    /// Resolves the configured [`TleSource`] to TLE text (reading the file if necessary).
+    /// Resolves the configured [`EphemerisSource`] to TLE text (reading the file if necessary).
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::EmptyTle`], [`ConfigError::TleRead`], or
+    /// [`ConfigError::NotATleSource`] when the source is an OEM file.
     ///
     /// # Examples
     ///
     /// ```
-    /// use chronus_gateway::config::{ConfigError, StationConfig, TleSource};
+    /// use chronus_gateway::config::{ConfigError, EphemerisSource, StationConfig};
     ///
-    /// let inline = StationConfig::default();
-    /// assert!(inline.resolve_tle_text().unwrap().contains("25544"));
+    /// let mut cfg = StationConfig::default();
+    /// assert!(cfg.resolve_tle_text().unwrap().contains("25544"));
     ///
-    /// let missing = StationConfig {
-    ///     tle: TleSource::File("no/such/file.tle".into()),
-    ///     ..Default::default()
-    /// };
-    /// assert!(matches!(missing.resolve_tle_text(), Err(ConfigError::TleRead { .. })));
+    /// cfg.tracking.ephemeris = EphemerisSource::TleFile("no/such/file.tle".into());
+    /// assert!(matches!(cfg.resolve_tle_text(), Err(ConfigError::TleRead { .. })));
+    ///
+    /// cfg.tracking.ephemeris = EphemerisSource::OemFile("iss.oem".into());
+    /// assert!(matches!(cfg.resolve_tle_text(), Err(ConfigError::NotATleSource)));
     /// ```
     pub fn resolve_tle_text(&self) -> Result<String, ConfigError> {
-        match &self.tle {
-            TleSource::Inline(text) if text.trim().is_empty() => Err(ConfigError::EmptyTle),
-            TleSource::Inline(text) => Ok(text.clone()),
-            TleSource::File(path) => {
+        match &self.tracking.ephemeris {
+            EphemerisSource::TleInline(text) if text.trim().is_empty() => {
+                Err(ConfigError::EmptyTle)
+            }
+            EphemerisSource::TleInline(text) => Ok(text.clone()),
+            EphemerisSource::OemFile(_) => Err(ConfigError::NotATleSource),
+            EphemerisSource::TleFile(path) => {
                 std::fs::read_to_string(path).map_err(|source| ConfigError::TleRead {
                     path: path.display().to_string(),
                     source,
@@ -580,72 +701,80 @@ mod tests {
 
     #[test]
     fn rejects_out_of_range_fields() {
-        let bad_lat = StationConfig {
-            latitude_deg: 91.0,
-            ..Default::default()
+        let bad_lat = {
+            let mut c = StationConfig::default();
+            c.site.latitude_deg = 91.0;
+            c
         };
         assert!(matches!(
             bad_lat.validate(),
             Err(ConfigError::InvalidLatitude(_))
         ));
 
-        let bad_lon = StationConfig {
-            longitude_deg: 200.0,
-            ..Default::default()
+        let bad_lon = {
+            let mut c = StationConfig::default();
+            c.site.longitude_deg = 200.0;
+            c
         };
         assert!(matches!(
             bad_lon.validate(),
             Err(ConfigError::InvalidLongitude(_))
         ));
 
-        let bad_freq = StationConfig {
-            nominal_carrier_hz: 0.0,
-            ..Default::default()
+        let bad_freq = {
+            let mut c = StationConfig::default();
+            c.site.nominal_carrier_hz = 0.0;
+            c
         };
         assert!(matches!(
             bad_freq.validate(),
             Err(ConfigError::InvalidFrequency(_))
         ));
 
-        let nan_alt = StationConfig {
-            altitude_m: f64::NAN,
-            ..Default::default()
+        let nan_alt = {
+            let mut c = StationConfig::default();
+            c.site.altitude_m = f64::NAN;
+            c
         };
         assert!(matches!(
             nan_alt.validate(),
             Err(ConfigError::InvalidAltitude(_))
         ));
 
-        let bad_doppler = StationConfig {
-            doppler_tolerance_hz: 0.0,
-            ..Default::default()
+        let bad_doppler = {
+            let mut c = StationConfig::default();
+            c.tolerances.doppler_tolerance_hz = 0.0;
+            c
         };
         assert!(matches!(
             bad_doppler.validate(),
             Err(ConfigError::InvalidDopplerTolerance(_))
         ));
 
-        let bad_el_thresh = StationConfig {
-            minimum_elevation_deg: 91.0,
-            ..Default::default()
+        let bad_el_thresh = {
+            let mut c = StationConfig::default();
+            c.tolerances.minimum_elevation_deg = 91.0;
+            c
         };
         assert!(matches!(
             bad_el_thresh.validate(),
             Err(ConfigError::InvalidMinimumElevation(_))
         ));
 
-        let bad_link_tol = StationConfig {
-            link_budget_tolerance_db: 0.0,
-            ..Default::default()
+        let bad_link_tol = {
+            let mut c = StationConfig::default();
+            c.tolerances.link_budget_tolerance_db = 0.0;
+            c
         };
         assert!(matches!(
             bad_link_tol.validate(),
             Err(ConfigError::InvalidLinkBudgetTolerance(_))
         ));
 
-        let nan_tx = StationConfig {
-            tx_power_dbm: f64::NAN,
-            ..Default::default()
+        let nan_tx = {
+            let mut c = StationConfig::default();
+            c.tolerances.tx_power_dbm = f64::NAN;
+            c
         };
         assert!(matches!(
             nan_tx.validate(),
@@ -655,29 +784,32 @@ mod tests {
             })
         ));
 
-        let bad_point = StationConfig {
-            pointing_tolerance_deg: 0.0,
-            ..Default::default()
+        let bad_point = {
+            let mut c = StationConfig::default();
+            c.tolerances.pointing_tolerance_deg = 0.0;
+            c
         };
         assert!(matches!(
             bad_point.validate(),
             Err(ConfigError::InvalidPointingTolerance(_))
         ));
 
-        let bad_hil_apid = StationConfig {
-            hil_tm_v1_apid_min: 0x100,
-            hil_tm_v1_apid_max: 0x50,
-            ..Default::default()
+        let bad_hil_apid = {
+            let mut c = StationConfig::default();
+            c.hil.tm_v1_apid_min = 0x100;
+            c.hil.tm_v1_apid_max = 0x50;
+            c
         };
         assert!(matches!(
             bad_hil_apid.validate(),
             Err(ConfigError::InvalidHilTmV1ApidRange { .. })
         ));
 
-        let apid_overflow = StationConfig {
-            hil_tm_v1_apid_min: 0x7FF,
-            hil_tm_v1_apid_max: 0x800,
-            ..Default::default()
+        let apid_overflow = {
+            let mut c = StationConfig::default();
+            c.hil.tm_v1_apid_min = 0x7FF;
+            c.hil.tm_v1_apid_max = 0x800;
+            c
         };
         assert!(matches!(
             apid_overflow.validate(),
@@ -696,27 +828,30 @@ mod tests {
 
     #[test]
     fn rejects_invalid_hil_cv4_tolerance() {
-        let bad_eps = StationConfig {
-            hil_eps_relative_tolerance: 1.5,
-            ..Default::default()
+        let bad_eps = {
+            let mut c = StationConfig::default();
+            c.hil.eps_relative_tolerance = 1.5;
+            c
         };
         assert!(matches!(
             bad_eps.validate(),
             Err(ConfigError::InvalidHilEpsRelativeTolerance(_))
         ));
 
-        let bad_th = StationConfig {
-            hil_thermal_absolute_tolerance_k: 0.0,
-            ..Default::default()
+        let bad_th = {
+            let mut c = StationConfig::default();
+            c.hil.thermal_absolute_tolerance_k = 0.0;
+            c
         };
         assert!(matches!(
             bad_th.validate(),
             Err(ConfigError::InvalidHilThermalTolerance(_))
         ));
 
-        let bad_br = StationConfig {
-            hil_body_rate_max_abs_deg_s: 0.0,
-            ..Default::default()
+        let bad_br = {
+            let mut c = StationConfig::default();
+            c.hil.body_rate_max_abs_deg_s = 0.0;
+            c
         };
         assert!(matches!(
             bad_br.validate(),
@@ -731,9 +866,10 @@ mod tests {
             .expect("inline resolves");
         assert!(text.contains("25544"));
 
-        let empty = StationConfig {
-            tle: TleSource::Inline("   ".into()),
-            ..Default::default()
+        let empty = {
+            let mut c = StationConfig::default();
+            c.tracking.ephemeris = EphemerisSource::TleInline("   ".into());
+            c
         };
         assert!(matches!(
             empty.resolve_tle_text(),
@@ -744,9 +880,10 @@ mod tests {
 
     #[test]
     fn missing_tle_file_is_reported() {
-        let cfg = StationConfig {
-            tle: TleSource::File(PathBuf::from("does/not/exist.tle")),
-            ..Default::default()
+        let cfg = {
+            let mut c = StationConfig::default();
+            c.tracking.ephemeris = EphemerisSource::TleFile(PathBuf::from("does/not/exist.tle"));
+            c
         };
         assert!(matches!(
             cfg.resolve_tle_text(),

@@ -8,10 +8,14 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use super::{ConfigError, IngestConfig, StationConfig, TleSource};
+use super::{
+    ConfigError, EphemerisSource, HilConfig, IngestConfig, SiteConfig, StationConfig,
+    ToleranceConfig, TrackingConfig,
+};
 
 /// Errors from reading or applying a gateway TOML file.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ConfigLoadError {
     /// Config file could not be read.
     #[error("failed to read config file {path}: {source}")]
@@ -158,73 +162,87 @@ struct StationToml {
 impl TryFrom<StationToml> for StationConfig {
     type Error = ConfigLoadError;
 
+    /// Maps the flat, operator-facing `[station]` table onto the grouped [`StationConfig`].
+    /// The TOML keys are a stable contract and deliberately do not mirror the in-memory grouping.
     fn try_from(t: StationToml) -> Result<Self, Self::Error> {
         let def = StationConfig::default();
-        let tle = match (&t.tle_inline, &t.tle_file, &t.oem_file) {
-            (Some(text), None, None) => TleSource::Inline(text.clone()),
-            (None, Some(path), None) => TleSource::File(path.clone()),
-            // OEM tracking: the TLE source is unused; keep the default so the struct is complete.
-            (None, None, Some(_)) => def.tle.clone(),
+        let ephemeris = match (t.tle_inline, t.tle_file, t.oem_file) {
+            (Some(text), None, None) => EphemerisSource::TleInline(text),
+            (None, Some(path), None) => EphemerisSource::TleFile(path),
+            (None, None, Some(path)) => EphemerisSource::OemFile(path),
             (None, None, None) => return Err(ConfigLoadError::TleSourceMissing),
             _ => return Err(ConfigLoadError::TleSourceAmbiguous),
         };
         Ok(StationConfig {
-            latitude_deg: t.latitude_deg,
-            longitude_deg: t.longitude_deg,
-            altitude_m: t.altitude_m,
-            nominal_carrier_hz: t.nominal_carrier_hz,
-            tle,
-            min_recompute_interval_ms: t.min_recompute_interval_ms,
-            doppler_tolerance_hz: t.doppler_tolerance_hz,
-            minimum_elevation_deg: t.minimum_elevation_deg,
-            tx_power_dbm: t.tx_power_dbm.unwrap_or(def.tx_power_dbm),
-            tx_gain_dbi: t.tx_gain_dbi.unwrap_or(def.tx_gain_dbi),
-            rx_gain_dbi: t.rx_gain_dbi.unwrap_or(def.rx_gain_dbi),
-            link_budget_tolerance_db: t
-                .link_budget_tolerance_db
-                .unwrap_or(def.link_budget_tolerance_db),
-            pointing_tolerance_deg: t
-                .pointing_tolerance_deg
-                .unwrap_or(def.pointing_tolerance_deg),
-            hil_tm_v1_apid_min: t.hil_tm_v1_apid_min.unwrap_or(def.hil_tm_v1_apid_min),
-            hil_tm_v1_apid_max: t.hil_tm_v1_apid_max.unwrap_or(def.hil_tm_v1_apid_max),
-            hil_eps_voltage_full_sun_v: t
-                .hil_eps_voltage_full_sun_v
-                .unwrap_or(def.hil_eps_voltage_full_sun_v),
-            hil_eps_voltage_eclipse_v: t
-                .hil_eps_voltage_eclipse_v
-                .unwrap_or(def.hil_eps_voltage_eclipse_v),
-            hil_thermal_c_full_sun: t
-                .hil_thermal_c_full_sun
-                .unwrap_or(def.hil_thermal_c_full_sun),
-            hil_thermal_c_eclipse: t.hil_thermal_c_eclipse.unwrap_or(def.hil_thermal_c_eclipse),
-            hil_eps_relative_tolerance: t
-                .hil_eps_relative_tolerance
-                .unwrap_or(def.hil_eps_relative_tolerance),
-            hil_thermal_absolute_tolerance_k: t
-                .hil_thermal_absolute_tolerance_k
-                .unwrap_or(def.hil_thermal_absolute_tolerance_k),
-            hil_body_rate_max_abs_deg_s: t
-                .hil_body_rate_max_abs_deg_s
-                .unwrap_or(def.hil_body_rate_max_abs_deg_s),
-            oem_file: t.oem_file,
-            ut1_minus_utc_s: t.ut1_minus_utc_s.unwrap_or(def.ut1_minus_utc_s),
-            polar_motion_x_arcsec: t.polar_motion_x_arcsec.unwrap_or(def.polar_motion_x_arcsec),
-            polar_motion_y_arcsec: t.polar_motion_y_arcsec.unwrap_or(def.polar_motion_y_arcsec),
-            refraction: t.refraction.unwrap_or(def.refraction),
-            refraction_pressure_hpa: t
-                .refraction_pressure_hpa
-                .unwrap_or(def.refraction_pressure_hpa),
-            refraction_temperature_c: t
-                .refraction_temperature_c
-                .unwrap_or(def.refraction_temperature_c),
-            doppler_tle_age_margin: t
-                .doppler_tle_age_margin
-                .unwrap_or(def.doppler_tle_age_margin),
-            tle_error_km_at_epoch: t.tle_error_km_at_epoch.unwrap_or(def.tle_error_km_at_epoch),
-            tle_error_growth_km_per_day: t
-                .tle_error_growth_km_per_day
-                .unwrap_or(def.tle_error_growth_km_per_day),
+            site: SiteConfig {
+                latitude_deg: t.latitude_deg,
+                longitude_deg: t.longitude_deg,
+                altitude_m: t.altitude_m,
+                nominal_carrier_hz: t.nominal_carrier_hz,
+            },
+            tracking: TrackingConfig {
+                ephemeris,
+                min_recompute_interval_ms: t.min_recompute_interval_ms,
+                ut1_minus_utc_s: t.ut1_minus_utc_s.unwrap_or(def.tracking.ut1_minus_utc_s),
+                polar_motion_x_arcsec: t
+                    .polar_motion_x_arcsec
+                    .unwrap_or(def.tracking.polar_motion_x_arcsec),
+                polar_motion_y_arcsec: t
+                    .polar_motion_y_arcsec
+                    .unwrap_or(def.tracking.polar_motion_y_arcsec),
+                refraction: t.refraction.unwrap_or(def.tracking.refraction),
+                refraction_pressure_hpa: t
+                    .refraction_pressure_hpa
+                    .unwrap_or(def.tracking.refraction_pressure_hpa),
+                refraction_temperature_c: t
+                    .refraction_temperature_c
+                    .unwrap_or(def.tracking.refraction_temperature_c),
+                doppler_tle_age_margin: t
+                    .doppler_tle_age_margin
+                    .unwrap_or(def.tracking.doppler_tle_age_margin),
+                tle_error_km_at_epoch: t
+                    .tle_error_km_at_epoch
+                    .unwrap_or(def.tracking.tle_error_km_at_epoch),
+                tle_error_growth_km_per_day: t
+                    .tle_error_growth_km_per_day
+                    .unwrap_or(def.tracking.tle_error_growth_km_per_day),
+            },
+            tolerances: ToleranceConfig {
+                doppler_tolerance_hz: t.doppler_tolerance_hz,
+                minimum_elevation_deg: t.minimum_elevation_deg,
+                tx_power_dbm: t.tx_power_dbm.unwrap_or(def.tolerances.tx_power_dbm),
+                tx_gain_dbi: t.tx_gain_dbi.unwrap_or(def.tolerances.tx_gain_dbi),
+                rx_gain_dbi: t.rx_gain_dbi.unwrap_or(def.tolerances.rx_gain_dbi),
+                link_budget_tolerance_db: t
+                    .link_budget_tolerance_db
+                    .unwrap_or(def.tolerances.link_budget_tolerance_db),
+                pointing_tolerance_deg: t
+                    .pointing_tolerance_deg
+                    .unwrap_or(def.tolerances.pointing_tolerance_deg),
+            },
+            hil: HilConfig {
+                tm_v1_apid_min: t.hil_tm_v1_apid_min.unwrap_or(def.hil.tm_v1_apid_min),
+                tm_v1_apid_max: t.hil_tm_v1_apid_max.unwrap_or(def.hil.tm_v1_apid_max),
+                eps_voltage_full_sun_v: t
+                    .hil_eps_voltage_full_sun_v
+                    .unwrap_or(def.hil.eps_voltage_full_sun_v),
+                eps_voltage_eclipse_v: t
+                    .hil_eps_voltage_eclipse_v
+                    .unwrap_or(def.hil.eps_voltage_eclipse_v),
+                thermal_c_full_sun: t
+                    .hil_thermal_c_full_sun
+                    .unwrap_or(def.hil.thermal_c_full_sun),
+                thermal_c_eclipse: t.hil_thermal_c_eclipse.unwrap_or(def.hil.thermal_c_eclipse),
+                eps_relative_tolerance: t
+                    .hil_eps_relative_tolerance
+                    .unwrap_or(def.hil.eps_relative_tolerance),
+                thermal_absolute_tolerance_k: t
+                    .hil_thermal_absolute_tolerance_k
+                    .unwrap_or(def.hil.thermal_absolute_tolerance_k),
+                body_rate_max_abs_deg_s: t
+                    .hil_body_rate_max_abs_deg_s
+                    .unwrap_or(def.hil.body_rate_max_abs_deg_s),
+            },
         })
     }
 }
@@ -249,7 +267,7 @@ pub fn load_gateway_from_path(
     };
     ingest.validate()?;
     station.validate()?;
-    if station.oem_file.is_none() {
+    if !matches!(station.tracking.ephemeris, EphemerisSource::OemFile(_)) {
         let _tle = station.resolve_tle_text()?;
     }
     Ok((ingest, station))
@@ -328,7 +346,10 @@ ISS (ZARYA)
         assert_eq!(ingest.channel_capacity, 512);
         let station = StationConfig::try_from(doc.station.expect("station")).expect("station");
         station.validate().expect("valid");
-        assert!(matches!(station.tle, TleSource::Inline(_)));
+        assert!(matches!(
+            station.tracking.ephemeris,
+            EphemerisSource::TleInline(_)
+        ));
     }
 
     #[test]
@@ -346,8 +367,12 @@ ISS (ZARYA)
         // Omitted: defaults (refraction on, EOP zero, TLE-age margin off).
         let doc: GatewayToml = toml::from_str(MINIMAL_VALID).expect("toml");
         let d = StationConfig::try_from(doc.station.unwrap()).unwrap();
-        assert!(d.refraction && !d.doppler_tle_age_margin && d.ut1_minus_utc_s == 0.0);
-        assert!(d.oem_file.is_none());
+        assert!(
+            d.tracking.refraction
+                && !d.tracking.doppler_tle_age_margin
+                && d.tracking.ut1_minus_utc_s == 0.0
+        );
+        assert!(!matches!(d.tracking.ephemeris, EphemerisSource::OemFile(_)));
 
         let extra = MINIMAL_VALID.replace(
             "minimum_elevation_deg = 0.0\n",
@@ -359,10 +384,13 @@ ISS (ZARYA)
         let doc: GatewayToml = toml::from_str(&extra).expect("toml with tier-2 keys");
         let s = StationConfig::try_from(doc.station.unwrap()).unwrap();
         s.validate().expect("valid");
-        assert_eq!(s.ut1_minus_utc_s, -0.2273);
-        assert!(!s.refraction && s.doppler_tle_age_margin);
+        assert_eq!(s.tracking.ut1_minus_utc_s, -0.2273);
+        assert!(!s.tracking.refraction && s.tracking.doppler_tle_age_margin);
         assert_eq!(
-            (s.tle_error_km_at_epoch, s.tle_error_growth_km_per_day),
+            (
+                s.tracking.tle_error_km_at_epoch,
+                s.tracking.tle_error_growth_km_per_day
+            ),
             (0.5, 1.5)
         );
 
@@ -388,10 +416,10 @@ ISS (ZARYA)
         assert!(oem_only.contains("oem_file"), "fixture replacement");
         let doc: GatewayToml = toml::from_str(&oem_only).unwrap();
         let s = StationConfig::try_from(doc.station.unwrap()).unwrap();
-        assert_eq!(
-            s.oem_file.as_deref(),
-            Some(std::path::Path::new("ephemeris.oem"))
-        );
+        assert!(matches!(
+            &s.tracking.ephemeris,
+            EphemerisSource::OemFile(p) if p == std::path::Path::new("ephemeris.oem")
+        ));
 
         let both = MINIMAL_VALID.replace(
             "minimum_elevation_deg = 0.0\n",
@@ -531,7 +559,10 @@ tle_file = '''{}'''
         );
         std::fs::write(&cfg_path, body).expect("write cfg");
         let (_ingest, station) = load_gateway_from_path(&cfg_path).expect("load");
-        assert!(matches!(station.tle, TleSource::File(_)));
+        assert!(matches!(
+            station.tracking.ephemeris,
+            EphemerisSource::TleFile(_)
+        ));
 
         let missing = dir.path().join("missing.toml");
         std::fs::write(

@@ -8,7 +8,9 @@ use chrono::Utc;
 use chronus_gateway::ccsds::{self, CCSDS_PRIMARY_HEADER_LEN};
 use chronus_gateway::ingest::RawFrame;
 use chronus_gateway::propagator::TrackingState;
-use chronus_gateway::validate::{LinkBudgetStationParams, RfMetadata, apply_physics_validation};
+use chronus_gateway::validate::{
+    LinkBudgetStationParams, RfMetadata, ValidationContext, apply_physics_validation,
+};
 use criterion::{Criterion, criterion_group, criterion_main};
 
 fn tm_bytes(apid: u16, seq: u16, payload: &[u8]) -> Vec<u8> {
@@ -47,27 +49,22 @@ fn bench_apply_physics_validation(c: &mut Criterion) {
     let frame = sample_frame();
     let tm = ccsds::parse_telemetry(&frame).expect("valid TM");
     let state = TrackingState::new(180.0, 45.0, 450.0, -7.2);
-    let nominal = 437_500_000.0_f64;
-    let lb = LinkBudgetStationParams {
-        tx_power_dbm: 30.0,
-        tx_gain_dbi: 2.0,
-        rx_gain_dbi: 5.0,
-        tolerance_db: 3.0,
-    };
+    let ctx = ValidationContext::new(437_500_000.0)
+        .with_pointing_tolerance_deg(0.25)
+        .with_link_budget(LinkBudgetStationParams {
+            tx_power_dbm: 30.0,
+            tx_gain_dbi: 2.0,
+            rx_gain_dbi: 5.0,
+            tolerance_db: 3.0,
+        });
     c.bench_function("apply_physics_validation", |b| {
         b.iter(|| {
             let mut t = tm.clone();
             apply_physics_validation(
+                black_box(&ctx),
                 black_box(&mut t),
                 black_box(&state),
-                nominal,
                 RfMetadata::default(),
-                150.0,
-                0.0,
-                Some(lb),
-                0.25,
-                None,
-                None,
             );
             black_box(t.physics_flags);
         })

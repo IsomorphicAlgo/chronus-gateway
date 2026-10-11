@@ -92,10 +92,15 @@ impl IngestStats {
 
 /// Serializable UDP ingest counters (see `GET /api/v1/chronus/metrics`).
 #[derive(Debug, Clone, serde::Serialize)]
+#[non_exhaustive]
 pub struct IngestSnapshot {
+    /// Datagrams accepted and broadcast.
     pub frames_received: u64,
+    /// Total bytes of accepted datagrams.
     pub bytes_received: u64,
+    /// Datagrams dropped for exceeding `max_datagram_size`.
     pub oversized_dropped: u64,
+    /// Socket receive errors.
     pub recv_errors: u64,
 }
 

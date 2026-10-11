@@ -23,7 +23,7 @@ Two ways to run the gateway stack: **native Rust** or **Docker Compose**. All de
 
 ```bash
 cd chronus-gateway
-cargo run -p chronus-gateway
+cargo run -p chronus-gateway --features hil   # `hil` enables the synthetic EPS/thermal/body-rate checks
 ```
 
 **Terminal 2 — synthetic HIL feeder**

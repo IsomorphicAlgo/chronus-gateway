@@ -185,9 +185,10 @@ pub struct SessionSim {
 }
 
 fn build_station(mask_on: bool) -> StationConfig {
-    StationConfig {
-        minimum_elevation_deg: if mask_on { MASK_ON_DEG } else { MASK_OFF_DEG },
-        ..StationConfig::default()
+    {
+        let mut c = StationConfig::default();
+        c.tolerances.minimum_elevation_deg = if mask_on { MASK_ON_DEG } else { MASK_OFF_DEG };
+        c
     }
 }
 
@@ -195,10 +196,10 @@ fn build_gateway(
     station: &Arc<StationConfig>,
 ) -> Result<(SharedGateway, Arc<TrackingProvider>), SimError> {
     let prop = EphemerustPropagator::from_station(station.as_ref())
-        .map_err(|e| SimError(format!("propagator init: {e:#}")))?;
+        .map_err(|e| SimError(format!("propagator init: {e}")))?;
     let tracking = Arc::new(TrackingProvider::new(
         Arc::new(prop),
-        station.min_recompute_interval_ms,
+        station.tracking.min_recompute_interval_ms,
     ));
     let (frame_tx, _rx) = broadcast::channel(1);
     let state = SharedGateway::new(
@@ -306,13 +307,13 @@ impl SessionSim {
         };
 
         // What the ground receive chain measures (healthy: truth plus small noise).
-        let exp_carrier = expected_carrier_hz(st.nominal_carrier_hz, ts.range_rate_km_s);
+        let exp_carrier = expected_carrier_hz(st.site.nominal_carrier_hz, ts.range_rate_km_s);
         let exp_rx = expected_rx_power_dbm(
             ts.range_km,
-            st.nominal_carrier_hz,
-            st.tx_power_dbm,
-            st.tx_gain_dbi,
-            st.rx_gain_dbi,
+            st.site.nominal_carrier_hz,
+            st.tolerances.tx_power_dbm,
+            st.tolerances.tx_gain_dbi,
+            st.tolerances.rx_gain_dbi,
         );
         let mut carrier = exp_carrier + 30.0 * self.noise.next();
         let mut rx_power = exp_rx.map(|p| p + 0.8 * self.noise.next());
@@ -357,12 +358,10 @@ impl SessionSim {
             received_at: self.sim_time,
             source: SocketAddr::from(([127, 0, 0, 1], 0)),
         };
-        let rf = RfMetadata {
-            measured_carrier_hz: Some(carrier),
-            measured_rx_power_dbm: rx_power,
-            measured_azimuth_deg: Some(az),
-            measured_elevation_deg: Some(el),
-        };
+        let mut rf = RfMetadata::new()
+            .with_carrier_hz(carrier)
+            .with_pointing_deg(az, el);
+        rf.measured_rx_power_dbm = rx_power;
         let frame_json = process_frame_with_rf(&self.state, &raw, rf)
             .ok_or_else(|| SimError("gateway rejected its own synthetic frame".into()))?;
         let physics_flags = serde_json::from_str::<serde_json::Value>(&frame_json)
@@ -377,7 +376,7 @@ impl SessionSim {
             "sim_time": self.sim_time,
             "scenario": self.scenario,
             "speed": self.speed,
-            "horizon_mask_deg": st.minimum_elevation_deg,
+            "horizon_mask_deg": st.tolerances.minimum_elevation_deg,
             "reported": {
                 "eps_bus_voltage_v": sample.eps_bus_voltage_v,
                 "thermal_panel_c": sample.thermal_panel_c,

@@ -43,7 +43,7 @@ Integration tests in `crates/chronus-hil-sim/tests/hil_ingest.rs`:
 - `nexosim_smoke_reaches_ingest_and_parse` — NeXosim → loopback UDP → real `ingest::run` → parse + **HIL v1** decode when APID is in the default band.
 - `nexosim_scripted_body_rate_window_on_wire` — scripted **CV-5** injection window; decodes **99 deg/s** on wire for `seq ∈ [start, start+duration)`.
 
-1. Start the gateway: `cargo run -p chronus-gateway` (UDP default `127.0.0.1:7301`, HTTP `127.0.0.1:8080`).
+1. Start the gateway with the HIL checks compiled in: `cargo run -p chronus-gateway --features hil` (UDP default `127.0.0.1:7301`, HTTP `127.0.0.1:8080`).
 2. In another shell, run the sim (release optional):  
    `cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 5000`
 3. Poll `GET http://127.0.0.1:8080/api/v1/chronus/metrics` for ingest + gateway counters and average

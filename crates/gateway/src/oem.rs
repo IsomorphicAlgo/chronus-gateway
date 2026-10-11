@@ -30,18 +30,18 @@
 
 use std::path::Path;
 
-use anyhow::Result;
 use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use ephemerust::frames::{InertialFrame, inertial_to_itrf, tai_minus_utc_s};
 
-use crate::config::{ConfigError, StationConfig};
-use crate::propagator::{
-    OrbitalPropagator, StationModel, TrackingState, itrf_to_teme_position,
-    nadir_sun_illumination_cos_teme,
-};
+use crate::config::{ConfigError, EphemerisSource, StationConfig};
+use crate::propagator::TrackingError;
+use crate::propagator::{OrbitalPropagator, StationModel, TrackingState};
+#[cfg(feature = "hil")]
+use crate::propagator::{itrf_to_teme_position, nadir_sun_illumination_cos_teme};
 
 /// Reference frame of an OEM segment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum OemFrame {
     /// An inertial frame rotated to ITRF with Earth orientation.
     Inertial(InertialFrame),
@@ -51,6 +51,7 @@ pub enum OemFrame {
 
 /// Time scale of OEM epochs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum OemTimeSystem {
     /// Coordinated Universal Time.
     Utc,
@@ -65,6 +66,7 @@ pub enum OemTimeSystem {
 /// Errors from reading or using an OEM. Every variant can explain itself (see
 /// [`crate::diagnose`], codes `CG-32x`).
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum OemError {
     /// The text does not start with a `CCSDS_OEM_VERS` line.
     #[error("not a CCSDS OEM in KVN form: the first keyword must be CCSDS_OEM_VERS")]
@@ -233,8 +235,9 @@ impl OemEphemeris {
     ///
     /// # Errors
     ///
-    /// [`ConfigError::OemRead`] for I/O problems (wrapped in `anyhow`), otherwise [`OemError`].
-    pub fn from_file(path: &Path) -> Result<Self> {
+    /// [`TrackingError::Config`] ([`ConfigError::OemRead`]) for I/O problems, otherwise
+    /// [`TrackingError::Oem`].
+    pub fn from_file(path: &Path) -> Result<Self, TrackingError> {
         let text = std::fs::read_to_string(path).map_err(|source| ConfigError::OemRead {
             path: path.display().to_string(),
             source,
@@ -596,17 +599,18 @@ impl OemPropagator {
         Self { ephemeris, station }
     }
 
-    /// Builds the backend from a [`StationConfig`] whose `oem_file` is set.
+    /// Builds the backend from a [`StationConfig`] whose ephemeris source is [`EphemerisSource::OemFile`].
     ///
     /// # Errors
     ///
     /// Configuration, I/O or [`OemError`] parse failures.
-    pub fn from_station(config: &StationConfig) -> Result<Self> {
+    pub fn from_station(config: &StationConfig) -> Result<Self, TrackingError> {
         let station = StationModel::from_station(config)?;
-        let path = config
-            .oem_file
-            .as_deref()
-            .ok_or_else(|| anyhow::anyhow!("station.oem_file is not set"))?;
+        let EphemerisSource::OemFile(path) = &config.tracking.ephemeris else {
+            return Err(TrackingError::backend(
+                "the station's ephemeris source is not an OEM file",
+            ));
+        };
         Ok(Self::new(OemEphemeris::from_file(path)?, station))
     }
 
@@ -618,17 +622,18 @@ impl OemPropagator {
 }
 
 impl OrbitalPropagator for OemPropagator {
-    fn tracking_state(&self, time: DateTime<Utc>) -> Result<TrackingState> {
+    fn tracking_state(&self, time: DateTime<Utc>) -> Result<TrackingState, TrackingError> {
         let eop = &self.station.earth_orientation;
         let (r, v) = self.ephemeris.state_itrf(time, eop)?;
         let la = ephemerust::topocentric_look_angles(r, v, self.station.observer())?;
-        let illum = nadir_sun_illumination_cos_teme(itrf_to_teme_position(r, time, eop), time)
-            .filter(|x| x.is_finite())
-            .unwrap_or(f64::NAN);
-        Ok(self
-            .station
-            .tracking_state(&la)
-            .with_sun_illumination(illum))
+        let state = self.station.tracking_state(&la);
+        #[cfg(feature = "hil")]
+        let state = state.with_sun_illumination(
+            nadir_sun_illumination_cos_teme(itrf_to_teme_position(r, time, eop), time)
+                .filter(|x| x.is_finite())
+                .unwrap_or(f64::NAN),
+        );
+        Ok(state)
     }
 }
 

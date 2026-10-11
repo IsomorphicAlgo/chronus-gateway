@@ -17,8 +17,9 @@
 //! CV-4 illumination path). `ephemerust::Propagator` is `Send + Sync` with `&self` methods,
 //! so this backend shares across Tokio workers without locking, as the trait requires.
 //!
-//! **CV-4:** [`TrackingState::nadir_sun_illum_cos`] is a nadir-fixed solar-array illumination
-//! factor in \([0, 1]\) ([`nadir_sun_illumination_cos`]). Since Ephemerust 0.7.0 the eclipse
+//! **CV-4 (`hil` feature):** [`TrackingState::nadir_sun_illum_cos`] is a nadir-fixed solar-array
+//! illumination factor in \([0, 1]\) (`nadir_sun_illumination_cos`, built only with the `hil`
+//! feature; `NaN` otherwise). Since Ephemerust 0.7.0 the eclipse
 //! part is **real physics** — the conical umbra/penumbra model in [`ephemerust::eclipse`]
 //! (apparent-disk overlap, Vallado §5.3) — replacing the in-house ray–sphere shadow toy; the
 //! nadir-fixed panel-normal cosine remains a deliberately simple demo model (D-021/D-038).
@@ -40,13 +41,65 @@
 
 use std::sync::{Arc, Mutex};
 
-use anyhow::Result;
 use chrono::{DateTime, Utc};
+#[cfg(feature = "hil")]
 use ephemerust::eclipse::{ShadowState, shadow_state_from_vectors};
+#[cfg(feature = "hil")]
 use ephemerust::frames::{InertialFrame, itrf_to_inertial};
-use ephemerust::{EarthOrientation, LookAngles, ObserverLocation, Propagator, Tle, sun_vector_km};
+#[cfg(feature = "hil")]
+use ephemerust::sun_vector_km;
+use ephemerust::{EarthOrientation, LookAngles, ObserverLocation, Propagator, Tle};
 
-use crate::config::StationConfig;
+use crate::config::{ConfigError, EphemerisSource, StationConfig};
+use crate::oem::OemError;
+
+/// Why a tracking state could not be produced.
+///
+/// This is the error type of the [`OrbitalPropagator`] seam, so callers (and custom backends) can
+/// react to the cause instead of string-matching an opaque error: an [`OemError::OutOfCoverage`]
+/// is "load a longer ephemeris", an [`ephemerust::AstroError`] is "stale or invalid TLE", and a
+/// [`ConfigError`] is "fix the `[station]` settings". Every variant can explain itself with
+/// [`crate::diagnose::explain_tracking_error`].
+///
+/// `#[non_exhaustive]`: new causes can be added in 1.x, so match with a wildcard arm.
+///
+/// ```
+/// use chronus_gateway::propagator::{EphemerustPropagator, TrackingError};
+///
+/// let err = EphemerustPropagator::new("garbage", 35.0, -116.0, 0.0).err().unwrap();
+/// assert!(matches!(err, TrackingError::Astro(_)));
+/// ```
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum TrackingError {
+    /// The station configuration (or a file it points at) is invalid or unreadable.
+    #[error(transparent)]
+    Config(#[from] ConfigError),
+    /// The OEM ephemeris is malformed, unsupported, or does not cover the requested time.
+    #[error(transparent)]
+    Oem(#[from] OemError),
+    /// Ephemerust could not parse the TLE or propagate it to the requested time (e.g. decayed).
+    #[error(transparent)]
+    Astro(#[from] ephemerust::AstroError),
+    /// A custom [`OrbitalPropagator`] backend failed for a reason of its own.
+    #[error("{0}")]
+    Backend(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl TrackingError {
+    /// Wraps an arbitrary backend failure, for custom [`OrbitalPropagator`] implementations.
+    ///
+    /// ```
+    /// use chronus_gateway::propagator::TrackingError;
+    /// let e = TrackingError::backend("ephemeris service unreachable");
+    /// assert_eq!(e.to_string(), "ephemeris service unreachable");
+    /// ```
+    pub fn backend(err: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        Self::Backend(err.into())
+    }
+}
+
+type Result<T, E = TrackingError> = std::result::Result<T, E>;
 
 /// Topocentric tracking state of a spacecraft relative to a fixed ground station.
 ///
@@ -181,13 +234,13 @@ impl StationModel {
     pub fn from_station(config: &StationConfig) -> Result<Self> {
         config.validate()?;
         Ok(Self {
-            latitude_deg: config.latitude_deg,
-            longitude_deg: config.longitude_deg,
-            altitude_m: config.altitude_m,
+            latitude_deg: config.site.latitude_deg,
+            longitude_deg: config.site.longitude_deg,
+            altitude_m: config.site.altitude_m,
             earth_orientation: config.earth_orientation()?,
-            refraction: config.refraction.then_some((
-                config.refraction_pressure_hpa,
-                config.refraction_temperature_c,
+            refraction: config.tracking.refraction.then_some((
+                config.tracking.refraction_pressure_hpa,
+                config.tracking.refraction_temperature_c,
             )),
         })
     }
@@ -256,6 +309,7 @@ pub trait OrbitalPropagator: Send + Sync {
     fn tracking_state(&self, time: DateTime<Utc>) -> Result<TrackingState>;
 }
 
+#[cfg(feature = "hil")]
 /// Nadir-fixed solar-array illumination factor for **subsystem co-validation (CV-4)**.
 ///
 /// Uses the SGP4 position in **TEME** (km) and Ephemerust's geocentric Sun position vector
@@ -280,6 +334,7 @@ pub fn nadir_sun_illumination_cos(tle: &Tle, time: DateTime<Utc>) -> Option<f64>
     nadir_sun_illumination_cos_from(&prop, time)
 }
 
+#[cfg(feature = "hil")]
 /// Like [`nadir_sun_illumination_cos`], but reuses an already-initialized
 /// [`ephemerust::Propagator`] so per-frame callers pay only a propagation step.
 #[must_use]
@@ -288,6 +343,7 @@ pub fn nadir_sun_illumination_cos_from(prop: &Propagator, time: DateTime<Utc>) -
     nadir_sun_illumination_cos_teme(state.position_km, time)
 }
 
+#[cfg(feature = "hil")]
 /// The CV-4 illumination model for a satellite **TEME** position (km) — the backend-independent
 /// core of [`nadir_sun_illumination_cos_from`], also used by the OEM backend after rotating its
 /// state to TEME.
@@ -377,15 +433,15 @@ impl EphemerustPropagator {
         let tle_text = config.resolve_tle_text()?;
         let mut prop = Self::new(
             &tle_text,
-            config.latitude_deg,
-            config.longitude_deg,
-            config.altitude_m,
+            config.site.latitude_deg,
+            config.site.longitude_deg,
+            config.site.altitude_m,
         )?
         .with_station_model(station);
-        if config.doppler_tle_age_margin {
+        if config.tracking.doppler_tle_age_margin {
             prop = prop.with_tle_error_model(TleErrorModel {
-                km_at_epoch: config.tle_error_km_at_epoch,
-                growth_km_per_day: config.tle_error_growth_km_per_day,
+                km_at_epoch: config.tracking.tle_error_km_at_epoch,
+                growth_km_per_day: config.tracking.tle_error_growth_km_per_day,
             });
         }
         Ok(prop)
@@ -511,13 +567,15 @@ impl TrackingProvider {
 impl OrbitalPropagator for EphemerustPropagator {
     fn tracking_state(&self, time: DateTime<Utc>) -> Result<TrackingState> {
         let la = self.look_angles(time)?;
-        let nadir_sun_illum_cos = nadir_sun_illumination_cos_from(&self.propagator, time)
-            .filter(|x| x.is_finite())
-            .unwrap_or(f64::NAN);
-        let mut state = self
-            .station
-            .tracking_state(&la)
-            .with_sun_illumination(nadir_sun_illum_cos);
+        #[allow(unused_mut)] // `mut` is needed for the optional steps below
+        let mut state = self.station.tracking_state(&la);
+        #[cfg(feature = "hil")]
+        {
+            let nadir_sun_illum_cos = nadir_sun_illumination_cos_from(&self.propagator, time)
+                .filter(|x| x.is_finite())
+                .unwrap_or(f64::NAN);
+            state = state.with_sun_illumination(nadir_sun_illum_cos);
+        }
         if let Some(model) = &self.tle_error {
             state =
                 state.with_range_rate_uncertainty(self.range_rate_uncertainty_km_s(time, model)?);
@@ -527,21 +585,23 @@ impl OrbitalPropagator for EphemerustPropagator {
 }
 
 /// Builds the tracking backend a [`StationConfig`] asks for: the CCSDS **OEM** backend when
-/// `oem_file` is set ([`crate::oem::OemPropagator`]), otherwise SGP4 from the TLE
-/// ([`EphemerustPropagator`]).
+/// ephemeris source is [`EphemerisSource::OemFile`] ([`crate::oem::OemPropagator`]), otherwise SGP4
+/// from the TLE ([`EphemerustPropagator`]).
 ///
 /// # Errors
 ///
 /// Configuration, TLE or OEM loading failures, explainable with
 /// [`crate::diagnose::explain_tracking_error`].
 pub fn propagator_from_station(config: &StationConfig) -> Result<Arc<dyn OrbitalPropagator>> {
-    if config.oem_file.is_some() {
-        Ok(Arc::new(crate::oem::OemPropagator::from_station(config)?))
-    } else {
-        Ok(Arc::new(EphemerustPropagator::from_station(config)?))
+    match config.tracking.ephemeris {
+        EphemerisSource::OemFile(_) => {
+            Ok(Arc::new(crate::oem::OemPropagator::from_station(config)?))
+        }
+        _ => Ok(Arc::new(EphemerustPropagator::from_station(config)?)),
     }
 }
 
+#[cfg(feature = "hil")]
 /// Rotates an Earth-fixed (ITRF) position to TEME, for the CV-4 illumination model.
 pub(crate) fn itrf_to_teme_position(
     r_itrf_km: [f64; 3],
@@ -571,12 +631,18 @@ mod tests {
         let prop = EphemerustPropagator::new(ISS_TLE, 35.0, -116.0, 1000.0).expect("valid TLE");
         let s = prop.tracking_state(epoch()).expect("propagation succeeds");
 
+        #[cfg(feature = "hil")]
         assert!(
             s.nadir_sun_illum_cos.is_finite()
                 && s.nadir_sun_illum_cos >= 0.0
                 && s.nadir_sun_illum_cos <= 1.0,
             "illum = {}",
             s.nadir_sun_illum_cos
+        );
+        #[cfg(not(feature = "hil"))]
+        assert!(
+            s.nadir_sun_illum_cos.is_nan(),
+            "the toy illumination model is only computed with the `hil` feature"
         );
         assert!(
             s.range_km.is_finite() && s.range_km > 0.0,
@@ -734,16 +800,17 @@ mod tests {
 
     #[test]
     fn from_station_is_deterministic_and_in_tolerance() {
-        use crate::config::{StationConfig, TleSource};
+        use crate::config::StationConfig;
 
-        let station = StationConfig {
-            latitude_deg: 35.0,
-            longitude_deg: -116.0,
-            altitude_m: 1000.0,
-            nominal_carrier_hz: 437_500_000.0,
-            tle: TleSource::Inline(ISS_TLE.to_string()),
-            min_recompute_interval_ms: 0,
-            ..Default::default()
+        let station = {
+            let mut c = StationConfig::default();
+            c.site.latitude_deg = 35.0;
+            c.site.longitude_deg = -116.0;
+            c.site.altitude_m = 1000.0;
+            c.site.nominal_carrier_hz = 437_500_000.0;
+            c.tracking.ephemeris = EphemerisSource::TleInline(ISS_TLE.to_string());
+            c.tracking.min_recompute_interval_ms = 0;
+            c
         };
         let prop = EphemerustPropagator::from_station(&station).expect("build from station");
 
@@ -813,6 +880,7 @@ mod tests {
         assert_eq!(counting.calls.load(Ordering::Relaxed), 2);
     }
 
+    #[cfg(feature = "hil")]
     #[test]
     fn nadir_sun_illumination_cos_is_deterministic() {
         let tle = Tle::parse(
@@ -825,5 +893,38 @@ mod tests {
         let b = nadir_sun_illumination_cos(&tle, t).expect("illum again");
         assert_eq!(a, b);
         assert!((0.0..=1.0).contains(&a), "a={a}");
+    }
+
+    #[test]
+    fn custom_backend_errors_stay_typed_through_the_provider() {
+        struct Failing;
+        impl OrbitalPropagator for Failing {
+            fn tracking_state(&self, _t: chrono::DateTime<Utc>) -> Result<TrackingState> {
+                Err(TrackingError::backend("ephemeris service unreachable"))
+            }
+        }
+        let provider = TrackingProvider::new(Arc::new(Failing), 0);
+        let err = provider.tracking_state(epoch()).unwrap_err();
+        assert!(matches!(err, TrackingError::Backend(_)));
+        assert_eq!(err.to_string(), "ephemeris service unreachable");
+        assert_eq!(crate::diagnose::explain_tracking_error(&err).code, "CG-312");
+    }
+
+    #[test]
+    fn config_and_tle_failures_map_to_their_variants() {
+        let bad_cfg = {
+            let mut c = StationConfig::default();
+            c.site.latitude_deg = 123.0;
+            c
+        };
+        let err = EphemerustPropagator::from_station(&bad_cfg).err().unwrap();
+        assert!(matches!(
+            err,
+            TrackingError::Config(ConfigError::InvalidLatitude(_))
+        ));
+        let err = EphemerustPropagator::new("not a tle", 0.0, 0.0, 0.0)
+            .err()
+            .unwrap();
+        assert!(matches!(err, TrackingError::Astro(_)));
     }
 }

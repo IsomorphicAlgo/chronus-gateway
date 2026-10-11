@@ -71,6 +71,7 @@ pub const TLE_STALE_DAYS: f64 = 30.0;
 /// How serious a [`Diagnosis`] is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum Severity {
     /// Informational: nothing is wrong, but the operator may want to know.
     Info,
@@ -252,6 +253,13 @@ impl Explain for ConfigError {
             .fix("Paste a TLE into `station.tle_inline`, or point `station.tle_file` at a TLE file.")
             .fix("Current TLEs are free at https://celestrak.org (search by satellite name or NORAD ID).")
             .fix("If you have an operator ephemeris, set `station.oem_file` to a CCSDS OEM instead."),
+            ConfigError::NotATleSource => Diagnosis::new(
+                "CG-128",
+                E,
+                "TLE text was requested, but the station tracks from an OEM ephemeris file.",
+                "`station.oem_file` is set, so there is no TLE to read.",
+            )
+            .fix("Use `station.tle_inline` or `station.tle_file` for SGP4 tracking, or leave only `station.oem_file` set."),
             ConfigError::InvalidDopplerTolerance(v) => tolerance(
                 "CG-106",
                 "Doppler tolerance",
@@ -605,14 +613,15 @@ fn current_dir_display() -> String {
 /// use chronus_gateway::diagnose::config_warnings;
 ///
 /// // 437.5 entered in MHz instead of Hz -- legal, but surely a mistake.
-/// let station = StationConfig { nominal_carrier_hz: 437.5, ..StationConfig::default() };
+/// let mut station = StationConfig::default();
+/// station.site.nominal_carrier_hz = 437.5;
 /// let w = config_warnings(&IngestConfig::default(), &station);
 /// assert!(w.iter().any(|d| d.code == "CG-130"));
 /// ```
 #[must_use]
 pub fn config_warnings(ingest: &IngestConfig, station: &StationConfig) -> Vec<Diagnosis> {
     let mut out = Vec::new();
-    let f = station.nominal_carrier_hz;
+    let f = station.site.nominal_carrier_hz;
     if f.is_finite() && f > 0.0 && f < 1.0e6 {
         let as_hz = if f < 1.0e4 { f * 1.0e6 } else { f * 1.0e3 };
         out.push(
@@ -681,6 +690,7 @@ pub fn config_warnings(ingest: &IngestConfig, station: &StationConfig) -> Vec<Di
 
 /// Which listening socket a bind error came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Listener {
     /// The UDP telemetry downlink socket (`ingest.bind_addr`).
     Udp,
@@ -906,15 +916,12 @@ pub fn check_tle_age(epoch: DateTime<Utc>, now: DateTime<Utc>) -> Option<Diagnos
 /// assert_eq!(d.code, "CG-310");
 /// ```
 #[must_use]
-pub fn explain_tracking_error(err: &anyhow::Error) -> Diagnosis {
-    if let Some(cfg) = err.downcast_ref::<ConfigError>() {
-        return cfg.explain();
-    }
-    if let Some(oem) = err.downcast_ref::<crate::oem::OemError>() {
-        return oem.explain();
-    }
-    if let Some(astro) = err.downcast_ref::<ephemerust::AstroError>() {
-        return match astro {
+pub fn explain_tracking_error(err: &crate::propagator::TrackingError) -> Diagnosis {
+    use crate::propagator::TrackingError as T;
+    match err {
+        T::Config(cfg) => cfg.explain(),
+        T::Oem(oem) => oem.explain(),
+        T::Astro(astro) => match astro {
             ephemerust::AstroError::Tle(tle) => {
                 let mut d = Diagnosis::new(
                     "CG-310",
@@ -937,15 +944,16 @@ pub fn explain_tracking_error(err: &anyhow::Error) -> Diagnosis {
                 ),
             )
             .fix("Download a current TLE from https://celestrak.org."),
-        };
+        },
+        // `Backend` and any cause added in a later 1.x release.
+        other => Diagnosis::new(
+            "CG-312",
+            Severity::Warning,
+            "Orbital tracking is unavailable, so physics checks are off.",
+            other.to_string(),
+        )
+        .fix("Check the `[station]` section of your config against gateway.example.toml."),
     }
-    Diagnosis::new(
-        "CG-312",
-        Severity::Warning,
-        "Orbital tracking is unavailable, so physics checks are off.",
-        err.to_string(),
-    )
-    .fix("Check the `[station]` section of your config against gateway.example.toml.")
 }
 
 impl Explain for crate::oem::OemError {
@@ -1180,6 +1188,7 @@ pub fn describe_physics_flags(flags: u8) -> Vec<&'static str> {
 /// Overall status word for [`HealthReport`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum OverallStatus {
     /// Running and receiving good telemetry.
     Ok,
@@ -1767,9 +1776,10 @@ mod tests {
 
     #[test]
     fn warns_when_frequency_entered_in_mhz() {
-        let station = StationConfig {
-            nominal_carrier_hz: 437.5,
-            ..StationConfig::default()
+        let station = {
+            let mut c = StationConfig::default();
+            c.site.nominal_carrier_hz = 437.5;
+            c
         };
         let w = config_warnings(&IngestConfig::default(), &station);
         let d = w.iter().find(|d| d.code == "CG-130").expect("MHz warning");
@@ -1778,9 +1788,10 @@ mod tests {
 
     #[test]
     fn warns_when_frequency_entered_in_khz() {
-        let station = StationConfig {
-            nominal_carrier_hz: 437_500.0,
-            ..StationConfig::default()
+        let station = {
+            let mut c = StationConfig::default();
+            c.site.nominal_carrier_hz = 437_500.0;
+            c
         };
         let w = config_warnings(&IngestConfig::default(), &station);
         let d = w.iter().find(|d| d.code == "CG-130").expect("kHz warning");
@@ -1976,9 +1987,11 @@ mod tests {
 
     #[test]
     fn tracking_error_from_config_delegates() {
-        let station = StationConfig {
-            tle: crate::config::TleSource::File("definitely/missing.tle".into()),
-            ..StationConfig::default()
+        let station = {
+            let mut c = StationConfig::default();
+            c.tracking.ephemeris =
+                crate::config::EphemerisSource::TleFile("definitely/missing.tle".into());
+            c
         };
         let err = crate::propagator::EphemerustPropagator::from_station(&station)
             .err()
@@ -1988,7 +2001,7 @@ mod tests {
 
     #[test]
     fn unknown_tracking_error_is_generic() {
-        let d = explain_tracking_error(&anyhow::anyhow!("mystery"));
+        let d = explain_tracking_error(&crate::propagator::TrackingError::backend("mystery"));
         assert_eq!(d.code, "CG-312");
         assert!(d.cause.contains("mystery"));
     }

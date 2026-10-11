@@ -585,6 +585,63 @@ centre / time system), `CG-322` (outside coverage; also checked at startup).
 **Not yet:** XML OEM, CCSDS OPM/OMM, covariance use (e.g. feeding D-044 from covariance), and
 `TOD`/`MOD`/`TDR` frames.
 
+### D-046 — API freeze preparation (Tranche 1 of the 1.0 plan; 0.3.0)
+**Decision:** Fix the shape of the public API before it is frozen at 1.0, so that 1.x can add
+fields, variants, checks and backends without breaking callers:
+
+1. **`#[non_exhaustive]` on everything that will grow.** Errors and enums: `ConfigError`,
+   `ConfigLoadError`, `CcsdsError`, `HilTmV1DecodeError`, `OemError`, `TrackingError`, `Severity`,
+   `EphemerisSource`, and (so TOD/MOD frames and further time scales are 1.x minors) `OemFrame`,
+   `OemTimeSystem`, `Listener`, `OverallStatus`. Structs: `RfMetadata` (now built with
+   `RfMetadata::new()` + `with_*`), `OpenMctRealtimeMessageV1`, `GatewayMetricsSnapshot`,
+   `IngestSnapshot`, `SharedGateway`, `ValidationContext`, `StationConfig` and its four groups.
+2. **`ValidationContext` replaces the ten positional arguments of `apply_physics_validation`.**
+   Station-level tunables are built once (`ValidationContext::from_station`, held by
+   `SharedGateway`); the call is now `apply_physics_validation(&ctx, &mut frame, &state, rf)`. A new
+   check adds a context field and a branch, not a signature change. HIL payload decoding moved
+   inside the validator, driven by the context's APID range.
+3. **Typed error at the propagator seam.** `OrbitalPropagator::tracking_state` and every backend
+   constructor return `TrackingError { Config, Oem, Astro, Backend }` instead of `anyhow::Error`;
+   `explain_tracking_error` matches on it. `anyhow` no longer appears in the gateway library's
+   public API (the binary still uses it).
+4. **`StationConfig` is grouped:** `site` (location, nominal carrier), `tracking` (ephemeris source,
+   Earth orientation, refraction, TLE-age model), `tolerances` (check thresholds, link-budget
+   model), `hil` (synthetic demo models). `EphemerisSource { TleInline, TleFile, OemFile }` replaces
+   `TleSource` + `oem_file`, so "TLE and OEM at once" is unrepresentable. **The TOML `[station]`
+   table is unchanged and stays flat**: the file format is the operator-facing contract and is not
+   forced to mirror the in-memory grouping (`config::file` maps one onto the other).
+5. **The `hil` cargo feature (off by default)** gates the toy EPS / thermal / body-rate checks
+   (bits 4–6), `HilSubsystemCvParams`, the nadir-array Sun-illumination model
+   (`nadir_sun_illumination_cos*`) and its per-frame cost. Without it `TrackingState::
+   nadir_sun_illum_cos` is `NaN` and bits 4–6 are never set. The bit assignments, the
+   `FLAG_*` constants, the `chronus.hil.tm.v1` decoder and `HilConfig` (so config files stay
+   portable) are **not** gated. `chronus-hil-sim` and `chronus-demo-server` enable the feature;
+   the demo Docker image builds the gateway with it. The `hil` API is outside the 1.x promise.
+6. **`#![warn(missing_docs)]`** on the gateway library (clean; `clippy -D warnings` makes it a
+   gate) and a **`cargo-semver-checks` CI job** comparing against the latest `v*` tag (the 0.2.0
+   release commit until the first tag exists).
+
+**Why:** A 1.0 promise is only credible if the types that will obviously change are already
+shielded. Each item removes a specific way a routine 1.x addition would have been a breaking change
+(a new error variant, a new RF field, an eleventh check argument, a new ephemeris source, a new
+metrics counter), and the `hil` split keeps lab models out of what production users must depend on.
+**Validation:** `cargo semver-checks` against the 0.2.0 release commit: with `--release-type
+patch` it reports 5 major-change failures (the intended breaks), and with the 0.3.0 minor bump
+the 0.x policy requires none; so the gate trips on an unintended break in a patch release and
+passes on this deliberate one. Tests run in both configurations (`cargo test`, 253 tests;
+`cargo test -p chronus-gateway`, 216 tests); one test asserts bits 4–6 stay quiet without `hil`.
+**Frozen surface at 1.0 (candidate list, Tranche 5 confirms):** the `ccsds`, `config`, `diagnose`,
+`hil_tm`, `http`, `ingest`, `metrics`, `oem`, `propagator`, `state` and `validate` modules as
+shipped in 0.3.0, minus anything gated by `hil`. About 105 public items, of which 25 are
+`#[non_exhaustive]` types (counted in `crates/gateway/src`). Re-exports at the crate root mirror
+them.
+**Deliberately still open (decide before 1.0):** plain-literal structs whose fields are part of the
+contract today, `IngestConfig`, `RawFrame`, `TelemetryFrame`, `LinkBudgetStationParams`,
+`StationModel`, `TleErrorModel`, `OemSegment`, `DecodedHilTmV1`, `Diagnosis`, `HealthReport`,
+`HealthInputs`, `IngestStats` and `GatewayMetrics` (atomic counters). Each is either genuinely
+complete, or should get `#[non_exhaustive]` plus a constructor in 0.4–0.6, since every field added
+later is a breaking change for anyone who builds them with a literal.
+
 ## Open decisions (to resolve as milestones land)
 
 - **OD-E — Multi-node / rack-scale co-simulation.** Backlog beyond the M7 laptop scope.
