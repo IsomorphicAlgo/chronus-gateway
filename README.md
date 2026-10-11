@@ -2,7 +2,7 @@
 
 ### TLDR
 
-ChronusGateway-RS combines **high-throughput async I/O** (the Rusty_Server lineage) with **real-time space math** (Ephemerust) so telemetry is not only delivered quickly, but **cross-checked against physics** before it reaches your dashboard.
+ChronusGateway-RS combines **high-throughput async I/O** with **real-time space math** (Ephemerust) so telemetry is not only delivered quickly, but **cross-checked against physics** before it reaches your dashboard.
 
 **To install, run, and interpret `physics_flags`, see the operator guide [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)** — step-by-step first run, defaults, and alarm bits live there; this README stays at the “why” level.
 
