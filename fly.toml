@@ -10,7 +10,7 @@ primary_region = 'sjc'
   dockerfile = 'demo/Dockerfile.public'
 
 [env]
-  ALLOWED_ORIGINS = 'https://demo.shintratech.net,https://shintratech.net,https://www.shintratech.net,https://chronus-sandbox.fly.dev'
+  ALLOWED_ORIGINS = 'https://demo.chronusgateway.com,https://chronusgateway.com,https://www.chronusgateway.com,https://chronus-sandbox.fly.dev,https://demo.shintratech.net'
   MAX_PER_IP = '3'
   MAX_SESSIONS = '40'
   RUST_LOG = 'info'

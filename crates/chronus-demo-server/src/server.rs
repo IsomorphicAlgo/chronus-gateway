@@ -427,14 +427,14 @@ mod tests {
 
     #[test]
     fn origin_rules() {
-        let allowed = vec!["https://demo.shintratech.net".to_string()];
+        let allowed = vec!["https://demo.chronusgateway.com".to_string()];
         assert!(origin_allowed(
             &allowed,
-            Some("https://demo.shintratech.net")
+            Some("https://demo.chronusgateway.com")
         ));
         assert!(origin_allowed(
             &allowed,
-            Some("https://DEMO.shintratech.net/")
+            Some("https://DEMO.chronusgateway.com/")
         ));
         assert!(!origin_allowed(&allowed, Some("https://evil.example")));
         assert!(

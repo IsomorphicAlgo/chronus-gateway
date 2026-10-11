@@ -6,9 +6,9 @@ co-validation → `openmct.realtime.v1` JSON). Visitors inject faults (Doppler s
 mismatch, antenna error, …) and watch `physics_flags` react. Nobody else sees their faults.
 
 ```
-Visitor ──https──▶ shintratech.net            Squarespace: story, diagram, "Launch demo" button
+Visitor ──https──▶ chronusgateway.com         GitHub Pages: story, diagram, "Launch demo" button
    │
-   └─────wss────▶ demo.shintratech.net        Fly.io: chronus-demo-server (one small machine)
+   └─────wss────▶ demo.chronusgateway.com     Fly.io: chronus-demo-server (one small machine)
                     ├─ /            static visitor page (demo/sandbox/index.html)
                     ├─ /sandbox/ws  per-visitor WebSocket (own clock, own gateway state)
                     └─ /health      liveness + session counters
@@ -42,23 +42,23 @@ curl https://<app>.fly.dev/health
 If the app name is not `chronus-sandbox`, edit `app` and the `*.fly.dev` entry in `ALLOWED_ORIGINS`
 in `fly.toml`, then redeploy. **Keep a single machine**: the session caps are per process.
 
-## Point demo.shintratech.net at it
+## Point demo.chronusgateway.com at it
 
-1. `fly certs add demo.shintratech.net`
-2. In the DNS settings for `shintratech.net` (Squarespace Domains if your Google domain was
-   migrated there), add: **CNAME**, host `demo`, value `<app>.fly.dev`.
-3. `fly certs show demo.shintratech.net` until it reports the certificate as issued (minutes).
-4. Visit `https://demo.shintratech.net/`.
+1. `fly certs add demo.chronusgateway.com`
+2. In the Squarespace Domains DNS settings for `chronusgateway.com` (Custom Records), add:
+   **CNAME**, Name `demo`, Data `<app>.fly.dev`.
+3. `fly certs show demo.chronusgateway.com` until it reports the certificate as issued (minutes).
+4. Visit `https://demo.chronusgateway.com/`. HTTPS is issued by Fly; nothing to enable in Squarespace.
 
-The root site on Squarespace is unaffected; only the `demo` host record is new.
+The root site (GitHub Pages, below) is unaffected; only the `demo` host record is new.
 
-## Squarespace page
+## Landing site (GitHub Pages)
 
-Single scrolling page: one-line pitch, architecture diagram, the Vitro screenshot, the three-step
-explanation from the README, then a **"Launch live demo"** button linking to
-`https://demo.shintratech.net/` (opens in a new tab). Embedding the demo in an iframe via a Code
-Block is possible on plans that allow code blocks, but the dashboard wants the full screen, so a
-button is the dependable option.
+`site/` is a single static page deployed by `.github/workflows/pages.yaml` to
+`https://chronusgateway.com/` (Settings -> Pages -> Source: GitHub Actions, custom domain
+`chronusgateway.com`, then Enforce HTTPS). DNS lives in Squarespace Domains: four `A` records for `@`
+(GitHub Pages IPs), a `www` CNAME to `<user>.github.io`, and the `demo` CNAME above. The page links
+to the sandbox with a **"Launch the live sandbox"** button.
 
 ## Abuse limits (all configurable)
 
@@ -81,7 +81,7 @@ the page itself, which is the point of a public trial.
 ```bash
 fly logs                      # tracing output
 fly status                    # machine state
-curl https://demo.shintratech.net/health   # active_sessions / sessions_served
+curl https://demo.chronusgateway.com/health   # active_sessions / sessions_served
 fly releases                  # previous deploys; redeploy an older image to roll back
 ```
 

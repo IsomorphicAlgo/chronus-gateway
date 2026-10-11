@@ -161,7 +161,7 @@ async fn per_ip_cap_rejects_extra_sessions_and_frees_slot_on_close() {
 #[tokio::test]
 async fn wrong_origin_is_refused_and_right_origin_accepted() {
     let cfg = ServerConfig {
-        allowed_origins: vec!["https://demo.shintratech.net".into()],
+        allowed_origins: vec!["https://demo.chronusgateway.com".into()],
         ..fast_cfg()
     };
     let addr = spawn(cfg).await;
@@ -177,7 +177,7 @@ async fn wrong_origin_is_refused_and_right_origin_accepted() {
         .into_client_request()
         .unwrap();
     good.headers_mut()
-        .insert("origin", "https://demo.shintratech.net".parse().unwrap());
+        .insert("origin", "https://demo.chronusgateway.com".parse().unwrap());
     assert!(tokio_tungstenite::connect_async(good).await.is_ok());
 }
 
