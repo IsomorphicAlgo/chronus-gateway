@@ -10,11 +10,14 @@
 //!
 //! `f_expected = f_nominal − f_nominal × (v_m/s / c)` where `v_m/s = range_rate_km_s × 1000`.
 //!
-//! This matches the project design document convention (Δf from relative range rate). The
-//! Ephemerust range-rate magnitude is validated to ~0.25 km/s against a central difference in
-//! that crate; at 437.5 MHz that leaves sub-kHz uncertainty from propagation math — the **±150 Hz**
-//! acceptance band is dominated by atmospheric / ionospheric drift and receiver chain tolerance
-//! (see `TEST_PLAN.md` T-DOPPLER and `Methodology.md` D-012).
+//! This matches the project design document convention (Δf from relative range rate). Since
+//! Ephemerust 1.0 the range rate agrees with an independent IAU 2000 reference to 0.41 m/s
+//! (≈ 0.6 Hz at 437.5 MHz) and with its own d(range)/dt to < 1 m/s (**T-RANGERATE**, enforced
+//! here by `propagator::tests::range_rate_matches_numerical_derivative_of_range`), so the
+//! propagation math is negligible inside the **±150 Hz** band. That band is consumed by TLE age
+//! first (along-track error near closest approach, roughly 25 Hz per km on a high LEO pass at
+//! UHF), then ionosphere, receiver chain and oscillator drift (see `TEST_PLAN.md` T-DOPPLER and
+//! `Methodology.md` D-012, D-041).
 //!
 //! ## Link budget (free-space, CV-1)
 //!

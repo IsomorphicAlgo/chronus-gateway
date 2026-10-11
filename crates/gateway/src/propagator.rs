@@ -320,6 +320,36 @@ mod tests {
         );
     }
 
+    /// **T-RANGERATE** (`Methodology.md` D-041): the Doppler input must equal the time
+    /// derivative of slant range. A 0.5 s central difference over three hours of ISS geometry
+    /// (above and below the horizon) bounds the disagreement at 1 m/s, about 1.5 Hz at
+    /// 437.5 MHz. Ephemerust 0.7 failed this by up to ~0.3 km/s (an Earth-rotation sign error
+    /// fixed in Ephemerust 1.0).
+    #[test]
+    fn range_rate_matches_numerical_derivative_of_range() {
+        let prop = EphemerustPropagator::new(ISS_TLE, 47.9088, -122.2503, 0.0).expect("valid TLE");
+        let half = chrono::Duration::milliseconds(500);
+        let mut worst_m_s = 0.0_f64;
+        for k in 0..90 {
+            let t = epoch() + chrono::Duration::minutes(2 * k);
+            let s = prop.tracking_state(t).expect("state");
+            let r_plus = prop
+                .tracking_state(t + half)
+                .expect("state at t+0.5 s")
+                .range_km;
+            let r_minus = prop
+                .tracking_state(t - half)
+                .expect("state at t-0.5 s")
+                .range_km;
+            let numeric_km_s = r_plus - r_minus; // over a 1 s baseline
+            worst_m_s = worst_m_s.max((numeric_km_s - s.range_rate_km_s).abs() * 1000.0);
+        }
+        assert!(
+            worst_m_s < 1.0,
+            "range_rate vs d(range)/dt differs by {worst_m_s:.3} m/s (T-RANGERATE bound 1 m/s)"
+        );
+    }
+
     #[test]
     fn invalid_tle_is_rejected() {
         let result = EphemerustPropagator::new("definitely not a TLE", 0.0, 0.0, 0.0);

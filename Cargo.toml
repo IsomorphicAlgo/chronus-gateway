@@ -8,7 +8,7 @@ members = ["crates/gateway", "crates/chronus-hil-sim", "crates/chronus-replay", 
 [workspace.package]
 # First real version line (finalization plan D.1): pre-1.0, minor = breaking during 0.x.
 # Bumped per tranche as the finalization plan progresses (see CHANGELOG.md).
-version = "0.1.4"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT"
@@ -50,6 +50,7 @@ nexosim = "1"
 
 # Astrodynamics backend — published crate (SGP4 look-angles + range-rate + conical
 # umbra/penumbra eclipse model for the Physics-Telemetry Co-Validation engine).
-# Pinned to the 0.7 minor because Ephemerust is 0.x (minor = breaking); bump deliberately.
-# See Methodology D-037 (supersedes the D-005 sibling-checkout arrangement).
-ephemerust = "0.7"
+# Ephemerust 1.x: stable API, corrected range rate (Doppler input), validated against an
+# independent IAU 2000 reference. `default-features = false` skips its CLI (clap/env_logger).
+# See Methodology D-041 (amends D-004/D-012/D-037; D-037 superseded the D-005 sibling checkout).
+ephemerust = { version = "1", default-features = false }

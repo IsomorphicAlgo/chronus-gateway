@@ -8,15 +8,35 @@ Versions cover all three workspace crates (`chronus-gateway`, `chronus-hil-sim`,
 
 ## Unreleased
 
-Operator-facing diagnostics and test-suite expansion. Contains **breaking** API additions for
-exhaustive matches on `ConfigError` (two new variants), so this targets **0.2.0**.
+## 0.2.0 — 2026-10-11
+
+Operator-facing diagnostics, test-suite expansion, and the move to **Ephemerust 1.0**. Contains
+**breaking** API additions for exhaustive matches on `ConfigError` (two new variants), hence the
+minor bump.
+
+- **Ephemerust 1.0 (corrected Doppler input):** the backend now depends on
+  `ephemerust = { version = "1", default-features = false }`. Ephemerust 1.0 fixes a range-rate
+  error of up to ~0.31 km/s (≈ 450 Hz at 437.5 MHz) that would have tripped the Doppler check
+  (bit 0) on real RF; synthetic demo traffic was self-consistent and unaffected. Range rate now
+  agrees with an independent IAU 2000 reference to 0.41 m/s. `default-features = false` keeps
+  Ephemerust's CLI dependencies out of the gateway build. **Methodology D-041** (amends D-004,
+  D-012, D-037).
+- **Tolerances:** **T-DOPPLER** stays ±150 Hz with a new justification (TLE age, not library math,
+  is now the dominant term); **T-RANGERATE** tightens from 0.25 km/s to **1 m/s** and is enforced
+  by the new `propagator` test `range_rate_matches_numerical_derivative_of_range`.
+- **TLE age warning tightened for Doppler:** `CG-301` is now a *warning* once a TLE is more than
+  **3 days** old (was *info* after 14 days), explaining that the Doppler (bit 0) and pointing
+  (bit 3) checks are the ones at risk and that it can be ignored when no measured carrier or
+  antenna angles are supplied. `CG-302` (> 30 days) is unchanged. **Breaking:** the public
+  constant `diagnose::TLE_AGING_DAYS` (14) is replaced by `diagnose::TLE_DOPPLER_DAYS` (3).
 
 - **New `diagnose` module:** every error type (`ConfigError`, `ConfigLoadError`, `CcsdsError`,
   `HilTmV1DecodeError`, socket bind failures, Ephemerust TLE/propagation errors) can explain
   itself as a `Diagnosis` — a `CG-*` code, severity, what happened, likely cause and numbered
   fixes. Reuses Ephemerust's `TleError::hint()` for TLE problems.
 - **Smart catches:** swapped latitude/longitude; tolerance entered as a percentage; carrier
-  frequency entered in MHz/kHz; stale (> 30 days) or future-dated TLE; port in use (suggests the
+  frequency entered in MHz/kHz; TLE too old for Doppler/pointing (> 3 days) or for any check
+  (> 30 days), or future-dated; port in use (suggests the
   next port + `netstat`/`lsof`); privileged port; IP not on this machine; missing config/TLE file
   (shows the working directory); TOML typo vs missing field vs syntax error.
 - **`IngestConfig::validate`:** rejects `channel_capacity = 0` (previously a Tokio panic at

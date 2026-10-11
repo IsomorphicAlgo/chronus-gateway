@@ -79,7 +79,7 @@ A static or wrong-frequency spoof does not line up with the live orbital solutio
 - **Range-rate**, the input to the Doppler check.
 - **A conical umbra/penumbra eclipse model**, the input to the shadow check and the EPS/thermal sun-illumination model.
 
-The gateway reaches it through an `OrbitalPropagator` trait, so the network and validation pipeline never depend on a specific math library. Ephemerust is the default backend (pinned to the `0.7` minor), and the same boundary leaves room for a higher-fidelity backend such as `nyx-space` without rewriting the gateway. Rationale: [`Methodology.md`](Methodology.md) (D-001, D-037).
+The gateway reaches it through an `OrbitalPropagator` trait, so the network and validation pipeline never depend on a specific math library. Ephemerust is the default backend (version 1.x), and the same boundary leaves room for a higher-fidelity backend such as `nyx-space` without rewriting the gateway. Ephemerust's satellite math is tested against an independent IAU 2000 reference (Skyfield): under an arcminute in pointing and under half a metre per second in range-rate, about 0.6 Hz of Doppler at 437.5 MHz. Rationale: [`Methodology.md`](Methodology.md) (D-001, D-004, D-037, D-041).
 
 ---
 

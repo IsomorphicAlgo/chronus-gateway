@@ -57,9 +57,19 @@ already provides exactly the primitives the co-validation engine needs — cruci
 look-angle checks. A clean seam lets a high-fidelity `nyx-space` backend drop in later without
 touching ingestion, validation, or distribution code.
 **Credit:** **Ephemerust** (owner's SGP4/astrodynamics crate, built atop the `sgp4` crate).
-**Limits noted:** Ephemerust is teaching-grade (~arcminute; no precession/nutation, WGS72 gravity
-vs WGS84 geodetic). Adequate for foundation/look-angle/Doppler work; revisit precision tolerances
-(e.g. the ±150 Hz Doppler bound) against this error budget before claiming hard accuracy numbers.
+**Limits (measured, updated by D-041):** with Ephemerust **1.0** and the same TLE, look angles
+agree with an independent IAU 2000 implementation (Skyfield) to **0.34 arcmin**, slant range to
+**75 m** and range rate to **0.41 m/s** (≈ 0.6 Hz of Doppler at 437.5 MHz). Precession/nutation
+are not a limit on this path (SGP4's TEME frame is already "of date"; TEME → ECEF by GMST is the
+standard Vallado bridge); UT1 = UTC and no polar motion cost at most a few hundred metres. The
+dominant error is now the **TLE itself** (~1 km at epoch, growing ~1–3 km/day in LEO), so the
+±150 Hz Doppler bound is a statement about TLE freshness, not library math (D-012). The
+`nyx-space` seam stays relevant only for precise orbit inputs (OEM/GPS/OD); note nyx-space is
+AGPL-3.0, so it could only ever be an optional, separately licensed backend.
+*History:* Ephemerust ≤ 0.7 carried an Earth-rotation sign error that biased range rate by up to
+\|ω × r_station\| ≈ 0.31 km/s (≈ 450 Hz at 437.5 MHz). The demo was unaffected because the HIL
+simulator derives its carrier from the same range rate, but real RF would have tripped bit 0 for
+most of a pass.
 
 ### D-005 — Dependency source for Ephemerust: local path *(superseded by D-037)*
 **Decision:** `ephemerust = { path = "../Ephemerust" }` (sibling checkout next to this repo).
@@ -165,10 +175,13 @@ state, counting-mock trait-swap + throttle).
   **Charter:** bits 3–7 remain per **D-016** / `docs/EXTENDED_COVALIDATION_PLAN.md` (now in local `PLANS.md`).
 - **`RfMetadata::measured_carrier_hz == None`:** Doppler check skipped (no bit 0); production SDR
   wiring comes with M5 or a side channel.
-**Why OD-C is closed:** Ephemerust documents `range_rate_km_s` to ~0.25 km/s vs a 1 s central
-difference; at L-band (~437 MHz) that maps to sub-kHz frequency uncertainty from propagation math
-alone. The ±150 Hz band is therefore dominated by atmosphere, receiver chain, and clock effects,
-not SGP4 truncation at the teaching-grade arcminute level (D-004).
+**Why OD-C is closed (re-justified by D-041):** propagation math now contributes ≈ 0.6 Hz at
+437.5 MHz (Ephemerust 1.0 range rate within 0.41 m/s of an IAU 2000 reference, < 1 m/s of its own
+d(range)/dt — **T-RANGERATE**). The ±150 Hz band is consumed first by **TLE age** — along-track
+error turns into Doppler error near closest approach at roughly 25 Hz per km on a high LEO pass at
+UHF, so the bound holds for TLEs up to a few days old — and then by ionosphere, receiver chain and
+oscillator drift. *(The original justification cited Ephemerust's 0.25 km/s test tolerance; that
+is ≈ 365 Hz at 437.5 MHz and was hiding a real ~0.31 km/s bias, see D-004 history.)*
 **`TelemetryFrame`:** `raw` and `payload_len` are `pub(crate)` so `validate` unit tests can build
 minimal frames without exposing internals on the public API.
 **Tested by:** `validate` unit tests (Doppler, horizon, link budget / **T-RSSI**, combined flags,
@@ -423,6 +436,7 @@ the gateway consumes its maintainer's published crate. Local co-development rema
 time with a temporary `[patch.crates-io]` entry.
 **Reproducibility:** still a `0.x` crate: the `0.7` pin accepts compatible patches only (Cargo
 treats 0.x minors as breaking); bump the minor deliberately and record it here.
+*Superseded in part by D-041:* the pin is now `ephemerust = { version = "1", default-features = false }`.
 
 ### D-038 — CV-4 eclipse upgraded to conical umbra/penumbra (amends D-021)
 **Decision:** `nadir_sun_illumination_cos` now uses **Ephemerust 0.7.0's `eclipse` module** —
@@ -476,6 +490,28 @@ scoped `clippy::unwrap_used` lint on the gateway library.
 
 ---
 
+### D-041 — Ephemerust 1.0 adoption + Doppler / range-rate tolerances re-justified (amends D-004, D-012, D-037)
+**Decision:** Depend on `ephemerust = { version = "1", default-features = false }` and ship the
+workspace as **0.2.0**. Re-justify **T-DOPPLER** (±150 Hz, unchanged) and tighten
+**T-RANGERATE** from 0.25 km/s to **1 m/s**, now enforced in this repo by
+`propagator::tests::range_rate_matches_numerical_derivative_of_range`.
+**Why:** A precision review (2026-10-11) compared Ephemerust 0.7 look angles against Skyfield for
+the same TLE: pointing and range were excellent (≤ 0.5 arcmin, ≤ 70 m) but range rate was off by
+up to 312 m/s at 48° N — up to ~456 Hz at 437.5 MHz, three times the Doppler band. Root cause was
+in Ephemerust (Earth-rotation transport term added instead of subtracted, plus an observer
+velocity subtracted for a station that is stationary in ECEF). Ephemerust 1.0 fixes it, adds a
+committed Skyfield reference test (worst case 0.34′ / 75 m / 0.41 m/s) and a 1 m/s
+finite-difference test, and makes `AstroError` and its result types `#[non_exhaustive]` (the
+gateway's `diagnose` already matches with a wildcard). `default-features = false` drops
+Ephemerust's CLI dependencies from the gateway build.
+**Consequences:** no gateway code changes were needed; the sandbox and HIL demo are unchanged
+(self-consistent before and after). With real RF, T-DOPPLER is now governed by TLE freshness;
+the stale-TLE diagnostic was tightened to match: `CG-301` now warns (was *info* at 14 days) once
+a TLE is more than **3 days** old (`diagnose::TLE_DOPPLER_DAYS`), naming the Doppler and pointing
+checks as the ones at risk; `CG-302` still marks > 30 days as unusable for every check.
+**Tested by:** full workspace suite against Ephemerust 1.0, plus the new T-RANGERATE test (fails
+on Ephemerust 0.7, passes on 1.0).
+
 ## Open decisions (to resolve as milestones land)
 
 - **OD-E — Multi-node / rack-scale co-simulation.** Backlog beyond the M7 laptop scope.
@@ -490,7 +526,7 @@ docs when dependencies change (finalization **B.2**, **D-035**).
 
 | Work | Role here | Source / License |
 |------|-----------|------------------|
-| **Ephemerust** (owner) | SGP4 propagation, look-angles, range-rate, Sun vector + conical umbra/penumbra eclipse model (**CV-4** illumination; **D-038**) | [crates.io `ephemerust`](https://crates.io/crates/ephemerust) `0.7` pin (**D-037**), MIT ([GitHub](https://github.com/IsomorphicAlgo/Ephemerust)) |
+| **Ephemerust** (owner) | SGP4 propagation, look-angles, range-rate, Sun vector + conical umbra/penumbra eclipse model (**CV-4** illumination; **D-038**) | [crates.io `ephemerust`](https://crates.io/crates/ephemerust) `1.x`, `default-features = false` (**D-037**, **D-041**), MIT ([GitHub](https://github.com/IsomorphicAlgo/Ephemerust)) |
 | **Rusty_Server** (owner) | Architectural inspiration (async/Axum/config patterns) | Maintainer sibling project; **D-002** |
 | [`sgp4`](https://crates.io/crates/sgp4) | SGP4/SDP4 numerics (via Ephemerust) | crates.io, MIT/Apache-2.0 |
 | [`spacepackets`](https://crates.io/crates/spacepackets) ([us-irs](https://github.com/us-irs/spacepackets)) | CCSDS Space Packet parsing (**M2**, **D-010**) | crates.io, Apache-2.0/MIT |

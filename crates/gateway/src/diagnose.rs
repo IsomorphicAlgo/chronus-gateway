@@ -56,9 +56,16 @@ use crate::validate::{
 /// Where the example configuration lives (referenced in fixes).
 const EXAMPLE_CONFIG: &str = "gateway.example.toml";
 
-/// TLEs older than this many days start to lose accuracy (warning).
-pub const TLE_AGING_DAYS: f64 = 14.0;
-/// TLEs older than this many days are too inaccurate for the physics checks (strong warning).
+/// TLEs older than this many days are too old for the Doppler (bit 0) and antenna-pointing
+/// (bit 3) checks (warning, `CG-301`).
+///
+/// SGP4 along-track error grows by roughly 1–3 km per day. Near closest approach on a high LEO
+/// pass at UHF, each kilometre of along-track error is about 25 Hz of Doppler error, so a few
+/// days of drift uses up the default ±150 Hz band (`Methodology.md` D-041); the same drift is a
+/// few tenths of a degree in pointing, the size of the 0.25° T-POINT tolerance.
+pub const TLE_DOPPLER_DAYS: f64 = 3.0;
+/// TLEs older than this many days are too inaccurate for any of the physics checks (warning,
+/// `CG-302`).
 pub const TLE_STALE_DAYS: f64 = 30.0;
 
 /// How serious a [`Diagnosis`] is.
@@ -748,9 +755,11 @@ pub fn tle_epoch(tle_text: &str) -> Option<DateTime<Utc>> {
 
 /// Warns when orbit data is too old (or dated in the future) to trust the physics checks.
 ///
-/// SGP4 predictions drift by roughly a kilometre or more per day as a TLE ages; after a few weeks
-/// the predicted Doppler shift and pointing are wrong enough that **healthy telemetry gets
-/// flagged as anomalous**. Returns `None` when the TLE is fresh.
+/// SGP4 predictions drift by roughly 1–3 km per day along the orbit as a TLE ages. The Doppler
+/// and pointing checks feel this first: after about [`TLE_DOPPLER_DAYS`] the drift can push them
+/// past their tolerances near closest approach, so **healthy passes get flagged** (`CG-301`).
+/// After [`TLE_STALE_DAYS`] every physics check is unreliable (`CG-302`). Returns `None` when the
+/// TLE is fresh (up to [`TLE_DOPPLER_DAYS`] old).
 ///
 /// ```
 /// use chrono::{Duration, Utc};
@@ -799,17 +808,32 @@ pub fn check_tle_age(epoch: DateTime<Utc>, now: DateTime<Utc>) -> Option<Diagnos
             .fix("If you are replaying old recorded data, this warning can be ignored."),
         );
     }
-    if age_days > TLE_AGING_DAYS {
+    if age_days > TLE_DOPPLER_DAYS {
         return Some(
             Diagnosis::new(
                 "CG-301",
-                Severity::Info,
+                Severity::Warning,
                 format!(
-                    "The orbit data (TLE) is {age_days:.0} days old and starting to lose accuracy."
+                    "The orbit data (TLE) is {age_days:.1} days old -- too old for the Doppler \
+                     and pointing checks."
                 ),
-                "TLEs are usually refreshed every few days.",
+                format!(
+                    "Orbit predictions drift by roughly 1-3 km per day. After about \
+                     {TLE_DOPPLER_DAYS:.0} days that is enough to push the predicted Doppler \
+                     shift past the default 150 Hz tolerance near closest approach (and \
+                     pointing past 0.25 degrees), so healthy passes can be flagged on bits 0 \
+                     and 3. The horizon, link-budget and shadow checks are much less sensitive."
+                ),
             )
-            .fix(refresh),
+            .fix(refresh)
+            .fix(
+                "CelesTrak updates element sets several times a day; refreshing daily keeps \
+                 every check trustworthy.",
+            )
+            .fix(
+                "If you are not feeding measured carrier frequency or antenna angles, the \
+                 Doppler and pointing checks are skipped and this warning can be ignored.",
+            ),
         );
     }
     None
@@ -1753,14 +1777,25 @@ mod tests {
     #[test]
     fn fresh_tle_produces_no_warning() {
         let now = Utc::now();
-        assert!(check_tle_age(now - Duration::days(3), now).is_none());
+        assert!(check_tle_age(now - Duration::days(2), now).is_none());
+        assert!(check_tle_age(now - Duration::hours(71), now).is_none());
     }
 
     #[test]
-    fn aging_tle_produces_info() {
+    fn tle_older_than_three_days_warns_about_doppler_and_pointing() {
+        let now = Utc::now();
+        let d = check_tle_age(now - Duration::hours(73), now).expect("just past 3 days");
+        assert_eq!((d.code, d.severity), ("CG-301", Severity::Warning));
+        assert!(d.summary.contains("3.0 days"), "{}", d.summary);
+        assert!(d.cause.contains("Doppler") && d.cause.contains("bits 0"));
+        assert!(d.fixes.iter().any(|f| f.contains("skipped")));
+    }
+
+    #[test]
+    fn weeks_old_tle_is_still_the_doppler_warning_below_thirty_days() {
         let now = Utc::now();
         let d = check_tle_age(now - Duration::days(20), now).expect("aging");
-        assert_eq!((d.code, d.severity), ("CG-301", Severity::Info));
+        assert_eq!((d.code, d.severity), ("CG-301", Severity::Warning));
     }
 
     #[test]
