@@ -29,9 +29,15 @@ jobs:
           toolchain: "1.89"
           components: clippy
 
+      # Workspace build: the lab crates enable the gateway's `hil` feature, so this runs everything.
       - name: Cargo test
         working-directory: chronus-gateway
         run: cargo test
+
+      # The production configuration: the gateway on its own, without the `hil` demo models.
+      - name: Cargo test (gateway without hil)
+        working-directory: chronus-gateway
+        run: cargo test -p chronus-gateway
 
       # Showcase S1: ensure Compose spec is valid (no full `docker build` here — too slow for PR CI).
       - name: Validate demo Docker Compose spec
@@ -55,6 +61,10 @@ jobs:
         working-directory: chronus-gateway
         run: cargo clippy --all-targets -- -D warnings
 
+      - name: Clippy (gateway without hil)
+        working-directory: chronus-gateway
+        run: cargo clippy -p chronus-gateway --all-targets -- -D warnings
+
       # Pin a crates.io version that exists (--locked uses the published lockfile). 0.21.3 was never released.
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked --version 0.22.1
@@ -69,3 +79,24 @@ jobs:
       - name: cargo deny
         working-directory: chronus-gateway
         run: cargo deny check
+
+  # Public-API drift gate (Tranche 1.6). From 0.3.0 on, every PR is compared against the last
+  # release: in 0.x a breaking change must come with a minor bump, from 1.0 with a major one.
+  # Baseline = latest tag, or the 0.2.0 release commit until the first tag exists.
+  semver:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for the baseline revision)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Pick baseline revision
+        id: baseline
+        run: echo "rev=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo ce1a8cd)" >> "$GITHUB_OUTPUT"
+
+      - name: cargo-semver-checks
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          package: chronus-gateway
+          baseline-rev: ${{ steps.baseline.outputs.rev }}
