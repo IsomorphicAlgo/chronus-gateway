@@ -95,7 +95,7 @@ fn iss_tle_cached() -> &'static Tle {
 }
 
 /// Linear maps matching default [`chronus_gateway::config::StationConfig`] CV-4 toy endpoints.
-fn hil_targets_from_illum(illum: f64) -> (f32, f32) {
+pub fn hil_targets_from_illum(illum: f64) -> (f32, f32) {
     const V_SUN: f64 = 28.0;
     const V_ECL: f64 = 24.0;
     const T_HOT: f64 = 32.0;
@@ -104,6 +104,31 @@ fn hil_targets_from_illum(illum: f64) -> (f32, f32) {
     let v = V_ECL + (V_SUN - V_ECL) * clamped;
     let t = T_COLD + (T_HOT - T_COLD) * clamped;
     (v as f32, t as f32)
+}
+
+/// UTC instant that HIL frame `0` maps to (matches the public ISS TLE epoch used by the gateway default).
+#[must_use]
+pub fn default_hil_epoch_utc() -> chrono::DateTime<chrono::Utc> {
+    Utc.with_ymd_and_hms(2020, 7, 12, 21, 0, 0)
+        .single()
+        .expect("static epoch is a valid UTC instant")
+}
+
+/// Nominal (fault-free) subsystem snapshot for frame `seq` at simulated time `utc`.
+///
+/// EPS voltage and panel temperature follow the same Sun-illumination map the gateway uses for
+/// **CV-4**, so a nominal sample validated at the **same** `utc` raises no subsystem alarms.
+/// Shared by the NeXosim driver and the per-visitor sandbox so both stay self-consistent.
+#[must_use]
+pub fn nominal_sample(seq: u32, utc: chrono::DateTime<chrono::Utc>) -> TelemSample {
+    let illum = nadir_sun_illumination_cos(iss_tle_cached(), utc).unwrap_or(0.0);
+    let (eps_bus_voltage_v, thermal_panel_c) = hil_targets_from_illum(illum);
+    TelemSample {
+        seq,
+        eps_bus_voltage_v,
+        thermal_panel_c,
+        body_rate_deg_s: 0.001 * seq as f32,
+    }
 }
 
 /// One synthetic “subsystem snapshot” per telemetry frame (generic floats, not flight hardware).
@@ -154,14 +179,7 @@ impl SpacecraftDemo {
         }
         let utc = self.hil_epoch_utc
             + Duration::milliseconds(self.emitted as i64 * self.sim_step_ms as i64);
-        let illum = nadir_sun_illumination_cos(iss_tle_cached(), utc).unwrap_or(0.0) as f64;
-        let (eps_bus_voltage_v, thermal_panel_c) = hil_targets_from_illum(illum);
-        let mut sample = TelemSample {
-            seq: self.emitted,
-            eps_bus_voltage_v,
-            thermal_panel_c,
-            body_rate_deg_s: 0.001 * self.emitted as f32,
-        };
+        let mut sample = nominal_sample(self.emitted, utc);
         if let Some(ref script) = self.scripted_anomaly {
             apply_scripted_anomaly(&mut sample, self.emitted, script);
         }

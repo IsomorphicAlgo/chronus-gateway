@@ -2,4 +2,7 @@
 /target
 .git
 .gitignore
-personal.md
+personal.mdlogs_*
+PLANS.md
+*.pdf
+.cg-src.tgz

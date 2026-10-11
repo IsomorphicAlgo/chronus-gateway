@@ -1,0 +1,45 @@
+# Fly.io config for the public ChronusGateway-RS sandbox. See docs/PUBLIC_DEMO.md.
+#
+# `app` must be globally unique on Fly. If "chronus-sandbox" is taken, pick another name and update
+# the fly.dev entry in ALLOWED_ORIGINS below to match.
+#
+# Deploy with ONE machine (`--ha=false`): the session caps below are enforced per process.
+
+app = "chronus-sandbox"
+primary_region = "sea"
+
+[build]
+  dockerfile = "demo/Dockerfile.public"
+
+[env]
+  # Browsers must present one of these Origins to open a sandbox WebSocket.
+  ALLOWED_ORIGINS = "https://demo.shintratech.net,https://shintratech.net,https://www.shintratech.net,https://chronus-sandbox.fly.dev"
+  MAX_SESSIONS = "40"     # simultaneous sandboxes, all visitors
+  MAX_PER_IP = "3"        # simultaneous sandboxes per visitor address
+  SESSION_SECS = "600"    # hard lifetime of one sandbox
+  TICK_HZ = "10"          # frames per second per sandbox
+  RUST_LOG = "info"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Scale to zero when nobody is watching; Fly wakes the machine on the next request.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 30
+    hard_limit = 40
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

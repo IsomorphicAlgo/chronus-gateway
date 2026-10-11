@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+# Public per-visitor sandbox image (Fly.io). Build context: repository root.
+#   docker build -f demo/Dockerfile.public -t chronus-sandbox .
+# Contains ONLY the sandbox server + the static visitor page: no UDP listener, no HIL feeder.
+
+FROM rust:1.89-bookworm AS builder
+WORKDIR /workspace
+COPY . .
+RUN cargo build --release --locked -p chronus-demo-server
+
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --no-create-home chronus
+
+COPY --from=builder /workspace/target/release/chronus-demo-server /usr/local/bin/
+COPY demo/sandbox /app/static
+
+ENV STATIC_DIR=/app/static \
+    BIND=0.0.0.0:8080 \
+    RUST_LOG=info
+USER chronus
+EXPOSE 8080
+CMD ["chronus-demo-server"]

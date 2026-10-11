@@ -1,0 +1,31 @@
+[package]
+name = "chronus-demo-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Public per-visitor sandbox server for ChronusGateway-RS (demo hosting; not published)"
+publish = false
+
+[[bin]]
+name = "chronus-demo-server"
+path = "src/main.rs"
+
+[dependencies]
+chronus-gateway = { path = "../gateway" }
+chronus-hil-sim = { path = "../chronus-hil-sim" }
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+axum.workspace = true
+tower-http = { workspace = true, features = ["fs"] }
+
+[dev-dependencies]
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake"] }
+futures-util.workspace = true

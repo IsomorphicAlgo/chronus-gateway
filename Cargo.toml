@@ -1,7 +1,7 @@
 [workspace]
 # Edition 2024 default: MSRV-aware resolver — dependency selection respects `rust-version` below.
 resolver = "3"
-members = ["crates/gateway", "crates/chronus-hil-sim", "crates/chronus-replay"]
+members = ["crates/gateway", "crates/chronus-hil-sim", "crates/chronus-replay", "crates/chronus-demo-server"]
 
 # Shared metadata + dependency versions. Member crates opt in with `field.workspace = true`
 # (see Methodology.md → "Workspace + centralized dependency versions").

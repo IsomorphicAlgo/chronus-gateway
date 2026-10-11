@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ChronusGateway-RS live sandbox</title>
+<meta name="description" content="Break a simulated spacecraft and watch ChronusGateway-RS catch it with orbital physics." />
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b1016; --panel: #121a24; --line: #223042; --text: #dbe5f0; --mute: #8a9bb0;
+    --ok: #3ecf8e; --alarm: #ff5d5d; --warn: #f5b946; --reported: #ff9f43; --expected: #5ab0ff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { margin: 0; font-size: 1.35rem; letter-spacing: .01em; }
+  h2 { margin: 0 0 10px; font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--mute); font-weight: 600; }
+  .sub { color: var(--mute); margin: 4px 0 18px; max-width: 70ch; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: .85rem; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--mute); }
+  .dot.live { background: var(--ok); } .dot.err { background: var(--alarm); }
+  select, button { font: inherit; color: var(--text); background: #1a2532; border: 1px solid var(--line); border-radius: 7px; padding: 6px 11px; cursor: pointer; }
+  button:hover:not(:disabled), select:hover { border-color: #3a5170; }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--expected); outline-offset: 2px; }
+  label.chk { display: inline-flex; gap: 7px; align-items: center; cursor: pointer; }
+  .scn { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+  .scn button { text-align: left; padding: 9px 11px; }
+  .scn button[aria-pressed="true"] { border-color: var(--warn); background: #2a2417; }
+  .scn button small { display: block; color: var(--mute); font-size: .74rem; margin-top: 2px; }
+  .explain { margin: 12px 0 0; color: var(--text); min-height: 3em; }
+  .explain b { color: var(--warn); font-weight: 600; }
+  .flags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .flag { font-size: .8rem; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--mute); }
+  .flag.on { background: #3a1517; border-color: var(--alarm); color: #ffd4d4; font-weight: 600; }
+  .flag.hint { outline: 1px dashed var(--warn); outline-offset: 2px; }
+  .status-line { margin-top: 10px; font-family: var(--mono); font-size: .85rem; color: var(--mute); }
+  .status-line.clear { color: var(--ok); } .status-line.alarm { color: var(--alarm); }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 14px; }
+  .chart h2 { display: flex; justify-content: space-between; gap: 8px; }
+  .chart h2 span { text-transform: none; letter-spacing: 0; font-family: var(--mono); color: var(--text); }
+  canvas { width: 100%; height: 150px; display: block; }
+  .legend { display: flex; gap: 14px; font-size: .75rem; color: var(--mute); margin-top: 4px; }
+  .legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+  .geo { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; font-family: var(--mono); }
+  .geo div span { display: block; font-size: .7rem; color: var(--mute); text-transform: uppercase; letter-spacing: .06em; font-family: system-ui, sans-serif; }
+  .overlay { position: fixed; inset: 0; background: rgba(5, 9, 14, .82); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 5; }
+  .overlay.show { display: flex; }
+  .overlay .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px 24px; max-width: 420px; text-align: center; }
+  .overlay p { color: var(--mute); }
+  footer { color: var(--mute); font-size: .8rem; margin-top: 20px; }
+  footer a { color: var(--expected); }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ChronusGateway-RS <span style="color:var(--mute);font-weight:400">/ live sandbox</span></h1>
+  <p class="sub">You have a private, time-accelerated spacecraft in orbit. Its telemetry runs through the real gateway pipeline, which checks every frame against orbital physics. Break something and watch the alarm lights.</p>
+
+  <div class="panel bar" role="group" aria-label="Session controls">
+    <span class="pill"><span id="dot" class="dot"></span><span id="conn">Connecting…</span></span>
+    <span class="pill">Time left <b id="left">—</b></span>
+    <span class="pill">Sim time <b id="simtime">—</b></span>
+    <label class="pill">Speed
+      <select id="speed" aria-label="Time acceleration">
+        <option value="10">10×</option><option value="60" selected>60×</option>
+        <option value="120">120×</option><option value="300">300×</option>
+      </select>
+    </label>
+    <label class="chk"><input type="checkbox" id="mask" /> Enforce 0° horizon mask</label>
+    <button id="reset" type="button">Reset</button>
+  </div>
+
+  <div class="panel">
+    <h2>Inject a fault</h2>
+    <div id="scn" class="scn" role="group" aria-label="Fault scenarios"></div>
+    <p id="explain" class="explain" aria-live="polite"></p>
+  </div>
+
+  <div class="panel">
+    <h2>Physics alarms (<code>physics_flags</code> <span id="rawflags">0x00</span>)</h2>
+    <div id="flags" class="flags"></div>
+    <div id="verdict" class="status-line clear">Waiting for telemetry…</div>
+  </div>
+
+  <div class="panel">
+    <h2>Look angles from the ground station</h2>
+    <div class="geo">
+      <div><span>Elevation</span><b id="g-el">—</b></div>
+      <div><span>Azimuth</span><b id="g-az">—</b></div>
+      <div><span>Range</span><b id="g-rng">—</b></div>
+      <div><span>Range rate</span><b id="g-rr">—</b></div>
+      <div><span>Frame</span><b id="g-seq">—</b></div>
+    </div>
+  </div>
+
+  <div class="charts" id="charts"></div>
+
+  <footer>
+    Synthetic data only: public ISS element set and toy subsystem models, no real mission data.
+    Source: <a href="https://github.com/IsomorphicAlgo/chronus-gateway">github.com/IsomorphicAlgo/chronus-gateway</a>.
+    Each tab gets its own sandbox; sessions end after a few minutes.
+  </footer>
+</div>
+
+<div id="overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="ov-title">
+  <div class="card">
+    <h1 id="ov-title" style="font-size:1.1rem">Sandbox closed</h1>
+    <p id="ov-msg"></p>
+    <button id="ov-btn" type="button">Start a new sandbox</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+const FLAGS = [
+  [0, "Doppler"], [1, "Below horizon"], [2, "Link budget"], [3, "Pointing"],
+  [4, "EPS voltage"], [5, "Thermal"], [6, "Body rate"],
+];
+const FLAG_NAMES = Object.fromEntries(FLAGS);
+const MAXPTS = 600;
+const $ = (id) => document.getElementById(id);
+let ws = null, scenarios = [], current = "nominal", lastFlags = 0, ticks = 0;
+
+/* ---------- charts ---------- */
+class Chart {
+  constructor(host, o) {
+    this.o = o; this.data = o.series.map(() => []); this.xs = [];
+    const box = document.createElement("section");
+    box.className = "panel chart";
+    box.innerHTML = `<h2>${o.title}<span class="val"></span></h2><canvas role="img" aria-label="${o.title}"></canvas><div class="legend"></div>`;
+    host.appendChild(box);
+    this.cv = box.querySelector("canvas"); this.valEl = box.querySelector(".val");
+    box.querySelector(".legend").innerHTML = o.series.map((s) => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("")
+      + (o.band ? `<span><i style="background:rgba(62,207,142,.45)"></i>${o.band.label}</span>` : "");
+  }
+  push(vals) {
+    vals.forEach((v, i) => { const d = this.data[i]; d.push(Number.isFinite(v) ? v : null); if (d.length > MAXPTS) d.shift(); });
+    const last = vals[vals.length - 1];
+    if (this.o.readout) this.valEl.textContent = this.o.readout(vals);
+  }
+  clear() { this.data = this.o.series.map(() => []); }
+  draw() {
+    const cv = this.cv, dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+    let lo = Infinity, hi = -Infinity;
+    for (const d of this.data) for (const v of d) if (v !== null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    const b = this.o.band; if (b) { lo = Math.min(lo, -b.half); hi = Math.max(hi, b.half); }
+    if (this.o.fixed) { lo = this.o.fixed[0]; hi = this.o.fixed[1]; }
+    if (!isFinite(lo)) return;
+    if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+    const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+    const L = 40, R = 6, T = 6, B = 16, pw = w - L - R, ph = h - T - B;
+    const X = (i, n) => L + (n <= 1 ? 0 : (i / (MAXPTS - 1)) * pw);
+    const Y = (v) => T + (1 - (v - lo) / (hi - lo)) * ph;
+    g.font = "10px ui-monospace, monospace"; g.fillStyle = "#8a9bb0"; g.strokeStyle = "#223042"; g.lineWidth = 1;
+    for (let k = 0; k <= 3; k++) { const v = lo + ((hi - lo) * k) / 3, y = Y(v); g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke(); g.fillText(v.toFixed(Math.abs(hi - lo) < 10 ? 1 : 0), 2, y + 3); }
+    if (b) { g.fillStyle = "rgba(62,207,142,.14)"; g.fillRect(L, Y(b.half), pw, Y(-b.half) - Y(b.half)); }
+    if (this.o.refLine !== undefined) { g.strokeStyle = "#f5b946"; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(L, Y(this.o.refLine)); g.lineTo(w - R, Y(this.o.refLine)); g.stroke(); g.setLineDash([]); }
+    this.o.series.forEach((s, si) => {
+      const d = this.data[si]; g.strokeStyle = s.color; g.lineWidth = 1.6; g.beginPath(); let pen = false;
+      d.forEach((v, i) => { if (v === null) { pen = false; return; } const x = X(i, d.length), y = Y(v); pen ? g.lineTo(x, y) : g.moveTo(x, y); pen = true; });
+      g.stroke();
+    });
+  }
+}
+const R = "#ff9f43", E = "#5ab0ff";
+const charts = {
+  eps: new Chart($("charts"), { title: "Bus voltage (V)", series: [{ name: "reported", color: R }, { name: "physics expects", color: E }], readout: (v) => v[0].toFixed(1) + " V" }),
+  therm: new Chart($("charts"), { title: "Panel temperature (°C)", series: [{ name: "reported", color: R }, { name: "physics expects", color: E }], readout: (v) => v[0].toFixed(1) + " °C" }),
+  dop: new Chart($("charts"), { title: "Carrier error vs Doppler (Hz)", series: [{ name: "measured − predicted", color: R }], band: { half: 150, label: "±150 Hz tolerance" }, readout: (v) => v[0].toFixed(0) + " Hz" }),
+  rx: new Chart($("charts"), { title: "Signal strength error (dB)", series: [{ name: "measured − predicted", color: R }], band: { half: 3, label: "±3 dB tolerance" }, readout: (v) => v[0].toFixed(1) + " dB" }),
+  el: new Chart($("charts"), { title: "Elevation (°)", series: [{ name: "spacecraft", color: E }], refLine: 0, readout: (v) => v[0].toFixed(1) + "°" }),
+  br: new Chart($("charts"), { title: "Body rate (°/s)", series: [{ name: "reported", color: R }], band: { half: 5, label: "ceiling ±5" }, fixed: [-12, 12], readout: (v) => v[0].toFixed(2) }),
+};
+function frameLoop() { Object.values(charts).forEach((c) => c.draw()); requestAnimationFrame(frameLoop); }
+requestAnimationFrame(frameLoop);
+
+/* ---------- UI ---------- */
+$("flags").innerHTML = FLAGS.map(([b, n]) => `<span class="flag" data-bit="${b}">${n}</span>`).join("");
+function renderFlags(flags) {
+  lastFlags = flags; $("rawflags").textContent = "0x" + flags.toString(16).padStart(2, "0");
+  document.querySelectorAll(".flag").forEach((el) => el.classList.toggle("on", (flags & (1 << +el.dataset.bit)) !== 0));
+  const v = $("verdict");
+  if (flags === 0) { v.className = "status-line clear"; v.textContent = "No physics alarms: telemetry agrees with orbital physics."; }
+  else { v.className = "status-line alarm"; v.textContent = "ALARM: " + FLAGS.filter(([b]) => flags & (1 << b)).map(([, n]) => n).join(" + "); }
+}
+function renderScenarios() {
+  $("scn").replaceChildren(...scenarios.map((s) => {
+    const b = document.createElement("button"); b.type = "button"; b.dataset.id = s.id;
+    b.setAttribute("aria-pressed", String(s.id === current));
+    const t = document.createElement("span"); t.textContent = s.label; b.appendChild(t);
+    const sm = document.createElement("small"); sm.textContent = s.expected_bits.length ? "expect: " + s.expected_bits.map((x) => FLAG_NAMES[x]).join(" + ") : "expect: no alarms"; b.appendChild(sm);
+    b.addEventListener("click", () => { current = s.id; send({ cmd: "scenario", value: s.id }); renderScenarios(); });
+    return b;
+  }));
+  const s = scenarios.find((x) => x.id === current);
+  if (s) $("explain").textContent = s.description;
+  document.querySelectorAll(".flag").forEach((el) => el.classList.toggle("hint", !!s && s.expected_bits.includes(+el.dataset.bit)));
+}
+function fmtLeft(sec) { return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); }
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+function setConn(kind, text) { $("dot").className = "dot " + kind; $("conn").textContent = text; }
+function showOverlay(msg) { $("ov-msg").textContent = msg; $("overlay").classList.add("show"); $("ov-btn").focus(); }
+
+/* ---------- connection ---------- */
+function wsUrl() {
+  const q = new URLSearchParams(location.search).get("ws"); if (q) return q;
+  return (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/sandbox/ws";
+}
+let lastFrame = null;
+function connect() {
+  $("overlay").classList.remove("show"); setConn("", "Connecting…");
+  current = "nominal"; Object.values(charts).forEach((c) => c.clear()); renderFlags(0);
+  ws = new WebSocket(wsUrl());
+  const mine = ws;
+  ws.onopen = () => setConn("live", "Live sandbox");
+  ws.onerror = () => setConn("err", "Connection error");
+  ws.onclose = () => { if (ws === mine) { setConn("err", "Disconnected"); showOverlay("The connection closed. This can happen when the demo is full, you opened several tabs, or the session timed out."); } };
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.chronus_schema === "openmct.realtime.v1") { lastFrame = m; renderFlags(m.physics_flags | 0);
+      $("g-el").textContent = fmt(m.elevation_deg, 1, "°"); $("g-az").textContent = fmt(m.azimuth_deg, 1, "°");
+      $("g-rng").textContent = fmt(m.range_km, 0, " km"); $("g-rr").textContent = fmt(m.range_rate_km_s, 2, " km/s"); $("g-seq").textContent = String(m.seq_count); return; }
+    if (m.chronus_schema !== "chronus.sandbox.v1") return;
+    if (m.kind === "hello") { scenarios = m.scenarios; renderScenarios(); $("speed").value = String(m.speed); }
+    else if (m.kind === "tick") {
+      const r = m.reported, e = m.expected, s = m.measured;
+      charts.eps.push([r.eps_bus_voltage_v, e.eps_bus_voltage_v]); charts.therm.push([r.thermal_panel_c, e.thermal_panel_c]);
+      charts.dop.push([s.carrier_hz - e.carrier_hz]);
+      charts.rx.push([s.rx_power_dbm === null || e.rx_power_dbm === null ? NaN : s.rx_power_dbm - e.rx_power_dbm]);
+      charts.el.push([e.elevation_deg]); charts.br.push([r.body_rate_deg_s]);
+      $("left").textContent = fmtLeft(m.seconds_left); $("simtime").textContent = m.sim_time.replace("T", " ").slice(0, 19) + " UTC";
+    } else if (m.kind === "ended" || m.kind === "error") { showOverlay(m.message || "Session ended."); }
+  };
+}
+function fmt(n, d, u) { return typeof n === "number" && isFinite(n) ? n.toFixed(d) + u : "—"; }
+
+$("speed").addEventListener("change", (e) => send({ cmd: "speed", value: +e.target.value }));
+$("mask").addEventListener("change", (e) => send({ cmd: "horizon_mask", enabled: e.target.checked }));
+$("reset").addEventListener("click", () => { current = "nominal"; send({ cmd: "reset" }); Object.values(charts).forEach((c) => c.clear()); renderScenarios(); });
+$("ov-btn").addEventListener("click", connect);
+connect();
+</script>
+</body>
+</html>

@@ -193,7 +193,23 @@ async fn handle_openmct_socket(mut socket: WebSocket, state: Arc<SharedGateway>)
 
 /// Parses, validates physics, and serializes one raw frame; updates metrics. Returns `None` on
 /// parse failure (bad datagrams are counted, not sent on the WebSocket).
-fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
+///
+/// Public so embedders (e.g. the per-visitor demo sandbox) can drive the *same* parse → co-validate
+/// → Open MCT JSON path without a UDP socket.
+pub fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
+    process_frame_with_rf(state, frame, RfMetadata::default())
+}
+
+/// Like [`process_frame`], with receiver-chain measurements (`rf`) supplied alongside the frame so
+/// the Doppler, link-budget and pointing co-validation checks can run.
+///
+/// Over the wire the gateway has no side channel for these yet (see `validate` module docs);
+/// lab and demo drivers pass them in directly.
+pub fn process_frame_with_rf(
+    state: &SharedGateway,
+    frame: &RawFrame,
+    rf: RfMetadata,
+) -> Option<String> {
     let mut tm = match ccsds::parse_telemetry(frame) {
         Ok(tm) => tm,
         Err(e) => {
@@ -254,7 +270,7 @@ fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
             &mut tm,
             s,
             station.nominal_carrier_hz,
-            RfMetadata::default(),
+            rf,
             station.doppler_tolerance_hz,
             station.minimum_elevation_deg,
             link_budget,

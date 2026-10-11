@@ -29,6 +29,18 @@ exhaustive matches on `ConfigError` (two new variants), so this targets **0.2.0*
   UDP, WebSocket and status URLs. The first invalid packet / tracking failure is explained once.
 - **Tests:** 68 → 157 unit tests (new coverage for `diagnose`, `http`, `ingest`, `metrics`,
   `state`, ingest validation); doctests 1 → 26.
+- **Public per-visitor sandbox (`chronus-demo-server`, unpublished crate):** each WebSocket on
+  `/sandbox/ws` gets a private time-accelerated synthetic spacecraft with its own clock and
+  gateway state; visitors inject eight scenarios (Doppler spoof, eclipse power mismatch, pointing
+  error, weak signal, EPS/thermal/body-rate faults) and a horizon-mask toggle. Global and per-IP
+  session caps, `Origin` allow-list, hard session lifetime, tiny inbound messages. Static visitor
+  page in `demo/sandbox/`; Fly.io config in `fly.toml` + `demo/Dockerfile.public`;
+  runbook in `docs/PUBLIC_DEMO.md`.
+- **`chronus-gateway`:** `http::process_frame` is now public and `http::process_frame_with_rf`
+  accepts receiver-chain measurements (carrier, power, az/el) so embedders can exercise the
+  Doppler, link-budget and pointing checks without a UDP socket.
+- **`chronus-hil-sim`:** new `nominal_sample`, `default_hil_epoch_utc`; `hil_targets_from_illum`
+  is public (the NeXosim driver now uses `nominal_sample`, behaviour unchanged).
 
 ## 0.1.4 — 2026-07-29
 

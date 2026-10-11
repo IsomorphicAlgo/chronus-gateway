@@ -60,6 +60,7 @@ Extended checks (link budget, pointing residual, synthetic HIL subsystem envelop
 |-------|-----|
 | **Operators** (install, run, alarms) | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — canonical; README links here after the narrative |
 | Demo / Docker / dashboard / replay | [`docs/DEMO.md`](docs/DEMO.md) |
+| Public hosted sandbox (Fly.io + custom domain) | [`docs/PUBLIC_DEMO.md`](docs/PUBLIC_DEMO.md) |
 | HIL profiling | [`docs/HIL.md`](docs/HIL.md) |
 | Tests + tolerances, showcase stages | Maintained in the maintainer's local plans doc (not part of this repository) |
 | Config file | [`gateway.example.toml`](gateway.example.toml) |
