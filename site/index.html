@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ShintraTech: Rust software for spacecraft ground systems</title>
+<meta name="description" content="ChronusGateway-RS turns spacecraft telemetry into trusted, web-ready data and checks every frame against real orbital physics. Try the live sandbox." />
+<meta property="og:title" content="ShintraTech: Rust software for spacecraft ground systems" />
+<meta property="og:description" content="Break a simulated spacecraft and watch the physics check catch it. Live sandbox, open source, Rust." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://shintratech.net/" />
+<meta name="theme-color" content="#0b1016" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b1016'/%3E%3Ccircle cx='16' cy='16' r='4.5' fill='%235ab0ff'/%3E%3Cellipse cx='16' cy='16' rx='12' ry='5' fill='none' stroke='%23ff9f43' stroke-width='2' transform='rotate(-28 16 16)'/%3E%3C/svg%3E" />
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b1016; --panel: #121a24; --panel2: #1a2532; --line: #223042; --line2: #3a5170;
+    --text: #dbe5f0; --mute: #8a9bb0;
+    --ok: #3ecf8e; --alarm: #ff5d5d; --warn: #f5b946; --reported: #ff9f43; --expected: #5ab0ff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 var(--sans); }
+  a { color: var(--expected); text-underline-offset: 3px; }
+  a:hover { color: #8fcbff; }
+  :focus-visible { outline: 2px solid var(--expected); outline-offset: 3px; border-radius: 4px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+  code, .mono { font-family: var(--mono); }
+
+  /* nav */
+  header.nav { position: sticky; top: 0; z-index: 10; background: rgba(11, 16, 22, .88); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .nav .wrap { display: flex; align-items: center; gap: 18px; height: 58px; }
+  .brand { font-weight: 700; letter-spacing: .02em; color: var(--text); text-decoration: none; display: inline-flex; align-items: center; gap: 9px; }
+  .brand svg { width: 22px; height: 22px; }
+  .nav nav { margin-left: auto; display: flex; gap: 20px; font-size: .92rem; }
+  .nav nav a { color: var(--mute); text-decoration: none; }
+  .nav nav a:hover { color: var(--text); }
+  @media (max-width: 640px) { .nav nav a.hide-sm { display: none; } .nav nav { gap: 14px; } }
+
+  /* hero */
+  .hero { padding: 64px 0 40px; }
+  .hero .wrap { display: grid; grid-template-columns: 1.05fr .95fr; gap: 36px; align-items: center; }
+  @media (max-width: 860px) { .hero .wrap { grid-template-columns: 1fr; } .hero { padding-top: 36px; } }
+  .eyebrow { font-family: var(--mono); font-size: .8rem; color: var(--ok); letter-spacing: .08em; text-transform: uppercase; margin: 0 0 14px; }
+  h1 { font-size: clamp(1.9rem, 4.6vw, 3rem); line-height: 1.12; margin: 0 0 16px; letter-spacing: -.01em; }
+  h1 em { font-style: normal; color: var(--expected); }
+  .lede { color: var(--mute); font-size: 1.1rem; max-width: 52ch; margin: 0 0 26px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 9px; font-weight: 600; text-decoration: none; border: 1px solid var(--line2); color: var(--text); background: var(--panel2); }
+  .btn:hover { border-color: var(--expected); color: var(--text); }
+  .btn.primary { background: var(--expected); color: #07121d; border-color: var(--expected); }
+  .btn.primary:hover { background: #8fcbff; border-color: #8fcbff; color: #07121d; }
+  .note { margin: 14px 0 0; font-size: .85rem; color: var(--mute); }
+
+  /* orbit graphic */
+  .orbit { width: 100%; height: auto; display: block; }
+  .orbit .sat { offset-path: path("M 40 190 A 180 70 0 1 1 400 190 A 180 70 0 1 1 40 190"); animation: fly 14s linear infinite; }
+  @keyframes fly { to { offset-distance: 100%; } }
+  .orbit .sat { offset-distance: 0%; offset-rotate: 0deg; }
+  .orbit .ping { transform-origin: 159px 251px; animation: ping 2.8s ease-out infinite; }
+  .orbit .ping.p2 { animation-delay: 1.4s; }
+  @keyframes ping { 0% { transform: scale(.4); opacity: .9; } 100% { transform: scale(2.6); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .orbit .sat, .orbit .ping { animation: none; } .orbit .sat { offset-distance: 22%; } .orbit .ping { opacity: .35; } }
+
+  /* sections */
+  section { padding: 44px 0; }
+  .label { font-size: .78rem; text-transform: uppercase; letter-spacing: .09em; color: var(--mute); font-weight: 600; margin: 0 0 8px; }
+  h2 { font-size: 1.6rem; margin: 0 0 8px; letter-spacing: -.005em; }
+  .sub { color: var(--mute); max-width: 62ch; margin: 0 0 26px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; }
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+  .card h3 { margin: 12px 0 6px; font-size: 1.05rem; }
+  .card p { margin: 0; color: var(--mute); font-size: .95rem; }
+  .icon { width: 42px; height: 42px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--line); display: grid; place-items: center; }
+  .icon svg { width: 24px; height: 24px; }
+
+  /* alarm flags */
+  .flags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .flag { font-size: .8rem; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--line); color: var(--mute); }
+  .flag.on { background: #3a1517; border-color: var(--alarm); color: #ffd4d4; font-weight: 600; }
+  .strip { display: flex; flex-wrap: wrap; gap: 18px 28px; align-items: center; justify-content: space-between; }
+  .strip p { margin: 0; max-width: 54ch; }
+  .strip b { color: var(--warn); font-weight: 600; }
+
+  /* pipeline */
+  .pipe { overflow-x: auto; }
+  .pipe svg { width: 100%; min-width: 640px; height: auto; display: block; }
+  .pipe text { font-family: var(--sans); fill: var(--text); }
+  .pipe .small { font-size: 12px; fill: var(--mute); }
+  .pipe .mono { font-family: var(--mono); font-size: 11px; fill: var(--mute); }
+
+  /* projects */
+  .proj { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .proj .panel { display: flex; flex-direction: column; gap: 8px; }
+  .proj h3 { margin: 0; font-size: 1.1rem; }
+  .proj p { margin: 0; color: var(--mute); font-size: .95rem; flex: 1; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-family: var(--mono); font-size: .72rem; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); color: var(--mute); }
+  .links { display: flex; gap: 16px; font-size: .9rem; margin-top: 4px; }
+
+  /* about */
+  .about { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; align-items: start; }
+  @media (max-width: 760px) { .about { grid-template-columns: 1fr; } }
+  .about p { margin: 0 0 12px; }
+  .facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .facts li { display: flex; gap: 12px; align-items: baseline; }
+  .facts span { font-family: var(--mono); font-size: .75rem; color: var(--mute); min-width: 84px; text-transform: uppercase; letter-spacing: .06em; }
+
+  footer { border-top: 1px solid var(--line); margin-top: 24px; padding: 26px 0 44px; color: var(--mute); font-size: .85rem; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="ShintraTech home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="4.5" fill="#5ab0ff"/><ellipse cx="16" cy="16" rx="12" ry="5" fill="none" stroke="#ff9f43" stroke-width="2" transform="rotate(-28 16 16)"/></svg>
+      ShintraTech
+    </a>
+    <nav aria-label="Primary">
+      <a href="#how" class="hide-sm">How it works</a>
+      <a href="#projects" class="hide-sm">Projects</a>
+      <a href="#about" class="hide-sm">About</a>
+      <a href="https://demo.shintratech.net/">Live demo</a>
+      <a href="https://github.com/IsomorphicAlgo">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <!-- HERO -->
+  <div class="hero">
+    <div class="wrap">
+      <div>
+        <p class="eyebrow">Rust · Aerospace ground systems</p>
+        <h1>Spacecraft telemetry you can <em>trust</em>, checked against real orbital physics.</h1>
+        <p class="lede">ChronusGateway-RS is a fast Rust gateway that turns raw satellite downlink into web-ready data, then cross-checks every frame against where the spacecraft actually is. A packet that lies gets flagged, not silently passed.</p>
+        <div class="cta">
+          <a class="btn primary" href="https://demo.shintratech.net/">Launch the live sandbox <span aria-hidden="true">→</span></a>
+          <a class="btn" href="https://github.com/IsomorphicAlgo/chronus-gateway">View the source</a>
+        </div>
+        <p class="note">Your own private simulated spacecraft. Break something and watch the alarms. Synthetic data only.</p>
+      </div>
+
+      <!-- animated orbit -->
+      <svg class="orbit" viewBox="0 0 440 330" role="img" aria-label="A satellite orbiting Earth sends signals to a ground station">
+        <defs>
+          <radialGradient id="earth" cx="35%" cy="30%" r="80%">
+            <stop offset="0" stop-color="#1f4a73"/><stop offset="1" stop-color="#0d2238"/>
+          </radialGradient>
+        </defs>
+        <ellipse cx="220" cy="190" rx="180" ry="70" fill="none" stroke="#223042" stroke-width="1.5" stroke-dasharray="4 6"/>
+        <circle cx="220" cy="190" r="86" fill="url(#earth)" stroke="#2c5a86" stroke-width="1.5"/>
+        <path d="M150 170 q22 -22 50 -8 q16 8 6 26 q-18 14 -42 4 q-22 -6 -14 -22z M236 206 q24 -10 40 6 q8 14 -10 22 q-24 4 -30 -10z" fill="#2a6a55" opacity=".7"/>
+        <!-- ground station (on Earth's surface, lower left) -->
+        <line x1="159" y1="251" x2="147" y2="263" stroke="#dbe5f0" stroke-width="2" stroke-linecap="round"/>
+        <path d="M139 258 q4 -10 14 -9 q-2 8 -6 12z" fill="#dbe5f0" transform="rotate(-8 147 258)"/>
+        <circle class="ping" cx="159" cy="251" r="9" fill="none" stroke="#3ecf8e" stroke-width="1.6"/>
+        <circle class="ping p2" cx="159" cy="251" r="9" fill="none" stroke="#3ecf8e" stroke-width="1.6"/>
+        <circle cx="159" cy="251" r="3.6" fill="#3ecf8e"/>
+        <text x="34" y="296" fill="#8a9bb0" font-size="11" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">ground station</text>
+        <path d="M110 291 L152 258" stroke="#3ecf8e" stroke-width="1" opacity=".5" fill="none"/>
+        <!-- satellite -->
+        <g class="sat">
+          <rect x="-13" y="-3" width="9" height="6" fill="#ff9f43"/><rect x="4" y="-3" width="9" height="6" fill="#ff9f43"/>
+          <rect x="-4" y="-5" width="8" height="10" rx="1.5" fill="#dbe5f0"/>
+        </g>
+        <!-- telemetry chips -->
+        <g font-family="ui-monospace, Menlo, Consolas, monospace" font-size="10.5">
+          <rect x="262" y="26" width="168" height="24" rx="12" fill="#121a24" stroke="#223042"/><text x="276" y="42" fill="#3ecf8e">flags 0x00 · clear</text>
+          <rect x="290" y="56" width="140" height="24" rx="12" fill="#3a1517" stroke="#ff5d5d"/><text x="304" y="72" fill="#ffd4d4">Doppler ≠ orbit</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- TRY TO FOOL IT -->
+  <section>
+    <div class="wrap">
+      <div class="panel strip">
+        <p><b>Try to fool it.</b> In the sandbox you can fake a Doppler shift, claim full solar power while in Earth's shadow, or point the antenna the wrong way. Each fault lights its own alarm.</p>
+        <div class="flags" style="margin:0" aria-label="Alarms you can trigger">
+          <span class="flag on">Doppler</span><span class="flag on">Pointing</span><span class="flag on">EPS voltage</span>
+          <span class="flag">Link budget</span><span class="flag">Thermal</span><span class="flag">Body rate</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how">
+    <div class="wrap">
+      <p class="label">How it works</p>
+      <h2>Fast pipe, honest numbers</h2>
+      <p class="sub">Three jobs, one Rust service. Frames arrive over UDP, get parsed, validated against live orbital state, and streamed out as JSON that mission-control dashboards like NASA Open MCT can consume.</p>
+
+      <div class="grid3">
+        <div class="panel card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="#5ab0ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div>
+          <h3>Fast translator</h3>
+          <p>Async, non-blocking ingest (Tokio) parses CCSDS space packets and fans them out over WebSocket without falling behind.</p>
+        </div>
+        <div class="panel card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="10" ry="4.2" transform="rotate(-30 12 12)"/></svg></div>
+          <h3>Built-in space map</h3>
+          <p>An SGP4 orbital engine tracks the spacecraft live: azimuth, elevation, range and range-rate from your ground site.</p>
+        </div>
+        <div class="panel card">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="#3ecf8e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.2 7.8 8 9 4.8-1.2 8-4.5 8-9V6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></div>
+          <h3>Physics as a sanity check</h3>
+          <p>Doppler, eclipse, link budget, pointing and subsystem checks set <code>physics_flags</code> when telemetry disagrees with physics.</p>
+        </div>
+      </div>
+
+      <div class="panel pipe" style="margin-top:14px">
+        <svg viewBox="0 0 900 190" role="img" aria-label="Pipeline: telemetry in, async parser, physics co-validation, Open MCT JSON out">
+          <defs><marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#5ab0ff"/></marker></defs>
+          <g stroke="#223042" stroke-width="1.5">
+            <rect x="10" y="40" width="160" height="90" rx="10" fill="#1a2532"/>
+            <rect x="240" y="40" width="160" height="90" rx="10" fill="#1a2532"/>
+            <rect x="470" y="40" width="190" height="90" rx="10" fill="#1a2532" stroke="#3ecf8e"/>
+            <rect x="730" y="40" width="160" height="90" rx="10" fill="#1a2532"/>
+          </g>
+          <g stroke="#5ab0ff" stroke-width="1.8" marker-end="url(#arr)" fill="none">
+            <path d="M172 85h64"/><path d="M402 85h64"/><path d="M662 85h64"/>
+          </g>
+          <g text-anchor="middle">
+            <text x="90" y="78" font-size="15" font-weight="600">Telemetry</text><text class="small" x="90" y="98">CCSDS over UDP</text>
+            <text x="320" y="78" font-size="15" font-weight="600">Async gateway</text><text class="small" x="320" y="98">Tokio · zero-copy parse</text>
+            <text x="565" y="78" font-size="15" font-weight="600" style="fill:#3ecf8e">Co-validation</text><text class="small" x="565" y="98">SGP4 · physics_flags</text>
+            <text x="810" y="78" font-size="15" font-weight="600">Open MCT JSON</text><text class="small" x="810" y="98">WebSocket · dashboards</text>
+            <text class="mono" x="90" y="165">raw bytes</text><text class="mono" x="320" y="165">validated frames</text>
+            <text class="mono" x="565" y="165">frame + alarm bits</text><text class="mono" x="810" y="165">openmct.realtime.v1</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROJECTS -->
+  <section id="projects">
+    <div class="wrap">
+      <p class="label">Open source</p>
+      <h2>Projects</h2>
+      <p class="sub">Rust libraries and tools for space software, built in the open.</p>
+      <div class="proj">
+        <article class="panel">
+          <h3>ChronusGateway-RS</h3>
+          <p>Async CCSDS telemetry gateway with physics–telemetry co-validation and Open MCT JSON fan-out. Ships with a NeXosim hardware-in-the-loop simulator and this site's live sandbox.</p>
+          <div class="tags"><span class="tag">Rust</span><span class="tag">Tokio</span><span class="tag">Axum</span><span class="tag">CCSDS</span></div>
+          <div class="links"><a href="https://demo.shintratech.net/">Live sandbox</a><a href="https://github.com/IsomorphicAlgo/chronus-gateway">Source</a></div>
+        </article>
+        <article class="panel">
+          <h3>Ephemerust</h3>
+          <p>SGP4-based orbital mechanics in Rust: look angles, range-rate and a conical eclipse model. It is the physics engine behind ChronusGateway-RS.</p>
+          <div class="tags"><span class="tag">Rust</span><span class="tag">SGP4</span><span class="tag">astrodynamics</span></div>
+          <div class="links"><a href="https://crates.io/crates/ephemerust">crates.io</a><a href="https://github.com/IsomorphicAlgo/Ephemerust">Source</a></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ABOUT -->
+  <section id="about">
+    <div class="wrap">
+      <p class="label">About</p>
+      <h2>Michael Hansen</h2>
+      <div class="about" style="margin-top:18px">
+        <div>
+          <p>I build software for the ground side of spaceflight: the part that turns a stream of bytes from orbit into something an operator can trust.</p>
+          <p>My background is in data science (M.S., University of Colorado Boulder) and data engineering, and I'm learning and building in Rust in public. Everything here is open source and runs on synthetic or public data.</p>
+        </div>
+        <ul class="facts">
+          <li><span>Focus</span> Rust, telemetry, orbital mechanics</li>
+          <li><span>Based</span> Seattle area, WA</li>
+          <li><span>Code</span> <a href="https://github.com/IsomorphicAlgo">github.com/IsomorphicAlgo</a></li>
+          <li><span>Try it</span> <a href="https://demo.shintratech.net/">demo.shintratech.net</a></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© <span id="yr">2026</span> ShintraTech · Personal open-source work. Synthetic and public data only.</span>
+    <span><a href="https://github.com/IsomorphicAlgo/chronus-gateway">Source on GitHub</a></span>
+  </div>
+</footer>
+<script>document.getElementById("yr").textContent = new Date().getFullYear();</script>
+</body>
+</html>
