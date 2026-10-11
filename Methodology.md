@@ -61,10 +61,13 @@ touching ingestion, validation, or distribution code.
 agree with an independent IAU 2000 implementation (Skyfield) to **0.34 arcmin**, slant range to
 **75 m** and range rate to **0.41 m/s** (≈ 0.6 Hz of Doppler at 437.5 MHz). Precession/nutation
 are not a limit on this path (SGP4's TEME frame is already "of date"; TEME → ECEF by GMST is the
-standard Vallado bridge); UT1 = UTC and no polar motion cost at most a few hundred metres. The
-dominant error is now the **TLE itself** (~1 km at epoch, growing ~1–3 km/day in LEO), so the
-±150 Hz Doppler bound is a statement about TLE freshness, not library math (D-012). The
-`nyx-space` seam stays relevant only for precise orbit inputs (OEM/GPS/OD); note nyx-space is
+standard Vallado bridge); UT1 = UTC and no polar motion cost at most a few hundred metres — and
+since D-043 the station can supply both, which brings the Skyfield residual down to **0.04″,
+0.3 m and 0.7 mm/s**. The dominant error is now the **TLE itself** (~1 km at epoch, growing
+~1–3 km/day in LEO), so the ±150 Hz Doppler bound is a statement about TLE freshness, not library
+math (D-012, D-044). Precise orbit inputs no longer need a second library: the **OEM backend**
+(D-045) is the second `OrbitalPropagator` implementation this seam was built for. A numerical
+propagator such as `nyx-space` would only add value for orbit determination; note nyx-space is
 AGPL-3.0, so it could only ever be an optional, separately licensed backend.
 *History:* Ephemerust ≤ 0.7 carried an Earth-rotation sign error that biased range rate by up to
 \|ω × r_station\| ≈ 0.31 km/s (≈ 450 Hz at 437.5 MHz). The demo was unaffected because the HIL
@@ -512,6 +515,76 @@ checks as the ones at risk; `CG-302` still marks > 30 days as unusable for every
 **Tested by:** full workspace suite against Ephemerust 1.0, plus the new T-RANGERATE test (fails
 on Ephemerust 0.7, passes on 1.0).
 
+### D-042 — Refraction in the pointing check (CV-2 / T-POINT)
+**Decision:** The station model applies Ephemerust 1.1's standard-atmosphere refraction
+(Sæmundsson; `refraction_pressure_hpa` default 1010, `refraction_temperature_c` default 10) to the
+computed elevation, and the pointing check compares the measured antenna direction with this
+**apparent** elevation (`TrackingState::apparent_elevation_deg`, `pointing_elevation_deg()`).
+On by default (`station.refraction = true`). The horizon check (bit 1) stays **geometric**.
+**Why:** An antenna tracking a signal points at the refracted direction: ~0.48° above geometric
+at the horizon, ~0.39° at 1°, ~0.09° at 10°. Below ~4° elevation that exceeds the 0.25° T-POINT
+tolerance, so a correctly pointed antenna would be flagged on every rise and set. Radio
+refraction at UHF is somewhat larger than optical in humid air; the optical model is the
+conservative standard and the pressure/temperature inputs scale it.
+**Consequences:** `TrackingState` gains `apparent_elevation_deg` and becomes `#[non_exhaustive]`
+with a constructor and `with_*` builders, so custom backends are future-proof. The Open MCT JSON
+gains an additive `apparent_elevation_deg` field. The demo sandbox now simulates the antenna
+tracking the apparent direction.
+**Tested by:** `validate::pointing_uses_apparent_elevation_when_refraction_is_modelled`,
+`StationModel` doctest, config round-trip tests.
+
+### D-043 — Earth orientation parameters (UT1−UTC, polar motion)
+**Decision:** `StationConfig` takes optional `ut1_minus_utc_s`, `polar_motion_x_arcsec` and
+`polar_motion_y_arcsec` (IERS Bulletin A; default 0). Both backends rotate to the Earth-fixed
+frame through Ephemerust 1.1's `frames` module with these values
+(`Propagator::look_angles_with_eop`, `inertial_to_itrf`).
+**Why:** UT1−UTC is up to ±0.9 s of Earth rotation (~0.4 km at the equator) and polar motion ~15 m;
+small next to TLE error but first-order for an operator ephemeris (D-045), where the orbit
+itself is good to metres. With Skyfield's own UT1 supplied, Ephemerust's look angles agree with
+Skyfield to 0.04″ / 0.3 m / 0.7 mm/s (was 0.34′ / 75 m / 0.41 m/s).
+**Guard rails:** values are validated as physically plausible (|UT1−UTC| ≤ 1 s, |x|,|y| ≤ 1″) so
+milliseconds or milliarcseconds entered by mistake are caught with an explanation (`CG-119`).
+Daily values are entered by hand for now; automatic Bulletin A ingestion is a 1.0-plan item.
+
+### D-044 — TLE-age-aware Doppler tolerance (T-DOPPLER)
+**Decision:** Opt-in (`doppler_tle_age_margin`, default off). The TLE backend estimates the
+along-track error δs = `tle_error_km_at_epoch` + `tle_error_growth_km_per_day` × |age| (defaults
+1 km and 2 km/day), converts it to a timing error δt = δs/|v|, and reports
+`range_rate_uncertainty_km_s` = |ρ̈|·δt, with ρ̈ from a ±1 s central difference of range rate. The
+Doppler check widens its band to `doppler_tolerance_hz + f₀·δρ̇/c`
+(`validate::effective_doppler_tolerance_hz`); the band used is published per frame as
+`doppler_tolerance_hz`.
+**Why:** A fixed ±150 Hz either false-alarms on healthy passes from a few-days-old TLE (near
+closest approach on a high LEO pass each km of along-track error is ~25 Hz at UHF) or, if widened
+globally, loses sensitivity everywhere. Scaling by |ρ̈| widens the band only where the geometry
+makes Doppler sensitive to timing, so a 2 kHz spoof is still caught.
+**Validation:** `propagator::tle_age_uncertainty_matches_an_along_track_shift` shifts the ISS by
+5 km along track over a day of passes from Everett and checks the predicted range-rate change
+against the actual one to within 10 %. Cross-track and radial TLE errors are not modelled (they
+are smaller and largely do not project onto range rate).
+**Default off** because it changes alarm behaviour; recommended for any deployment fed with real
+measured carrier frequencies.
+
+### D-045 — CCSDS OEM ephemeris backend (second `OrbitalPropagator`)
+**Decision:** New `oem` module: a CCSDS 502.0-B-3 **KVN** OEM parser (multiple segments,
+`USEABLE_START/STOP_TIME`, covariance blocks skipped, optional accelerations), Lagrange
+interpolation of degree `INTERPOLATION_DEGREE` (default 7) over the nearest states, frames
+GCRF/ICRF, EME2000/J2000, TEME and ITRF*, time systems UTC/TAI/TT/GPS, and `OemPropagator`
+implementing `OrbitalPropagator`. `station.oem_file` selects it (exclusive with the TLE keys);
+`propagator::propagator_from_station` picks the backend. No extrapolation outside coverage.
+**Why:** Operators exchange precise ephemerides as OEMs (orbit determination, on-board GPS). This
+is the operator-data path the D-004 seam was designed for, and it needs no new dependency:
+Ephemerust 1.1 provides the IAU 2006/2000B frame chain (validated against ERFA to 7 cm).
+**Validation:** `tests/oem_backend.rs` — one ISS ephemeris written in all four frames and four
+time systems (one with day-of-year epochs) reproduces astropy/ERFA ITRS states *between* samples
+to ≤ 5.5 cm / 0.07 mm/s (1 mm for ITRF, interpolation only; the 5 cm is UT1−UTC drift over the 3 h
+that astropy interpolates and the gateway holds constant), and tracks the same orbit as the TLE
+backend (14 m, 0.02 m/s apart: WGS72 vs WGS84 SGP4 constants).
+**Diagnostics:** `CG-127` (file unreadable), `CG-320` (format), `CG-321` (unsupported frame /
+centre / time system), `CG-322` (outside coverage; also checked at startup).
+**Not yet:** XML OEM, CCSDS OPM/OMM, covariance use (e.g. feeding D-044 from covariance), and
+`TOD`/`MOD`/`TDR` frames.
+
 ## Open decisions (to resolve as milestones land)
 
 - **OD-E — Multi-node / rack-scale co-simulation.** Backlog beyond the M7 laptop scope.
@@ -547,8 +620,11 @@ docs when dependencies change (finalization **B.2**, **D-035**).
 | **CCSDS** Blue Books | Wire formats and protocols | [public.ccsds.org](https://public.ccsds.org/) |
 | **NASA Open MCT** | Distribution UX reference | [nasa.github.io/openmct](https://nasa.github.io/openmct/), Apache-2.0 |
 | `sat-rs`, `nyx-space` | Design analysis only (not dependencies) | GitHub; see **D-001** |
+| [astropy](https://www.astropy.org/) / [pyerfa](https://github.com/liberfa/pyerfa) (ERFA = IAU SOFA), [python-sgp4](https://pypi.org/project/sgp4/) | Generated the OEM test fixtures and their ITRS truth (`crates/gateway/tests/data/`; **D-045**) — test data only, not dependencies | BSD-3-Clause |
+| **CCSDS 502.0-B-3** (Orbit Data Messages) | OEM format (**D-045**) | [public.ccsds.org](https://public.ccsds.org/) |
+| **IERS Bulletin A** | Earth orientation inputs (**D-043**) | [iers.org](https://www.iers.org/) |
 | [gr-satellites](https://github.com/daniestevez/gr-satellites) | Pedagogical CCSDS reference (**S4** fixtures) | GPL-3.0 (cited, not vendored) |
 
 ---
 
-*Last updated: 2026-06-19.*
+*Last updated: 2026-10-11.*

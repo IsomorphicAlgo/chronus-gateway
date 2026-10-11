@@ -23,13 +23,28 @@
 //! (apparent-disk overlap, Vallado §5.3) — replacing the in-house ray–sphere shadow toy; the
 //! nadir-fixed panel-normal cosine remains a deliberately simple demo model (D-021/D-038).
 //! Non-physics backends should set this to `NaN` so subsystem checks are skipped.
+//!
+//! ## Station model (D-042, D-043)
+//!
+//! Both backends share a [`StationModel`]: the station's WGS84 location, its **Earth
+//! orientation parameters** (UT1−UTC and polar motion, so the Earth-fixed frame is where the
+//! Earth actually is that day), and optional standard-atmosphere **refraction**, which yields
+//! [`TrackingState::apparent_elevation_deg`] — where a real antenna points.
+//!
+//! ## TLE-age Doppler margin (D-044)
+//!
+//! A TLE's along-track error grows with age; a time-like error δt = δs / |v| shifts the
+//! predicted range rate by ρ̈·δt. When enabled, [`EphemerustPropagator`] reports that bound as
+//! [`TrackingState::range_rate_uncertainty_km_s`] and the Doppler check widens its tolerance by the
+//! matching frequency (see [`crate::validate`]).
 
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use ephemerust::eclipse::{ShadowState, shadow_state_from_vectors};
-use ephemerust::{ObserverLocation, Propagator, Tle, sun_vector_km};
+use ephemerust::frames::{InertialFrame, itrf_to_inertial};
+use ephemerust::{EarthOrientation, LookAngles, ObserverLocation, Propagator, Tle, sun_vector_km};
 
 use crate::config::StationConfig;
 
@@ -37,11 +52,25 @@ use crate::config::StationConfig;
 ///
 /// `range_rate_km_s` is the line-of-sight velocity (negative while approaching) and is the
 /// term consumed by the Doppler co-validation check.
+///
+/// The struct is `#[non_exhaustive]` so new physics fields can be added without breaking custom
+/// [`OrbitalPropagator`] backends: build it with [`TrackingState::new`] and the `with_*` methods.
+///
+/// ```
+/// use chronus_gateway::propagator::TrackingState;
+///
+/// let s = TrackingState::new(120.0, 30.0, 900.0, -3.2).with_apparent_elevation(30.03);
+/// assert_eq!(s.pointing_elevation_deg(), 30.03);
+/// assert!(s.nadir_sun_illum_cos.is_nan()); // unavailable unless a backend sets it
+/// assert_eq!(s.range_rate_uncertainty_km_s, 0.0);
+/// ```
 #[derive(Debug, Clone, Copy, serde::Serialize)]
+#[non_exhaustive]
 pub struct TrackingState {
     /// Azimuth in degrees, clockwise from true north.
     pub azimuth_deg: f64,
-    /// Elevation above the local horizon in degrees.
+    /// **Geometric** elevation above the local horizon in degrees (no refraction). Used by the
+    /// horizon check (bit 1).
     pub elevation_deg: f64,
     /// Slant range from station to spacecraft in kilometres.
     pub range_km: f64,
@@ -49,6 +78,173 @@ pub struct TrackingState {
     pub range_rate_km_s: f64,
     /// Toy nadir-array Sun illumination in \([0, 1]\); `NaN` = unavailable (**CV-4**).
     pub nadir_sun_illum_cos: f64,
+    /// **Apparent** elevation (geometric + atmospheric refraction) in degrees — where an antenna
+    /// tracking the signal actually points. `NaN` when refraction is not modelled; the pointing
+    /// check (bit 3) then uses [`Self::elevation_deg`].
+    pub apparent_elevation_deg: f64,
+    /// One-sided bound on the error of [`Self::range_rate_km_s`] caused by the ephemeris (km/s),
+    /// e.g. TLE age (D-044). `0` when not modelled. The Doppler check widens its tolerance by the
+    /// corresponding frequency.
+    pub range_rate_uncertainty_km_s: f64,
+}
+
+impl TrackingState {
+    /// Geometric tracking state; optional fields start unavailable (`NaN`) or zero.
+    #[must_use]
+    pub fn new(azimuth_deg: f64, elevation_deg: f64, range_km: f64, range_rate_km_s: f64) -> Self {
+        Self {
+            azimuth_deg,
+            elevation_deg,
+            range_km,
+            range_rate_km_s,
+            nadir_sun_illum_cos: f64::NAN,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
+        }
+    }
+
+    /// Sets the CV-4 nadir-array Sun illumination factor.
+    #[must_use]
+    pub fn with_sun_illumination(mut self, nadir_sun_illum_cos: f64) -> Self {
+        self.nadir_sun_illum_cos = nadir_sun_illum_cos;
+        self
+    }
+
+    /// Sets the apparent (refracted) elevation.
+    #[must_use]
+    pub fn with_apparent_elevation(mut self, apparent_elevation_deg: f64) -> Self {
+        self.apparent_elevation_deg = apparent_elevation_deg;
+        self
+    }
+
+    /// Sets the ephemeris-induced range-rate uncertainty (km/s).
+    #[must_use]
+    pub fn with_range_rate_uncertainty(mut self, km_s: f64) -> Self {
+        self.range_rate_uncertainty_km_s = km_s;
+        self
+    }
+
+    /// Elevation an antenna should point at: apparent if refraction is modelled, else geometric.
+    #[must_use]
+    pub fn pointing_elevation_deg(&self) -> f64 {
+        if self.apparent_elevation_deg.is_finite() {
+            self.apparent_elevation_deg
+        } else {
+            self.elevation_deg
+        }
+    }
+}
+
+/// Ground-station model shared by every backend: location, Earth orientation and refraction.
+///
+/// ```
+/// use chronus_gateway::config::StationConfig;
+/// use chronus_gateway::propagator::StationModel;
+///
+/// let m = StationModel::from_station(&StationConfig::default()).unwrap();
+/// // Refraction is on by default: ~0.48° lift at the horizon, none at the zenith.
+/// assert!((m.apparent_elevation_deg(0.0) - 0.48).abs() < 0.01);
+/// assert!((m.apparent_elevation_deg(90.0) - 90.0).abs() < 1e-6);
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct StationModel {
+    /// Geodetic latitude, degrees north.
+    pub latitude_deg: f64,
+    /// Geodetic longitude, degrees east.
+    pub longitude_deg: f64,
+    /// Height above the WGS84 ellipsoid, metres.
+    pub altitude_m: f64,
+    /// Earth orientation parameters for the ITRF rotation.
+    pub earth_orientation: EarthOrientation,
+    /// Refraction conditions `(pressure_hpa, temperature_c)`; `None` = geometric only.
+    pub refraction: Option<(f64, f64)>,
+}
+
+impl StationModel {
+    /// Geometric station (no Earth orientation, no refraction): the 0.1 behaviour.
+    #[must_use]
+    pub fn geometric(latitude_deg: f64, longitude_deg: f64, altitude_m: f64) -> Self {
+        Self {
+            latitude_deg,
+            longitude_deg,
+            altitude_m,
+            earth_orientation: EarthOrientation::default(),
+            refraction: None,
+        }
+    }
+
+    /// Station model from a validated [`StationConfig`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`StationConfig::validate`] failures.
+    pub fn from_station(config: &StationConfig) -> Result<Self> {
+        config.validate()?;
+        Ok(Self {
+            latitude_deg: config.latitude_deg,
+            longitude_deg: config.longitude_deg,
+            altitude_m: config.altitude_m,
+            earth_orientation: config.earth_orientation()?,
+            refraction: config.refraction.then_some((
+                config.refraction_pressure_hpa,
+                config.refraction_temperature_c,
+            )),
+        })
+    }
+
+    /// Ephemerust observer for look-angle calls.
+    #[must_use]
+    pub fn observer(&self) -> ObserverLocation {
+        ObserverLocation {
+            latitude: self.latitude_deg,
+            longitude: self.longitude_deg,
+            elevation: self.altitude_m,
+        }
+    }
+
+    /// Geometric elevation → apparent elevation (identity when refraction is off).
+    #[must_use]
+    pub fn apparent_elevation_deg(&self, geometric_deg: f64) -> f64 {
+        match self.refraction {
+            Some((p, t)) => {
+                geometric_deg
+                    + ephemerust::coordinates::refraction_deg_with_conditions(geometric_deg, p, t)
+            }
+            None => geometric_deg,
+        }
+    }
+
+    /// Builds a [`TrackingState`] from look angles, adding apparent elevation when modelled.
+    #[must_use]
+    pub fn tracking_state(&self, la: &LookAngles) -> TrackingState {
+        let mut s = TrackingState::new(
+            la.azimuth_deg,
+            la.elevation_deg,
+            la.range_km,
+            la.range_rate_km_s,
+        );
+        if self.refraction.is_some() {
+            s = s.with_apparent_elevation(self.apparent_elevation_deg(la.elevation_deg));
+        }
+        s
+    }
+}
+
+/// TLE along-track error model for the Doppler margin (D-044): `δs = at_epoch + growth × |age|`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TleErrorModel {
+    /// Along-track error at the TLE epoch, km.
+    pub km_at_epoch: f64,
+    /// Growth of along-track error per day of TLE age, km/day.
+    pub growth_km_per_day: f64,
+}
+
+impl TleErrorModel {
+    /// Along-track error (km) for a TLE `age_days` old (either direction).
+    #[must_use]
+    pub fn along_track_error_km(&self, age_days: f64) -> f64 {
+        self.km_at_epoch + self.growth_km_per_day * age_days.abs()
+    }
 }
 
 /// Decoupling boundary between the gateway and any astrodynamics backend.
@@ -89,7 +285,14 @@ pub fn nadir_sun_illumination_cos(tle: &Tle, time: DateTime<Utc>) -> Option<f64>
 #[must_use]
 pub fn nadir_sun_illumination_cos_from(prop: &Propagator, time: DateTime<Utc>) -> Option<f64> {
     let state = prop.propagate(time).ok()?;
-    let r = state.position_km;
+    nadir_sun_illumination_cos_teme(state.position_km, time)
+}
+
+/// The CV-4 illumination model for a satellite **TEME** position (km) — the backend-independent
+/// core of [`nadir_sun_illumination_cos_from`], also used by the OEM backend after rotating its
+/// state to TEME.
+#[must_use]
+pub fn nadir_sun_illumination_cos_teme(r: [f64; 3], time: DateTime<Utc>) -> Option<f64> {
     let rn = (r[0] * r[0] + r[1] * r[1] + r[2] * r[2]).sqrt();
     if !(rn.is_finite() && rn > 1.0) {
         return None;
@@ -124,9 +327,9 @@ pub fn nadir_sun_illumination_cos_from(prop: &Propagator, time: DateTime<Utc>) -
 /// `docs/rust-idioms.md` §1.)
 pub struct EphemerustPropagator {
     propagator: Propagator,
-    latitude_deg: f64,
-    longitude_deg: f64,
-    altitude_m: f64,
+    tle_epoch: DateTime<Utc>,
+    station: StationModel,
+    tle_error: Option<TleErrorModel>,
 }
 
 impl EphemerustPropagator {
@@ -161,22 +364,77 @@ impl EphemerustPropagator {
         let propagator = Propagator::new(&tle)?;
         Ok(Self {
             propagator,
-            latitude_deg,
-            longitude_deg,
-            altitude_m,
+            tle_epoch: tle.epoch,
+            station: StationModel::geometric(latitude_deg, longitude_deg, altitude_m),
+            tle_error: None,
         })
     }
 
-    /// Builds a propagator from a validated [`StationConfig`], resolving its TLE source.
+    /// Builds a propagator from a validated [`StationConfig`], resolving its TLE source and
+    /// applying its Earth orientation, refraction and TLE-age Doppler settings.
     pub fn from_station(config: &StationConfig) -> Result<Self> {
-        config.validate()?;
+        let station = StationModel::from_station(config)?;
         let tle_text = config.resolve_tle_text()?;
-        Self::new(
+        let mut prop = Self::new(
             &tle_text,
             config.latitude_deg,
             config.longitude_deg,
             config.altitude_m,
-        )
+        )?
+        .with_station_model(station);
+        if config.doppler_tle_age_margin {
+            prop = prop.with_tle_error_model(TleErrorModel {
+                km_at_epoch: config.tle_error_km_at_epoch,
+                growth_km_per_day: config.tle_error_growth_km_per_day,
+            });
+        }
+        Ok(prop)
+    }
+
+    /// Replaces the station model (location, Earth orientation, refraction).
+    #[must_use]
+    pub fn with_station_model(mut self, station: StationModel) -> Self {
+        self.station = station;
+        self
+    }
+
+    /// Enables the TLE-age Doppler margin (D-044) with the given along-track error model.
+    #[must_use]
+    pub fn with_tle_error_model(mut self, model: TleErrorModel) -> Self {
+        self.tle_error = Some(model);
+        self
+    }
+
+    /// Epoch of the loaded TLE.
+    #[must_use]
+    pub fn tle_epoch(&self) -> DateTime<Utc> {
+        self.tle_epoch
+    }
+
+    fn look_angles(&self, time: DateTime<Utc>) -> Result<LookAngles> {
+        Ok(self.propagator.look_angles_with_eop(
+            time,
+            self.station.observer(),
+            &self.station.earth_orientation,
+        )?)
+    }
+
+    /// Range-rate error (km/s) implied by along-track TLE error: δt = δs / |v| shifts the
+    /// predicted range rate by ρ̈·δt. ρ̈ comes from a ±1 s central difference of range rate.
+    fn range_rate_uncertainty_km_s(
+        &self,
+        time: DateTime<Utc>,
+        model: &TleErrorModel,
+    ) -> Result<f64> {
+        let h = chrono::Duration::seconds(1);
+        let rr_plus = self.look_angles(time + h)?.range_rate_km_s;
+        let rr_minus = self.look_angles(time - h)?.range_rate_km_s;
+        let range_accel_km_s2 = (rr_plus - rr_minus) / 2.0;
+        let v = self.propagator.propagate(time)?.velocity_km_s;
+        let speed_km_s = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+        let age_days = (time - self.tle_epoch).num_milliseconds() as f64 / 86_400_000.0;
+        let ds_km = model.along_track_error_km(age_days);
+        Ok(range_accel_km_s2.abs() * ds_km / speed_km_s.max(1e-3))
     }
 }
 
@@ -252,23 +510,45 @@ impl TrackingProvider {
 
 impl OrbitalPropagator for EphemerustPropagator {
     fn tracking_state(&self, time: DateTime<Utc>) -> Result<TrackingState> {
-        let observer = ObserverLocation {
-            latitude: self.latitude_deg,
-            longitude: self.longitude_deg,
-            elevation: self.altitude_m,
-        };
-        let la = self.propagator.look_angles(time, observer)?;
+        let la = self.look_angles(time)?;
         let nadir_sun_illum_cos = nadir_sun_illumination_cos_from(&self.propagator, time)
             .filter(|x| x.is_finite())
             .unwrap_or(f64::NAN);
-        Ok(TrackingState {
-            azimuth_deg: la.azimuth_deg,
-            elevation_deg: la.elevation_deg,
-            range_km: la.range_km,
-            range_rate_km_s: la.range_rate_km_s,
-            nadir_sun_illum_cos,
-        })
+        let mut state = self
+            .station
+            .tracking_state(&la)
+            .with_sun_illumination(nadir_sun_illum_cos);
+        if let Some(model) = &self.tle_error {
+            state =
+                state.with_range_rate_uncertainty(self.range_rate_uncertainty_km_s(time, model)?);
+        }
+        Ok(state)
     }
+}
+
+/// Builds the tracking backend a [`StationConfig`] asks for: the CCSDS **OEM** backend when
+/// `oem_file` is set ([`crate::oem::OemPropagator`]), otherwise SGP4 from the TLE
+/// ([`EphemerustPropagator`]).
+///
+/// # Errors
+///
+/// Configuration, TLE or OEM loading failures, explainable with
+/// [`crate::diagnose::explain_tracking_error`].
+pub fn propagator_from_station(config: &StationConfig) -> Result<Arc<dyn OrbitalPropagator>> {
+    if config.oem_file.is_some() {
+        Ok(Arc::new(crate::oem::OemPropagator::from_station(config)?))
+    } else {
+        Ok(Arc::new(EphemerustPropagator::from_station(config)?))
+    }
+}
+
+/// Rotates an Earth-fixed (ITRF) position to TEME, for the CV-4 illumination model.
+pub(crate) fn itrf_to_teme_position(
+    r_itrf_km: [f64; 3],
+    time: DateTime<Utc>,
+    eop: &EarthOrientation,
+) -> [f64; 3] {
+    itrf_to_inertial(InertialFrame::Teme, time, r_itrf_km, [0.0; 3], eop).0
 }
 
 #[cfg(test)]
@@ -350,6 +630,102 @@ mod tests {
         );
     }
 
+    /// D-044: the reported range-rate uncertainty must match the change in range rate that an
+    /// along-track error actually causes. Shift the satellite by δs along track (a time shift
+    /// δt = δs/|v|) and compare |Δρ̇| with the model, around a real pass.
+    #[test]
+    fn tle_age_uncertainty_matches_an_along_track_shift() {
+        let model = TleErrorModel {
+            km_at_epoch: 5.0,
+            growth_km_per_day: 0.0,
+        };
+        let prop = EphemerustPropagator::new(ISS_TLE, 47.9088, -122.2503, 0.0)
+            .unwrap()
+            .with_tle_error_model(model);
+        let plain = EphemerustPropagator::new(ISS_TLE, 47.9088, -122.2503, 0.0).unwrap();
+        let mut checked = 0;
+        // Sample a full day at 20 s so several passes over Everett are included.
+        for k in 0..4320 {
+            let t = epoch() + chrono::Duration::seconds(20 * k);
+            let s = prop.tracking_state(t).unwrap();
+            if s.elevation_deg < 10.0 {
+                continue;
+            }
+            let v = prop.propagator.propagate(t).unwrap().velocity_km_s;
+            let speed = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+            let dt = chrono::Duration::milliseconds((5.0 / speed * 1000.0) as i64);
+            let actual =
+                (plain.tracking_state(t + dt).unwrap().range_rate_km_s - s.range_rate_km_s).abs();
+            let predicted = s.range_rate_uncertainty_km_s;
+            // First-order model: agree within 10 % (+1 m/s floor for near-zero ρ̈).
+            assert!(
+                (actual - predicted).abs() < 0.1 * predicted + 0.001,
+                "t+{}s: actual {actual:.5} km/s vs predicted {predicted:.5} km/s",
+                20 * k
+            );
+            checked += 1;
+        }
+        assert!(
+            checked > 20,
+            "pass must be sampled (got {checked} points above 10°)"
+        );
+    }
+
+    #[test]
+    fn tle_age_uncertainty_grows_with_age_and_is_off_by_default() {
+        let model = TleErrorModel {
+            km_at_epoch: 1.0,
+            growth_km_per_day: 2.0,
+        };
+        assert_eq!(model.along_track_error_km(0.0), 1.0);
+        assert_eq!(model.along_track_error_km(-3.0), 7.0);
+        let plain = EphemerustPropagator::new(ISS_TLE, 47.9088, -122.2503, 0.0).unwrap();
+        assert_eq!(
+            plain
+                .tracking_state(epoch())
+                .unwrap()
+                .range_rate_uncertainty_km_s,
+            0.0
+        );
+        let aged = EphemerustPropagator::new(ISS_TLE, 47.9088, -122.2503, 0.0)
+            .unwrap()
+            .with_tle_error_model(model);
+        let near = aged
+            .tracking_state(epoch())
+            .unwrap()
+            .range_rate_uncertainty_km_s;
+        let far = aged
+            .tracking_state(epoch() + chrono::Duration::days(3) + chrono::Duration::seconds(0))
+            .unwrap()
+            .range_rate_uncertainty_km_s;
+        assert!(near > 0.0 && far.is_finite());
+    }
+
+    /// D-043: Earth orientation is applied. UT1-UTC of -0.227 s rotates the Earth by ~3.4″, which
+    /// moves a LEO pass by tens of metres in range but well under 0.01° in direction.
+    #[test]
+    fn earth_orientation_shifts_tracking_slightly() {
+        let base = EphemerustPropagator::new(ISS_TLE, 47.9088, -122.2503, 0.0).unwrap();
+        let eop_station = StationModel {
+            earth_orientation: EarthOrientation::new(-0.2273, 0.1875, 0.4171).unwrap(),
+            ..StationModel::geometric(47.9088, -122.2503, 0.0)
+        };
+        let with_eop = EphemerustPropagator::new(ISS_TLE, 47.9088, -122.2503, 0.0)
+            .unwrap()
+            .with_station_model(eop_station);
+        let t = epoch() + chrono::Duration::minutes(25);
+        let (a, b) = (
+            base.tracking_state(t).unwrap(),
+            with_eop.tracking_state(t).unwrap(),
+        );
+        let d_range_m = (a.range_km - b.range_km).abs() * 1000.0;
+        assert!(
+            d_range_m > 1.0 && d_range_m < 500.0,
+            "Δrange = {d_range_m} m"
+        );
+        assert!((a.elevation_deg - b.elevation_deg).abs() < 0.01);
+    }
+
     #[test]
     fn invalid_tle_is_rejected() {
         let result = EphemerustPropagator::new("definitely not a TLE", 0.0, 0.0, 0.0);
@@ -410,13 +786,7 @@ mod tests {
             }
         }
 
-        let scripted = TrackingState {
-            azimuth_deg: 10.0,
-            elevation_deg: 20.0,
-            range_km: 30.0,
-            range_rate_km_s: 0.5,
-            nadir_sun_illum_cos: f64::NAN,
-        };
+        let scripted = TrackingState::new(10.0, 20.0, 30.0, 0.5);
         let counting = Arc::new(CountingPropagator {
             calls: AtomicU64::new(0),
             state: scripted,

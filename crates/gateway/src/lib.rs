@@ -37,6 +37,7 @@ pub mod hil_tm;
 pub mod http;
 pub mod ingest;
 pub mod metrics;
+pub mod oem;
 pub mod propagator;
 pub mod state;
 pub mod validate;

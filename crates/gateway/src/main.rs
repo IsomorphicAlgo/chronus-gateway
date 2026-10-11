@@ -9,13 +9,14 @@ use std::sync::Arc;
 
 use chronus_gateway::config::load_effective_gateway_config;
 use chronus_gateway::diagnose::{
-    Diagnosis, Explain, Listener, Severity, check_tle_age, config_warnings, explain_bind_error,
-    explain_tracking_error, tle_epoch,
+    Diagnosis, Explain, Listener, Severity, check_oem_coverage, check_tle_age, config_warnings,
+    explain_bind_error, explain_tracking_error, tle_epoch,
 };
 use chronus_gateway::http;
 use chronus_gateway::ingest::{self, IngestStats};
 use chronus_gateway::metrics::GatewayMetrics;
-use chronus_gateway::propagator::{EphemerustPropagator, TrackingProvider};
+use chronus_gateway::oem::OemEphemeris;
+use chronus_gateway::propagator::{TrackingProvider, propagator_from_station};
 use chronus_gateway::state::SharedGateway;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
@@ -82,25 +83,39 @@ async fn run() -> Result<(), Failure> {
     let gateway_metrics = Arc::new(GatewayMetrics::default());
     let station = Arc::new(station_cfg);
 
-    let tracking = match EphemerustPropagator::from_station(station.as_ref()) {
+    let tracking = match propagator_from_station(station.as_ref()) {
         Ok(prop) => {
             tracing::info!(
                 lat = station.latitude_deg,
                 lon = station.longitude_deg,
                 carrier_hz = station.nominal_carrier_hz,
+                ephemeris = if station.oem_file.is_some() {
+                    "oem"
+                } else {
+                    "tle"
+                },
+                refraction = station.refraction,
+                tle_age_doppler_margin = station.doppler_tle_age_margin,
                 "orbital tracking provider ready"
             );
-            if let Some(age) = station
-                .resolve_tle_text()
-                .ok()
-                .as_deref()
-                .and_then(tle_epoch)
-                .and_then(|epoch| check_tle_age(epoch, chrono::Utc::now()))
-            {
-                report(&age);
+            let now = chrono::Utc::now();
+            let freshness = match &station.oem_file {
+                // Startup-only second read of the file, purely for the coverage check.
+                Some(path) => OemEphemeris::from_file(path)
+                    .ok()
+                    .and_then(|eph| check_oem_coverage(eph.coverage(), now)),
+                None => station
+                    .resolve_tle_text()
+                    .ok()
+                    .as_deref()
+                    .and_then(tle_epoch)
+                    .and_then(|epoch| check_tle_age(epoch, now)),
+            };
+            if let Some(d) = freshness {
+                report(&d);
             }
             Some(Arc::new(TrackingProvider::new(
-                Arc::new(prop),
+                prop,
                 station.min_recompute_interval_ms,
             )))
         }

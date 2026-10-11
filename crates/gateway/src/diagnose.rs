@@ -250,7 +250,8 @@ impl Explain for ConfigError {
                 "The gateway needs a two-line element set (TLE) to know where the satellite is.",
             )
             .fix("Paste a TLE into `station.tle_inline`, or point `station.tle_file` at a TLE file.")
-            .fix("Current TLEs are free at https://celestrak.org (search by satellite name or NORAD ID)."),
+            .fix("Current TLEs are free at https://celestrak.org (search by satellite name or NORAD ID).")
+            .fix("If you have an operator ephemeris, set `station.oem_file` to a CCSDS OEM instead."),
             ConfigError::InvalidDopplerTolerance(v) => tolerance(
                 "CG-106",
                 "Doppler tolerance",
@@ -374,6 +375,57 @@ impl Explain for ConfigError {
                 .fix("Set `ingest.max_datagram_size` to 65542 (the default) or delete the line.")
             }
             ConfigError::TleRead { path, source } => explain_tle_read(path, source),
+            ConfigError::InvalidEarthOrientation(msg) => Diagnosis::new(
+                "CG-119",
+                E,
+                "The Earth orientation values are not plausible.",
+                format!(
+                    "{msg} IERS Bulletin A gives UT1-UTC in seconds (always within ±0.9 s) and \
+                     polar motion in arcseconds (a few tenths)."
+                ),
+            )
+            .fix(
+                "Copy today's UT1-UTC, x and y from IERS Bulletin A \
+                 (https://datacenter.iers.org/data/latestVersion/bulletinA.txt) into \
+                 `station.ut1_minus_utc_s`, `station.polar_motion_x_arcsec` and \
+                 `station.polar_motion_y_arcsec`.",
+            )
+            .fix("Or delete those lines: zero is a valid (slightly less accurate) default."),
+            ConfigError::InvalidRefraction { field, value } => Diagnosis::new(
+                "CG-125",
+                E,
+                format!("Refraction setting `station.{field}` = {value} is not plausible."),
+                "Air pressure must be in hPa (sea level is about 1013; 1 to 1100 is accepted) and \
+                 temperature in °C (-90 to 60).",
+            )
+            .fix(format!(
+                "Set `station.{field}` to your station's typical value, or delete the line to use \
+                 the standard atmosphere (1010 hPa, 10 °C)."
+            ))
+            .fix("To turn refraction off entirely, set `station.refraction = false`."),
+            ConfigError::InvalidTleErrorModel { field, value } => Diagnosis::new(
+                "CG-126",
+                E,
+                format!("TLE error setting `station.{field}` = {value} is not usable."),
+                "The TLE-age Doppler margin needs a finite, non-negative number of kilometres.",
+            )
+            .fix(format!(
+                "Set `station.{field}` to a value >= 0 (defaults: 1.0 km at epoch, 2.0 km/day), \
+                 or delete the line."
+            )),
+            ConfigError::OemRead { path, source } => {
+                let cwd = current_dir_display();
+                Diagnosis::new(
+                    "CG-127",
+                    E,
+                    format!("Can't read the ephemeris (OEM) file `{path}`."),
+                    format!(
+                        "The operating system reported: {source}. Relative paths are looked up \
+                         from the folder the gateway was started in ({cwd})."
+                    ),
+                )
+                .fix("Check the spelling of `station.oem_file`, or use a full path.")
+            }
         }
     }
 }
@@ -451,17 +503,18 @@ impl Explain for ConfigLoadError {
             ConfigLoadError::TleSourceAmbiguous => Diagnosis::new(
                 "CG-123",
                 Severity::Error,
-                "The config gives the orbit data (TLE) twice.",
-                "Both `station.tle_inline` and `station.tle_file` are set, so it is unclear which to use.",
+                "The config gives the orbit data more than once.",
+                "More than one of `station.tle_inline`, `station.tle_file` and `station.oem_file` is \
+                 set, so it is unclear which to use.",
             )
-            .fix("Delete one of the two lines."),
+            .fix("Keep exactly one of the three lines."),
             ConfigLoadError::TleSourceMissing => Diagnosis::new(
                 "CG-124",
                 Severity::Error,
-                "The `[station]` section has no orbit data (TLE).",
+                "The `[station]` section has no orbit data.",
                 "The gateway needs to know which satellite to track.",
             )
-            .fix("Add `tle_inline = \"\"\"...\"\"\"` with the TLE text, or `tle_file = \"path/to/file.tle\"`.")
+            .fix("Add `tle_inline = \"\"\"...\"\"\"` with the TLE text, `tle_file = \"path/to/file.tle\"`, or `oem_file = \"path/to/ephemeris.oem\"`.")
             .fix("Or delete the whole `[station]` section to use the built-in demo station."),
             ConfigLoadError::Station(e) => e.explain(),
         }
@@ -857,6 +910,9 @@ pub fn explain_tracking_error(err: &anyhow::Error) -> Diagnosis {
     if let Some(cfg) = err.downcast_ref::<ConfigError>() {
         return cfg.explain();
     }
+    if let Some(oem) = err.downcast_ref::<crate::oem::OemError>() {
+        return oem.explain();
+    }
     if let Some(astro) = err.downcast_ref::<ephemerust::AstroError>() {
         return match astro {
             ephemerust::AstroError::Tle(tle) => {
@@ -890,6 +946,76 @@ pub fn explain_tracking_error(err: &anyhow::Error) -> Diagnosis {
         err.to_string(),
     )
     .fix("Check the `[station]` section of your config against gateway.example.toml.")
+}
+
+impl Explain for crate::oem::OemError {
+    fn explain(&self) -> Diagnosis {
+        use crate::oem::OemError as O;
+        let spec = "The format is CCSDS 502.0-B-3 (KVN); see `crates/gateway/src/oem.rs` for the \
+                    supported keywords.";
+        match self {
+            O::NotOem | O::Syntax { .. } | O::MissingKeyword { .. } | O::BadSegment { .. } | O::Empty => {
+                Diagnosis::new(
+                    "CG-320",
+                    Severity::Warning,
+                    "The ephemeris (OEM) file couldn't be read, so physics checks are off.",
+                    format!("{self}."),
+                )
+                .fix(spec)
+                .fix("Ask the ephemeris provider for a KVN (text) OEM rather than the XML form.")
+            }
+            O::UnsupportedCenter { .. } | O::UnsupportedFrame { .. } | O::UnsupportedTimeSystem { .. } => {
+                Diagnosis::new(
+                    "CG-321",
+                    Severity::Warning,
+                    "The ephemeris (OEM) uses a frame or time scale the gateway can't convert.",
+                    format!(
+                        "{self}. Supported: CENTER_NAME EARTH; REF_FRAME GCRF/ICRF, EME2000, TEME or \
+                         ITRF*; TIME_SYSTEM UTC, TAI, TT or GPS."
+                    ),
+                )
+                .fix("Ask the provider for an EME2000 or ITRF ephemeris in UTC; those are the most common.")
+            }
+            O::OutOfCoverage { time, start, stop } => Diagnosis::new(
+                "CG-322",
+                Severity::Warning,
+                "The ephemeris (OEM) doesn't cover the current time.",
+                format!(
+                    "Telemetry stamped {time} falls outside the ephemeris ({start} to {stop}); the \
+                     gateway does not extrapolate an OEM."
+                ),
+            )
+            .fix("Load an ephemeris that covers the pass (`station.oem_file`)."),
+        }
+    }
+}
+
+/// Warns at startup when an OEM's coverage does not include `now` (`CG-322`).
+///
+/// ```
+/// use chrono::{TimeZone, Utc};
+/// use chronus_gateway::diagnose::check_oem_coverage;
+///
+/// let start = Utc.with_ymd_and_hms(2026, 10, 11, 0, 0, 0).unwrap();
+/// let stop = Utc.with_ymd_and_hms(2026, 10, 12, 0, 0, 0).unwrap();
+/// assert!(check_oem_coverage((start, stop), Utc.with_ymd_and_hms(2026, 10, 11, 6, 0, 0).unwrap()).is_none());
+/// assert_eq!(check_oem_coverage((start, stop), Utc.with_ymd_and_hms(2026, 10, 13, 0, 0, 0).unwrap()).unwrap().code, "CG-322");
+/// ```
+#[must_use]
+pub fn check_oem_coverage(
+    coverage: (DateTime<Utc>, DateTime<Utc>),
+    now: DateTime<Utc>,
+) -> Option<Diagnosis> {
+    let (start, stop) = coverage;
+    (now < start || now > stop).then(|| {
+        crate::oem::OemError::OutOfCoverage {
+            time: now,
+            start,
+            stop,
+        }
+        .explain()
+        .fix("If you are replaying recorded telemetry from inside the window, this can be ignored.")
+    })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2062,5 +2188,55 @@ mod tests {
         let v = serde_json::to_value(&r).expect("json");
         assert_eq!(v["status"], "waiting");
         assert_eq!(v["findings"][0]["code"], "CG-501");
+    }
+
+    // ---- Tier 2: Earth orientation, refraction, TLE error model, OEM -----------------------
+
+    #[test]
+    fn tier2_config_errors_have_codes_and_fixes() {
+        let cases = [
+            (
+                ConfigError::InvalidEarthOrientation("UT1-UTC = -227.3 s".into()),
+                "CG-119",
+            ),
+            (
+                ConfigError::InvalidRefraction {
+                    field: "refraction_pressure_hpa",
+                    value: 101_325.0,
+                },
+                "CG-125",
+            ),
+            (
+                ConfigError::InvalidTleErrorModel {
+                    field: "tle_error_km_at_epoch",
+                    value: -1.0,
+                },
+                "CG-126",
+            ),
+        ];
+        for (err, code) in cases {
+            let d = err.explain();
+            assert_eq!(d.code, code);
+            assert!(!d.fixes.is_empty(), "{code} must suggest a fix");
+        }
+        let eop = ConfigError::InvalidEarthOrientation("x".into()).explain();
+        assert!(eop.fixes[0].contains("Bulletin A"));
+    }
+
+    #[test]
+    fn oem_errors_are_explained() {
+        use crate::oem::OemError;
+        let d = OemError::UnsupportedFrame {
+            segment: 1,
+            frame: "TOD".into(),
+        }
+        .explain();
+        assert_eq!(d.code, "CG-321");
+        assert!(d.cause.contains("EME2000"));
+        assert_eq!(OemError::NotOem.explain().code, "CG-320");
+        let now = Utc::now();
+        assert!(
+            check_oem_coverage((now - Duration::hours(1), now + Duration::hours(1)), now).is_none()
+        );
     }
 }

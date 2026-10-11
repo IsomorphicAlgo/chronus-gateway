@@ -66,6 +66,16 @@
 //! When **both** [`RfMetadata::measured_azimuth_deg`] and [`RfMetadata::measured_elevation_deg`] are
 //! `Some`, compare the measured look direction to the propagator’s azimuth/elevation using the
 //! great-circle angle (**T-POINT** in `TEST_PLAN.md`). Anomaly sets bit 3 ([`FLAG_POINTING_ANOMALY`]).
+//! The computed elevation is the **apparent** one ([`TrackingState::pointing_elevation_deg`]) when
+//! the station models refraction (default; D-042): an antenna tracking a signal points ~0.5° above
+//! the geometric direction at the horizon, which would otherwise exceed the 0.25° tolerance. The
+//! horizon check (bit 1) stays geometric.
+//!
+//! ## TLE-age Doppler margin (D-044)
+//!
+//! When the backend reports [`TrackingState::range_rate_uncertainty_km_s`] (opt-in
+//! `doppler_tle_age_margin`), the Doppler band becomes
+//! [`effective_doppler_tolerance_hz`]: **T-DOPPLER** plus `f₀ · δρ̇ / c`.
 
 use std::f64::consts::PI;
 
@@ -299,6 +309,36 @@ fn az_el_to_enu_unit(az_deg: f64, el_deg: f64) -> Option<(f64, f64, f64)> {
     Some((e, n, u))
 }
 
+/// Doppler acceptance band (Hz) for one frame: the configured **T-DOPPLER** tolerance plus the
+/// frequency equivalent of the ephemeris range-rate uncertainty
+/// ([`TrackingState::range_rate_uncertainty_km_s`], D-044; zero unless the TLE-age margin is on).
+///
+/// ```
+/// use chronus_gateway::propagator::TrackingState;
+/// use chronus_gateway::validate::effective_doppler_tolerance_hz;
+///
+/// let fixed = TrackingState::new(0.0, 45.0, 800.0, -2.0);
+/// assert_eq!(effective_doppler_tolerance_hz(150.0, 437.5e6, &fixed), 150.0);
+///
+/// // A 40 m/s range-rate uncertainty at 437.5 MHz is ~58 Hz of extra margin.
+/// let aged = fixed.with_range_rate_uncertainty(0.040);
+/// let tol = effective_doppler_tolerance_hz(150.0, 437.5e6, &aged);
+/// assert!((tol - 208.4).abs() < 0.1, "{tol}");
+/// ```
+#[must_use]
+pub fn effective_doppler_tolerance_hz(
+    doppler_tolerance_hz: f64,
+    nominal_carrier_hz: f64,
+    state: &TrackingState,
+) -> f64 {
+    let u = state.range_rate_uncertainty_km_s;
+    if u.is_finite() && u > 0.0 && nominal_carrier_hz.is_finite() {
+        doppler_tolerance_hz + nominal_carrier_hz * (u * 1000.0) / SPEED_OF_LIGHT_M_S
+    } else {
+        doppler_tolerance_hz
+    }
+}
+
 /// Clears then sets [`TelemetryFrame::physics_flags`] from physics checks.
 ///
 /// Always resets flags to `0` first so repeated validation does not OR stale bits.
@@ -333,7 +373,9 @@ pub fn apply_physics_validation(
         && state.range_rate_km_s.is_finite()
     {
         let expected = expected_carrier_hz(nominal_carrier_hz, state.range_rate_km_s);
-        if (measured - expected).abs() > doppler_tolerance_hz {
+        let tolerance =
+            effective_doppler_tolerance_hz(doppler_tolerance_hz, nominal_carrier_hz, state);
+        if (measured - expected).abs() > tolerance {
             frame.physics_flags |= FLAG_DOPPLER_ANOMALY;
         }
     }
@@ -366,8 +408,9 @@ pub fn apply_physics_validation(
         && maz.is_finite()
         && mel.is_finite()
         && state.azimuth_deg.is_finite()
-        && state.elevation_deg.is_finite()
-        && let Some(sep) = angular_separation_deg(maz, mel, state.azimuth_deg, state.elevation_deg)
+        && state.pointing_elevation_deg().is_finite()
+        && let Some(sep) =
+            angular_separation_deg(maz, mel, state.azimuth_deg, state.pointing_elevation_deg())
         && sep.is_finite()
         && sep > pointing_tolerance_deg
     {
@@ -452,6 +495,8 @@ mod tests {
             range_km: 4000.0,
             range_rate_km_s,
             nadir_sun_illum_cos: f64::NAN,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         }
     }
 
@@ -767,6 +812,8 @@ mod tests {
             range_km: 0.0,
             range_rate_km_s: 0.0,
             nadir_sun_illum_cos: f64::NAN,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         };
         apply_physics_validation(
             &mut tm,
@@ -799,6 +846,80 @@ mod tests {
         assert!((sep - 90.0).abs() < 1e-6, "sep={sep}");
     }
 
+    fn flags_for(s: &TrackingState, rf: RfMetadata) -> u8 {
+        let mut tm = dummy_tm();
+        apply_physics_validation(
+            &mut tm, s, 437.5e6, rf, 150.0, 0.0, None, T_POINT, None, None,
+        );
+        tm.physics_flags
+    }
+
+    /// D-042: near the horizon an antenna tracks the refracted (apparent) direction, ~0.4° above
+    /// geometric at 1° elevation — more than T-POINT. With refraction modelled, a correctly
+    /// pointed antenna passes and one pointed at the geometric direction is flagged.
+    #[test]
+    fn pointing_uses_apparent_elevation_when_refraction_is_modelled() {
+        let geometric = 1.0;
+        let apparent = geometric
+            + ephemerust::coordinates::refraction_deg_with_conditions(geometric, 1010.0, 10.0);
+        assert!(
+            apparent - geometric > T_POINT,
+            "refraction at 1° must exceed T-POINT"
+        );
+        let s = TrackingState::new(200.0, geometric, 2300.0, 0.0).with_apparent_elevation(apparent);
+        let rf = |el: f64| RfMetadata {
+            measured_azimuth_deg: Some(200.0),
+            measured_elevation_deg: Some(el),
+            ..Default::default()
+        };
+        assert_eq!(flags_for(&s, rf(apparent)) & FLAG_POINTING_ANOMALY, 0);
+        assert_ne!(flags_for(&s, rf(geometric)) & FLAG_POINTING_ANOMALY, 0);
+        // Without refraction modelled the geometric direction is the reference.
+        let plain = TrackingState::new(200.0, geometric, 2300.0, 0.0);
+        assert_eq!(flags_for(&plain, rf(geometric)) & FLAG_POINTING_ANOMALY, 0);
+        // The horizon check stays geometric: apparent > 0 does not hide a geometric -0.3°.
+        let low = TrackingState::new(200.0, -0.3, 2500.0, 0.0).with_apparent_elevation(0.2);
+        assert_ne!(
+            flags_for(&low, RfMetadata::default()) & FLAG_BELOW_HORIZON,
+            0
+        );
+    }
+
+    /// D-044: the TLE-age range-rate uncertainty widens the Doppler band by f0·δρ̇/c.
+    #[test]
+    fn tle_age_uncertainty_widens_the_doppler_band() {
+        let f0 = 437.5e6;
+        let base = TrackingState::new(90.0, 45.0, 800.0, -1.5);
+        let measured = expected_carrier_hz(f0, base.range_rate_km_s) + 200.0; // 200 Hz off
+        let rf = RfMetadata {
+            measured_carrier_hz: Some(measured),
+            ..Default::default()
+        };
+        assert_ne!(
+            flags_for(&base, rf) & FLAG_DOPPLER_ANOMALY,
+            0,
+            "fixed 150 Hz band"
+        );
+        // 40 m/s of range-rate uncertainty ≈ 58 Hz → band ≈ 208 Hz: accepted.
+        let aged = base.with_range_rate_uncertainty(0.040);
+        assert_eq!(
+            flags_for(&aged, rf) & FLAG_DOPPLER_ANOMALY,
+            0,
+            "widened band"
+        );
+        // A spoof 2 kHz off is still caught.
+        let spoof = RfMetadata {
+            measured_carrier_hz: Some(measured + 1800.0),
+            ..Default::default()
+        };
+        assert_ne!(flags_for(&aged, spoof) & FLAG_DOPPLER_ANOMALY, 0);
+        // Garbage uncertainty never narrows or disables the check.
+        for u in [f64::NAN, -1.0, f64::INFINITY] {
+            let t = effective_doppler_tolerance_hz(150.0, f0, &base.with_range_rate_uncertainty(u));
+            assert_eq!(t, 150.0, "u = {u}");
+        }
+    }
+
     #[test]
     fn pointing_within_t_point_no_bit3() {
         let mut tm = dummy_tm();
@@ -808,6 +929,8 @@ mod tests {
             range_km: 4000.0,
             range_rate_km_s: 0.0,
             nadir_sun_illum_cos: f64::NAN,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         };
         apply_physics_validation(
             &mut tm,
@@ -838,6 +961,8 @@ mod tests {
             range_km: 4000.0,
             range_rate_km_s: 0.0,
             nadir_sun_illum_cos: f64::NAN,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         };
         apply_physics_validation(
             &mut tm,
@@ -868,6 +993,8 @@ mod tests {
             range_km: 4000.0,
             range_rate_km_s: 0.0,
             nadir_sun_illum_cos: f64::NAN,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         };
         apply_physics_validation(
             &mut tm,
@@ -898,6 +1025,8 @@ mod tests {
             range_km: 4000.0,
             range_rate_km_s: 0.0,
             nadir_sun_illum_cos: f64::NAN,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         };
         apply_physics_validation(
             &mut tm,
@@ -946,6 +1075,8 @@ mod tests {
             range_km: 4000.0,
             range_rate_km_s: 0.0,
             nadir_sun_illum_cos: illum,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         };
         apply_physics_validation(
             &mut tm,
@@ -992,6 +1123,8 @@ mod tests {
             range_km: 4000.0,
             range_rate_km_s: 0.0,
             nadir_sun_illum_cos: illum,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         };
         apply_physics_validation(
             &mut tm,
@@ -1036,6 +1169,8 @@ mod tests {
             range_km: 4000.0,
             range_rate_km_s: 0.0,
             nadir_sun_illum_cos: illum,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         };
         apply_physics_validation(
             &mut tm,
@@ -1077,6 +1212,8 @@ mod tests {
             range_km: 4000.0,
             range_rate_km_s: 0.0,
             nadir_sun_illum_cos: f64::NAN,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         };
         apply_physics_validation(
             &mut tm,
@@ -1120,6 +1257,8 @@ mod tests {
             range_km: 4000.0,
             range_rate_km_s: 0.0,
             nadir_sun_illum_cos: f64::NAN,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         };
         apply_physics_validation(
             &mut tm,
@@ -1160,6 +1299,8 @@ mod tests {
             range_km: 4000.0,
             range_rate_km_s: 0.0,
             nadir_sun_illum_cos: f64::NAN,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         };
         apply_physics_validation(
             &mut tm,
@@ -1200,6 +1341,8 @@ mod tests {
             range_km: 4000.0,
             range_rate_km_s: 0.0,
             nadir_sun_illum_cos: f64::NAN,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         };
         apply_physics_validation(
             &mut tm,
@@ -1240,6 +1383,8 @@ mod tests {
             range_km: 4000.0,
             range_rate_km_s: 0.0,
             nadir_sun_illum_cos: f64::NAN,
+            apparent_elevation_deg: f64::NAN,
+            range_rate_uncertainty_km_s: 0.0,
         };
         apply_physics_validation(
             &mut tm,

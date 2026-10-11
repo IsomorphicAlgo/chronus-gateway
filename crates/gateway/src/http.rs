@@ -54,6 +54,12 @@ pub struct OpenMctRealtimeMessageV1 {
     pub azimuth_deg: Option<f64>,
     pub range_km: Option<f64>,
     pub range_rate_km_s: Option<f64>,
+    /// Apparent (refracted) elevation the antenna should point at, when the station models
+    /// refraction (D-042). Additive field (schema v1 unchanged).
+    pub apparent_elevation_deg: Option<f64>,
+    /// Doppler acceptance band actually applied to this frame (Hz): **T-DOPPLER** plus any
+    /// TLE-age margin (D-044). `None` without physics. Additive field (schema v1 unchanged).
+    pub doppler_tolerance_hz: Option<f64>,
     /// Base64 of the CCSDS packet data field (secondary header + user data).
     pub payload_base64: String,
 }
@@ -300,6 +306,17 @@ pub fn process_frame_with_rf(
         ),
         None => (None, None, None, None),
     };
+    let apparent_el = physics
+        .as_ref()
+        .map(|s| s.apparent_elevation_deg)
+        .filter(|x| x.is_finite());
+    let doppler_tol = physics.as_ref().map(|s| {
+        crate::validate::effective_doppler_tolerance_hz(
+            station.doppler_tolerance_hz,
+            station.nominal_carrier_hz,
+            s,
+        )
+    });
 
     let msg = OpenMctRealtimeMessageV1 {
         chronus_schema: "openmct.realtime.v1",
@@ -312,6 +329,8 @@ pub fn process_frame_with_rf(
         azimuth_deg: az,
         range_km: rk,
         range_rate_km_s: rr,
+        apparent_elevation_deg: apparent_el,
+        doppler_tolerance_hz: doppler_tol,
         payload_base64: payload_b64,
     };
 

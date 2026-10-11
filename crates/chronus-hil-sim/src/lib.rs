@@ -136,7 +136,7 @@ pub fn nominal_sample(seq: u32, utc: chrono::DateTime<chrono::Utc>) -> TelemSamp
 pub struct TelemSample {
     /// Monotonic frame index in this run.
     pub seq: u32,
-    /// Abstract EPS bus voltage [V].
+    /// Abstract EPS bus voltage \[V\].
     pub eps_bus_voltage_v: f32,
     /// Abstract panel temperature [°C].
     pub thermal_panel_c: f32,

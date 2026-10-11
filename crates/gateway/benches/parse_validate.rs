@@ -46,13 +46,7 @@ fn bench_parse_telemetry(c: &mut Criterion) {
 fn bench_apply_physics_validation(c: &mut Criterion) {
     let frame = sample_frame();
     let tm = ccsds::parse_telemetry(&frame).expect("valid TM");
-    let state = TrackingState {
-        azimuth_deg: 180.0,
-        elevation_deg: 45.0,
-        range_km: 450.0,
-        range_rate_km_s: -7.2,
-        nadir_sun_illum_cos: f64::NAN,
-    };
+    let state = TrackingState::new(180.0, 45.0, 450.0, -7.2);
     let nominal = 437_500_000.0_f64;
     let lb = LinkBudgetStationParams {
         tx_power_dbm: 30.0,

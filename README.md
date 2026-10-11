@@ -42,7 +42,7 @@ An async, non-blocking core (Tokio) handles ingestion, parsing, and WebSocket fa
 
 ### 2. Built-in space map
 
-A live orbital engine, [**Ephemerust**](#ephemerust), tracks where the spacecraft is, how fast it is moving, and how it looks from your ground site: azimuth, elevation, range, and range-rate, updated on each frame.
+A live orbital engine, [**Ephemerust**](#ephemerust), tracks where the spacecraft is, how fast it is moving, and how it looks from your ground site: azimuth, elevation, range, and range-rate, updated on each frame. The orbit comes from a TLE or, when the operator has one, a precise **CCSDS OEM ephemeris** (GCRF, EME2000, TEME or ITRF). Optional Earth orientation data (UT1−UTC, polar motion) and atmospheric refraction put the computed direction where a real antenna points.
 
 ### 3. Physics as a sanity check
 
@@ -50,10 +50,10 @@ Instead of trusting every field on the wire, the gateway runs **Physics–Teleme
 
 | Bit | Alarm | Raised when |
 |----:|-------|-------------|
-| 0 | Doppler | the measured carrier differs from the range-rate prediction by more than the tolerance (150 Hz default) |
+| 0 | Doppler | the measured carrier differs from the range-rate prediction by more than the tolerance (150 Hz default, optionally widened by the TLE's age) |
 | 1 | Below horizon | the spacecraft is below your minimum elevation |
 | 2 | Link budget | received power disagrees with the free-space prediction (3 dB default) |
-| 3 | Pointing | measured antenna direction differs from the computed look angle (0.25° default) |
+| 3 | Pointing | measured antenna direction differs from the computed, refraction-corrected look angle (0.25° default) |
 | 4 | EPS voltage | reported bus voltage disagrees with the sun-illumination model |
 | 5 | Thermal | reported panel temperature disagrees with the sun-illumination model |
 | 6 | Body rate | reported body rate exceeds the attitude ceiling (5 °/s default) |
@@ -79,7 +79,7 @@ A static or wrong-frequency spoof does not line up with the live orbital solutio
 - **Range-rate**, the input to the Doppler check.
 - **A conical umbra/penumbra eclipse model**, the input to the shadow check and the EPS/thermal sun-illumination model.
 
-The gateway reaches it through an `OrbitalPropagator` trait, so the network and validation pipeline never depend on a specific math library. Ephemerust is the default backend (version 1.x), and the same boundary leaves room for a higher-fidelity backend such as `nyx-space` without rewriting the gateway. Ephemerust's satellite math is tested against an independent IAU 2000 reference (Skyfield): under an arcminute in pointing and under half a metre per second in range-rate, about 0.6 Hz of Doppler at 437.5 MHz. Rationale: [`Methodology.md`](Methodology.md) (D-001, D-004, D-037, D-041).
+The gateway reaches it through an `OrbitalPropagator` trait, so the network and validation pipeline never depend on a specific math library. Ephemerust (version 1.x) drives the default TLE backend, and the same boundary hosts the second backend, which reads operator OEM ephemerides through Ephemerust's IAU 2006/2000B frame chain; a numerical propagator such as `nyx-space` could drop in the same way. Ephemerust's satellite math is tested against an independent IAU 2000 reference (Skyfield): under an arcminute in pointing and under half a metre per second in range-rate, about 0.6 Hz of Doppler at 437.5 MHz. Rationale: [`Methodology.md`](Methodology.md) (D-001, D-004, D-037, D-041 to D-045).
 
 ---
 

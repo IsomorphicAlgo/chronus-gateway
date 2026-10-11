@@ -112,8 +112,20 @@ over the env var** if both are set.
 
 Rules that trip people up the first time (they mirror validation errors):
 
-- If **`[station]`** is present, set **exactly one** of **`tle_inline`** or **`tle_file`** — not both, not neither.
-- **`tle_file`** paths are read **relative to the process working directory** unless you give an absolute path.
+- If **`[station]`** is present, set **exactly one** orbit source: **`tle_inline`**, **`tle_file`** or **`oem_file`**.
+- **`tle_file`** / **`oem_file`** paths are read **relative to the process working directory** unless you give an absolute path.
+
+### Optional: sharper physics (Earth orientation, refraction, TLE age, operator ephemeris)
+
+All four are optional `[station]` keys; [`gateway.example.toml`](../gateway.example.toml) shows them
+commented out with their defaults.
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `ut1_minus_utc_s`, `polar_motion_x_arcsec`, `polar_motion_y_arcsec` | `0` | **Earth orientation.** The Earth's real rotation drifts from atomic time by up to 0.9 s, and its axis wobbles by a few tenths of an arcsecond. Copy the day's three numbers from [IERS Bulletin A](https://datacenter.iers.org/data/latestVersion/bulletinA.txt) (seconds and arcseconds — the gateway catches milliseconds entered by mistake, `CG-119`). Worth up to ~0.4 km of Earth rotation. |
+| `refraction`, `refraction_pressure_hpa`, `refraction_temperature_c` | `true`, `1010`, `10` | **Refraction.** The atmosphere bends the signal, so an antenna points about **0.5° above** the geometric direction at the horizon. The pointing check (bit 3) compares your antenna against this *apparent* direction; the horizon check (bit 1) stays geometric. The JSON feed carries `apparent_elevation_deg`. |
+| `doppler_tle_age_margin`, `tle_error_km_at_epoch`, `tle_error_growth_km_per_day` | `false`, `1.0`, `2.0` | **TLE-age-aware Doppler.** A TLE's along-track error grows by kilometres per day; near closest approach each kilometre is roughly 25 Hz of Doppler at UHF. When on, the Doppler band (bit 0) widens by exactly the frequency that error implies at that moment of the pass, instead of flagging healthy passes from an older TLE. The band actually used is in each frame's `doppler_tolerance_hz`. |
+| `oem_file` | — | **Operator ephemeris.** A CCSDS OEM (KVN text) from orbit determination or GPS replaces the TLE: frames GCRF/ICRF, EME2000, TEME or ITRF; time systems UTC, TAI, TT or GPS; Lagrange interpolation; no extrapolation outside the file (`CG-322`). Problems are explained as `CG-127` / `CG-320`–`CG-322`. |
 
 There is **no generated `--help`** on the binary today; treat **`gateway.example.toml`** plus this
 guide as the operator surface for flags.
@@ -158,7 +170,7 @@ mission is healthy — it only means **this gateway** did not flag those specifi
 | **0** | `0x01` | **Doppler** — “The measured carrier frequency I was given does not match what I expect from the current line-of-sight range rate and your nominal carrier, beyond **T-DOPPLER**.” | Skipped if **no measured carrier** is supplied, or it is not finite. **Today’s default HTTP path supplies none**, so bit **0** stays quiet unless you integrate **`RfMetadata`** from your receiver chain. |
 | **1** | `0x02` | **Horizon** — “From the TLE and your station, this spacecraft is **below** your configured minimum elevation.” | Needs a working propagator and valid geometry. |
 | **2** | `0x04` | **Link budget (free-space)** — “The measured received power I was given disagrees with a **simple free-space** prediction by more than **T-RSSI**.” | Skipped if **no measured Rx power**, or non-finite, or impossible geometry (e.g. zero range). Same story as bit **0**: **needs `RfMetadata` wiring** to light in production. |
-| **3** | `0x08` | **Pointing** — “The measured azimuth/elevation I was given point more than **T-POINT** away from where I think the dish should aim.” | Skipped unless **both** azimuth **and** elevation are supplied and finite. Again: **default path = skip**. |
+| **3** | `0x08` | **Pointing** — “The measured azimuth/elevation I was given point more than **T-POINT** away from where I think the dish should aim” (the *apparent*, refracted direction by default). | Skipped unless **both** azimuth **and** elevation are supplied and finite. Again: **default path = skip**. |
 | **4** | `0x10` | **EPS (toy)** — “The **HIL v1** bus voltage does not match the toy Sun-illumination map within **T-EPS**.” | Only when the frame is **HIL v1** (allowed APID + valid decode) and illumination is usable. |
 | **5** | `0x20` | **Thermal (toy)** — “The **HIL v1** panel temperature is outside the toy thermal band (**T-THERMAL**).” | Same gate as bit **4**. |
 | **6** | `0x40` | **Body rate (toy)** — “The **HIL v1** spin-rate scalar exceeds your configured ceiling (**T-BODYRATE**).” | Skipped if the ceiling is misconfigured or the rate is non-finite. |
@@ -198,9 +210,9 @@ health check: an overall `status` (`ok`, `waiting`, `attention`, `problem`), a o
 
 | Codes | Area | Typical examples |
 |-------|------|------------------|
-| `CG-1xx` | Configuration | latitude/longitude swapped, 10 entered instead of 0.1, missing config or TLE file, typo in a setting name, carrier entered in MHz instead of Hz |
+| `CG-1xx` | Configuration | latitude/longitude swapped, 10 entered instead of 0.1, missing config, TLE or OEM file, typo in a setting name, carrier entered in MHz instead of Hz, UT1-UTC entered in milliseconds |
 | `CG-2xx` | Network | port already in use, port below 1024, IP address not on this computer |
-| `CG-3xx` | Orbit data (TLE) | TLE too old to trust, dated in the future (clock wrong), bad checksum |
+| `CG-3xx` | Orbit data (TLE / OEM) | TLE too old for Doppler/pointing (> 3 days) or for anything (> 30 days), dated in the future (clock wrong), bad checksum; OEM unreadable, in an unsupported frame, or not covering the current time |
 | `CG-4xx` | Incoming data | packet too short, packet cut off, command packet on the telemetry port |
 | `CG-5xx` | Live health | no data yet, data arriving but not CCSDS, most frames flagged (usually a setup issue), no dashboard connected |
 

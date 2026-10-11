@@ -55,6 +55,7 @@ Open a WebSocket client on `ws://127.0.0.1:8080/telemetry/openmct` (e.g. [`webso
 - `"apid"`, `"seq_count"`, `"physics_flags"` (numbers / small integer)
 - `"payload_base64"` (string)
 - Optional geometry: `"elevation_deg"`, `"azimuth_deg"`, `"range_km"`, `"range_rate_km_s"` when the propagator started successfully
+- Optional (additive, same schema): `"apparent_elevation_deg"` (refracted elevation the antenna points at; `null` when refraction is off) and `"doppler_tolerance_hz"` (the Doppler band applied to this frame, including any TLE-age margin)
 
 ---
 

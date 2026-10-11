@@ -2,7 +2,7 @@
 //!
 //! Holds ingestion settings ([`IngestConfig`]) and ground-station / propagator settings
 //! ([`StationConfig`]). HTTP/WebSocket bind is part of [`IngestConfig::http_bind`] (Milestone 5).
-//! Optional TOML file loading lives in [`file`] (Milestone 8).
+//! Optional TOML file loading lives in [`file`](mod@file) (Milestone 8).
 
 pub mod file;
 
@@ -145,7 +145,7 @@ pub struct StationConfig {
     /// Default **0.25°** — see `TEST_PLAN.md` and `Methodology.md` D-016.
     pub pointing_tolerance_deg: f64,
     /// Inclusive lower bound of CCSDS APIDs carrying **chronus.hil.tm.v1** synthetic payloads (**CV-3**).
-    /// Default [`DEFAULT_HIL_TM_V1_APID_MIN`](crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MIN).
+    /// Default [`crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MIN`].
     pub hil_tm_v1_apid_min: u16,
     /// Inclusive upper bound (must be ≥ `hil_tm_v1_apid_min` and ≤ **0x7FF**).
     pub hil_tm_v1_apid_max: u16,
@@ -164,6 +164,34 @@ pub struct StationConfig {
     pub hil_thermal_absolute_tolerance_k: f64,
     /// **CV-5 / T-BODYRATE:** maximum allowed magnitude of HIL v1 `body_rate_deg_s` (deg/s).
     pub hil_body_rate_max_abs_deg_s: f64,
+
+    /// Operator-supplied **CCSDS OEM** ephemeris file (KVN). When set, tracking uses this
+    /// ephemeris instead of [`Self::tle`] (see [`crate::oem`] and `Methodology.md` D-045).
+    pub oem_file: Option<PathBuf>,
+
+    /// **Earth orientation:** UT1−UTC in seconds (IERS Bulletin A; within ±0.9 s). Default `0`.
+    pub ut1_minus_utc_s: f64,
+    /// **Earth orientation:** polar motion *x*ₚ in arcseconds (IERS Bulletin A). Default `0`.
+    pub polar_motion_x_arcsec: f64,
+    /// **Earth orientation:** polar motion *y*ₚ in arcseconds (IERS Bulletin A). Default `0`.
+    pub polar_motion_y_arcsec: f64,
+
+    /// Apply standard atmospheric **refraction** to the computed elevation before the pointing
+    /// check (**CV-2**): a real antenna points at the *apparent* position, ~0.5° above the
+    /// geometric one at the horizon. Default `true` (`Methodology.md` D-042).
+    pub refraction: bool,
+    /// Station air pressure for the refraction model, hPa. Default **1010**.
+    pub refraction_pressure_hpa: f64,
+    /// Station air temperature for the refraction model, °C. Default **10**.
+    pub refraction_temperature_c: f64,
+
+    /// Widen the Doppler tolerance by the range-rate error a TLE of this age is expected to cause
+    /// (**T-DOPPLER**, `Methodology.md` D-044). Default `false` (fixed tolerance).
+    pub doppler_tle_age_margin: bool,
+    /// Assumed TLE along-track error at its epoch, km (default **1.0**).
+    pub tle_error_km_at_epoch: f64,
+    /// Assumed growth of TLE along-track error per day of age, km/day (default **2.0**).
+    pub tle_error_growth_km_per_day: f64,
 }
 
 impl Default for StationConfig {
@@ -192,6 +220,16 @@ impl Default for StationConfig {
             hil_eps_relative_tolerance: 0.1,
             hil_thermal_absolute_tolerance_k: 10.0,
             hil_body_rate_max_abs_deg_s: 5.0,
+            oem_file: None,
+            ut1_minus_utc_s: 0.0,
+            polar_motion_x_arcsec: 0.0,
+            polar_motion_y_arcsec: 0.0,
+            refraction: true,
+            refraction_pressure_hpa: 1010.0,
+            refraction_temperature_c: 10.0,
+            doppler_tle_age_margin: false,
+            tle_error_km_at_epoch: 1.0,
+            tle_error_growth_km_per_day: 2.0,
         }
     }
 }
@@ -264,6 +302,34 @@ pub enum ConfigError {
         "max datagram size {0} bytes is invalid (expected {MIN_DATAGRAM_SIZE}..={MAX_DATAGRAM_SIZE_LIMIT})"
     )]
     InvalidMaxDatagramSize(usize),
+    /// Earth orientation parameters are out of range (usually a unit mistake).
+    #[error("earth orientation parameters are invalid: {0}")]
+    InvalidEarthOrientation(String),
+    /// A refraction-model field is non-finite or physically implausible.
+    #[error("refraction field `{field}` = {value} is invalid")]
+    InvalidRefraction {
+        /// Which field failed validation.
+        field: &'static str,
+        /// The offending value.
+        value: f64,
+    },
+    /// A TLE error-growth model field is non-finite or negative.
+    #[error("TLE error model field `{field}` = {value} is invalid (expected a finite value >= 0)")]
+    InvalidTleErrorModel {
+        /// Which field failed validation.
+        field: &'static str,
+        /// The offending value.
+        value: f64,
+    },
+    /// An OEM ephemeris file could not be read.
+    #[error("failed to read OEM file {path}: {source}")]
+    OemRead {
+        /// The path that failed to read.
+        path: String,
+        /// The underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
     /// A TLE file could not be read.
     #[error("failed to read TLE file {path}: {source}")]
     TleRead {
@@ -319,10 +385,39 @@ impl StationConfig {
                 self.minimum_elevation_deg,
             ));
         }
-        if let TleSource::Inline(text) = &self.tle
+        if self.oem_file.is_none()
+            && let TleSource::Inline(text) = &self.tle
             && text.trim().is_empty()
         {
             return Err(ConfigError::EmptyTle);
+        }
+        self.earth_orientation()?;
+        if !self.refraction_pressure_hpa.is_finite()
+            || !(1.0..=1100.0).contains(&self.refraction_pressure_hpa)
+        {
+            return Err(ConfigError::InvalidRefraction {
+                field: "refraction_pressure_hpa",
+                value: self.refraction_pressure_hpa,
+            });
+        }
+        if !self.refraction_temperature_c.is_finite()
+            || !(-90.0..=60.0).contains(&self.refraction_temperature_c)
+        {
+            return Err(ConfigError::InvalidRefraction {
+                field: "refraction_temperature_c",
+                value: self.refraction_temperature_c,
+            });
+        }
+        for (field, v) in [
+            ("tle_error_km_at_epoch", self.tle_error_km_at_epoch),
+            (
+                "tle_error_growth_km_per_day",
+                self.tle_error_growth_km_per_day,
+            ),
+        ] {
+            if !v.is_finite() || v < 0.0 {
+                return Err(ConfigError::InvalidTleErrorModel { field, value: v });
+            }
         }
         if !self.tx_power_dbm.is_finite() {
             return Err(ConfigError::InvalidLinkBudgetField {
@@ -397,6 +492,32 @@ impl StationConfig {
             ));
         }
         Ok(())
+    }
+
+    /// The configured Earth orientation parameters, validated.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::InvalidEarthOrientation`] when UT1−UTC exceeds ±1 s or a pole coordinate
+    /// exceeds ±1″ (typically milliseconds or milliarcseconds entered by mistake).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronus_gateway::config::StationConfig;
+    ///
+    /// let ok = StationConfig { ut1_minus_utc_s: -0.2273, ..Default::default() };
+    /// assert!(ok.earth_orientation().is_ok());
+    /// let ms = StationConfig { ut1_minus_utc_s: -227.3, ..Default::default() };
+    /// assert!(ms.earth_orientation().is_err());
+    /// ```
+    pub fn earth_orientation(&self) -> Result<ephemerust::EarthOrientation, ConfigError> {
+        ephemerust::EarthOrientation::new(
+            self.ut1_minus_utc_s,
+            self.polar_motion_x_arcsec,
+            self.polar_motion_y_arcsec,
+        )
+        .map_err(|e| ConfigError::InvalidEarthOrientation(e.to_string()))
     }
 
     /// Returns `true` if `apid` lies in the configured inclusive **HIL TM v1** synthetic band (**CV-3**).

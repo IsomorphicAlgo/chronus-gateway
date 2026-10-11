@@ -46,7 +46,7 @@ pub const CCSDS_APID_MAX: u16 = 0x07FF;
 pub struct DecodedHilTmV1 {
     /// Monotonic frame index from the simulator.
     pub seq: u32,
-    /// Abstract EPS bus voltage [V].
+    /// Abstract EPS bus voltage \[V\].
     pub eps_bus_voltage_v: f32,
     /// Abstract panel temperature [°C].
     pub thermal_panel_c: f32,

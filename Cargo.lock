@@ -715,9 +715,9 @@ checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
 
 [[package]]
 name = "ephemerust"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "602c986d998a21668b8b4c1a4c5c98b0fd98575e9a9ea5d9c339f8f65c28e51e"
+checksum = "d52642b9eed97507e1d6665f84027c2c0585db1108cbf7825d4dfeb665895dc4"
 dependencies = [
  "chrono",
  "log",

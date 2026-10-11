@@ -3,8 +3,8 @@
 # Or set: CHRONUS_GATEWAY_CONFIG=gateway.toml
 #
 # Omitted `[ingest]` or `[station]` sections fall back to the same defaults as running with no file.
-# When `[station]` is present, set exactly one of `tle_inline` or `tle_file` (paths are relative to
-# the process working directory unless given as absolute).
+# When `[station]` is present, set exactly one orbit source: `tle_inline`, `tle_file` or `oem_file`
+# (paths are relative to the process working directory unless given as absolute).
 
 [ingest]
 bind_addr = "127.0.0.1:7301"
@@ -43,6 +43,25 @@ minimum_elevation_deg = 0.0
 # CV-5 HIL v1 body-rate ceiling |ω| (deg/s); optional — default 5.0.
 # hil_body_rate_max_abs_deg_s = 5.0
 
+# Earth orientation (Methodology D-043); optional — defaults 0. Copy today's values from IERS
+# Bulletin A (https://datacenter.iers.org/data/latestVersion/bulletinA.txt): UT1-UTC in SECONDS
+# (always within ±0.9), polar motion x/y in ARCSECONDS (a few tenths).
+# ut1_minus_utc_s = -0.2273
+# polar_motion_x_arcsec = 0.1875
+# polar_motion_y_arcsec = 0.4171
+
+# Atmospheric refraction for the pointing check (CV-2, D-042); optional — on by default with a
+# standard atmosphere. Antennas point at the apparent (refracted) position: ~0.5° high at the horizon.
+# refraction = true
+# refraction_pressure_hpa = 1010.0
+# refraction_temperature_c = 10.0
+
+# TLE-age-aware Doppler tolerance (T-DOPPLER, D-044); optional — off by default. When on, the band
+# widens by the range-rate error an along-track TLE error of (at_epoch + growth × age) km implies.
+# doppler_tle_age_margin = false
+# tle_error_km_at_epoch = 1.0
+# tle_error_growth_km_per_day = 2.0
+
 # Public reference ISS (ZARYA) element set — synthetic/public data only (see README / Methodology).
 tle_inline = """
 ISS (ZARYA)
@@ -52,3 +71,7 @@ ISS (ZARYA)
 
 # Alternative: load TLE from a UTF-8 text file (two- or three-line set).
 # tle_file = "path/to/elements.tle"
+
+# Alternative: an operator ephemeris as a CCSDS OEM (KVN), e.g. from orbit determination or GPS
+# (D-045). Frames GCRF/ICRF, EME2000, TEME or ITRF*; time systems UTC, TAI, TT or GPS. Replaces the TLE.
+# oem_file = "path/to/ephemeris.oem"

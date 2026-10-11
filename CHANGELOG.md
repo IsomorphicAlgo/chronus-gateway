@@ -10,12 +10,40 @@ Versions cover all three workspace crates (`chronus-gateway`, `chronus-hil-sim`,
 
 ## 0.2.0 — 2026-10-11
 
-Operator-facing diagnostics, test-suite expansion, and the move to **Ephemerust 1.0**. Contains
-**breaking** API additions for exhaustive matches on `ConfigError` (two new variants), hence the
-minor bump.
+Operator-facing diagnostics, sharper physics (Earth orientation, refraction, TLE-age-aware
+Doppler), an operator-ephemeris (CCSDS OEM) backend, test-suite expansion, and the move to
+**Ephemerust 1.1**. Contains **breaking** API changes (new `ConfigError` variants,
+`#[non_exhaustive]` `TrackingState`, new fields on `StationConfig` and the Open MCT message
+struct), hence the minor bump.
 
-- **Ephemerust 1.0 (corrected Doppler input):** the backend now depends on
-  `ephemerust = { version = "1", default-features = false }`. Ephemerust 1.0 fixes a range-rate
+- **CCSDS OEM ephemeris backend (new `oem` module):** `station.oem_file` tracks from an operator
+  ephemeris (orbit determination or GPS) instead of a TLE. KVN OEM per CCSDS 502.0-B-3: multiple
+  segments, useable windows, Lagrange interpolation of the stated degree, frames GCRF/ICRF,
+  EME2000/J2000, TEME and ITRF*, time systems UTC/TAI/TT/GPS (calendar or day-of-year epochs).
+  Reproduces astropy/ERFA Earth-fixed states between samples to ≤ 5.5 cm. `OemPropagator` is the
+  second `OrbitalPropagator`; `propagator::propagator_from_station` picks the backend. New
+  diagnostics `CG-127`, `CG-320`–`CG-322` (coverage is also checked at startup). **D-045**.
+- **Earth orientation:** optional `ut1_minus_utc_s`, `polar_motion_x_arcsec`,
+  `polar_motion_y_arcsec` (IERS Bulletin A) feed Ephemerust 1.1's IAU 2006/2000B frame chain for
+  both backends; unit mistakes are caught as `CG-119`. **D-043**.
+- **Refraction in the pointing check (CV-2):** on by default (`refraction`,
+  `refraction_pressure_hpa`, `refraction_temperature_c`). The pointing check compares the
+  measured antenna direction with the *apparent* elevation (~0.5° above geometric at the horizon,
+  which previously exceeded T-POINT on every rise and set); the horizon check stays geometric.
+  New `TrackingState::apparent_elevation_deg` and JSON field `apparent_elevation_deg`; the demo
+  sandbox antenna now tracks the apparent direction. **D-042**.
+- **TLE-age-aware Doppler tolerance (opt-in):** `doppler_tle_age_margin` (+ `tle_error_km_at_epoch`,
+  `tle_error_growth_km_per_day`) widens the Doppler band by the range-rate error the TLE's
+  along-track error implies at that point of the pass, `f₀·|ρ̈|·δs/(|v|·c)`; validated within
+  10 % against an actual along-track shift. New `TrackingState::range_rate_uncertainty_km_s`,
+  `validate::effective_doppler_tolerance_hz`, and JSON field `doppler_tolerance_hz`. **D-044**.
+- **`TrackingState` is `#[non_exhaustive]`** with `TrackingState::new` and `with_*` builders, so
+  custom backends keep compiling as physics fields are added. **Breaking** for code that built it
+  with struct-literal syntax. New public `propagator::StationModel` and `TleErrorModel`.
+- **Docs:** rustdoc now builds clean with `-D warnings` (four pre-existing broken intra-doc links
+  fixed).
+- **Ephemerust 1.1 (corrected Doppler input):** the backend now depends on
+  `ephemerust = { version = "1.1", default-features = false }`. Ephemerust 1.0 fixes a range-rate
   error of up to ~0.31 km/s (≈ 450 Hz at 437.5 MHz) that would have tripped the Doppler check
   (bit 0) on real RF; synthetic demo traffic was self-consistent and unaffected. Range rate now
   agrees with an independent IAU 2000 reference to 0.41 m/s. `default-features = false` keeps
@@ -47,8 +75,10 @@ minor bump.
 - **Binary:** startup failures print a diagnosis and exit with code 2 instead of an error chain;
   config warnings and TLE age are reported at startup; a "Gateway is running" banner lists the
   UDP, WebSocket and status URLs. The first invalid packet / tracking failure is explained once.
-- **Tests:** 68 → 157 unit tests (new coverage for `diagnose`, `http`, `ingest`, `metrics`,
-  `state`, ingest validation); doctests 1 → 26.
+- **Tests:** 68 → 169 gateway unit tests (new coverage for `diagnose`, `http`, `ingest`, `metrics`,
+  `state`, ingest validation, `oem`, refraction, Earth orientation and the TLE-age Doppler model),
+  plus the `oem_backend` integration suite against astropy/ERFA fixtures; doctests 1 → 32.
+  Workspace total: 243.
 - **Public per-visitor sandbox (`chronus-demo-server`, unpublished crate):** each WebSocket on
   `/sandbox/ws` gets a private time-accelerated synthetic spacecraft with its own clock and
   gateway state; visitors inject eight scenarios (Doppler spoof, eclipse power mismatch, pointing

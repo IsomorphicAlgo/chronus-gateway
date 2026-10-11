@@ -34,11 +34,13 @@ pub enum ConfigLoadError {
         #[source]
         source: std::net::AddrParseError,
     },
-    /// Both `tle_inline` and `tle_file` were set under `[station]`.
-    #[error("`station.tle_inline` and `station.tle_file` cannot both be set")]
+    /// More than one of `tle_inline`, `tle_file` and `oem_file` was set under `[station]`.
+    #[error(
+        "only one of `station.tle_inline`, `station.tle_file` and `station.oem_file` may be set"
+    )]
     TleSourceAmbiguous,
-    /// `[station]` was present but neither TLE source field was set.
-    #[error("`[station]` requires exactly one of `tle_inline` or `tle_file`")]
+    /// `[station]` was present but no orbit source (`tle_inline`, `tle_file` or `oem_file`) was set.
+    #[error("`[station]` requires exactly one of `tle_inline`, `tle_file` or `oem_file`")]
     TleSourceMissing,
     /// [`StationConfig::validate`] or [`StationConfig::resolve_tle_text`] failed after load.
     #[error(transparent)]
@@ -131,19 +133,41 @@ struct StationToml {
     hil_body_rate_max_abs_deg_s: Option<f64>,
     tle_inline: Option<String>,
     tle_file: Option<PathBuf>,
+    #[serde(default)]
+    oem_file: Option<PathBuf>,
+    #[serde(default)]
+    ut1_minus_utc_s: Option<f64>,
+    #[serde(default)]
+    polar_motion_x_arcsec: Option<f64>,
+    #[serde(default)]
+    polar_motion_y_arcsec: Option<f64>,
+    #[serde(default)]
+    refraction: Option<bool>,
+    #[serde(default)]
+    refraction_pressure_hpa: Option<f64>,
+    #[serde(default)]
+    refraction_temperature_c: Option<f64>,
+    #[serde(default)]
+    doppler_tle_age_margin: Option<bool>,
+    #[serde(default)]
+    tle_error_km_at_epoch: Option<f64>,
+    #[serde(default)]
+    tle_error_growth_km_per_day: Option<f64>,
 }
 
 impl TryFrom<StationToml> for StationConfig {
     type Error = ConfigLoadError;
 
     fn try_from(t: StationToml) -> Result<Self, Self::Error> {
-        let tle = match (&t.tle_inline, &t.tle_file) {
-            (Some(_), Some(_)) => return Err(ConfigLoadError::TleSourceAmbiguous),
-            (None, None) => return Err(ConfigLoadError::TleSourceMissing),
-            (Some(text), None) => TleSource::Inline(text.clone()),
-            (None, Some(path)) => TleSource::File(path.clone()),
-        };
         let def = StationConfig::default();
+        let tle = match (&t.tle_inline, &t.tle_file, &t.oem_file) {
+            (Some(text), None, None) => TleSource::Inline(text.clone()),
+            (None, Some(path), None) => TleSource::File(path.clone()),
+            // OEM tracking: the TLE source is unused; keep the default so the struct is complete.
+            (None, None, Some(_)) => def.tle.clone(),
+            (None, None, None) => return Err(ConfigLoadError::TleSourceMissing),
+            _ => return Err(ConfigLoadError::TleSourceAmbiguous),
+        };
         Ok(StationConfig {
             latitude_deg: t.latitude_deg,
             longitude_deg: t.longitude_deg,
@@ -183,6 +207,24 @@ impl TryFrom<StationToml> for StationConfig {
             hil_body_rate_max_abs_deg_s: t
                 .hil_body_rate_max_abs_deg_s
                 .unwrap_or(def.hil_body_rate_max_abs_deg_s),
+            oem_file: t.oem_file,
+            ut1_minus_utc_s: t.ut1_minus_utc_s.unwrap_or(def.ut1_minus_utc_s),
+            polar_motion_x_arcsec: t.polar_motion_x_arcsec.unwrap_or(def.polar_motion_x_arcsec),
+            polar_motion_y_arcsec: t.polar_motion_y_arcsec.unwrap_or(def.polar_motion_y_arcsec),
+            refraction: t.refraction.unwrap_or(def.refraction),
+            refraction_pressure_hpa: t
+                .refraction_pressure_hpa
+                .unwrap_or(def.refraction_pressure_hpa),
+            refraction_temperature_c: t
+                .refraction_temperature_c
+                .unwrap_or(def.refraction_temperature_c),
+            doppler_tle_age_margin: t
+                .doppler_tle_age_margin
+                .unwrap_or(def.doppler_tle_age_margin),
+            tle_error_km_at_epoch: t.tle_error_km_at_epoch.unwrap_or(def.tle_error_km_at_epoch),
+            tle_error_growth_km_per_day: t
+                .tle_error_growth_km_per_day
+                .unwrap_or(def.tle_error_growth_km_per_day),
         })
     }
 }
@@ -207,8 +249,9 @@ pub fn load_gateway_from_path(
     };
     ingest.validate()?;
     station.validate()?;
-    let _tle = station.resolve_tle_text()?;
-    drop(_tle);
+    if station.oem_file.is_none() {
+        let _tle = station.resolve_tle_text()?;
+    }
     Ok((ingest, station))
 }
 
@@ -296,6 +339,69 @@ ISS (ZARYA)
         let (ingest, station) = load_gateway_from_path(&p).expect("load");
         assert_eq!(ingest.channel_capacity, 512);
         assert!(station.resolve_tle_text().unwrap().contains("25544"));
+    }
+
+    #[test]
+    fn tier2_station_keys_round_trip_with_defaults() {
+        // Omitted: defaults (refraction on, EOP zero, TLE-age margin off).
+        let doc: GatewayToml = toml::from_str(MINIMAL_VALID).expect("toml");
+        let d = StationConfig::try_from(doc.station.unwrap()).unwrap();
+        assert!(d.refraction && !d.doppler_tle_age_margin && d.ut1_minus_utc_s == 0.0);
+        assert!(d.oem_file.is_none());
+
+        let extra = MINIMAL_VALID.replace(
+            "minimum_elevation_deg = 0.0\n",
+            "minimum_elevation_deg = 0.0\nut1_minus_utc_s = -0.2273\npolar_motion_x_arcsec = 0.1875\n\
+             polar_motion_y_arcsec = 0.4171\nrefraction = false\nrefraction_pressure_hpa = 850.0\n\
+             refraction_temperature_c = -5.0\ndoppler_tle_age_margin = true\n\
+             tle_error_km_at_epoch = 0.5\ntle_error_growth_km_per_day = 1.5\n",
+        );
+        let doc: GatewayToml = toml::from_str(&extra).expect("toml with tier-2 keys");
+        let s = StationConfig::try_from(doc.station.unwrap()).unwrap();
+        s.validate().expect("valid");
+        assert_eq!(s.ut1_minus_utc_s, -0.2273);
+        assert!(!s.refraction && s.doppler_tle_age_margin);
+        assert_eq!(
+            (s.tle_error_km_at_epoch, s.tle_error_growth_km_per_day),
+            (0.5, 1.5)
+        );
+
+        // Milliseconds instead of seconds is caught and explained.
+        let ms = extra.replace("ut1_minus_utc_s = -0.2273", "ut1_minus_utc_s = -227.3");
+        let doc: GatewayToml = toml::from_str(&ms).unwrap();
+        let err = StationConfig::try_from(doc.station.unwrap())
+            .unwrap()
+            .validate()
+            .unwrap_err();
+        assert!(
+            matches!(err, ConfigError::InvalidEarthOrientation(_)),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn oem_file_is_an_exclusive_orbit_source() {
+        let oem_only = MINIMAL_VALID.replace(
+            "tle_inline = \"\"\"\nISS (ZARYA)\n1 25544U 98067A   20194.88612269 -.00002218  00000-0 -31515-4 0  9992\n2 25544  51.6461 221.2784 0001413  89.1723 280.4612 15.49507896236008\n\"\"\"",
+            "oem_file = \"ephemeris.oem\"",
+        );
+        assert!(oem_only.contains("oem_file"), "fixture replacement");
+        let doc: GatewayToml = toml::from_str(&oem_only).unwrap();
+        let s = StationConfig::try_from(doc.station.unwrap()).unwrap();
+        assert_eq!(
+            s.oem_file.as_deref(),
+            Some(std::path::Path::new("ephemeris.oem"))
+        );
+
+        let both = MINIMAL_VALID.replace(
+            "minimum_elevation_deg = 0.0\n",
+            "minimum_elevation_deg = 0.0\noem_file = \"ephemeris.oem\"\n",
+        );
+        let doc: GatewayToml = toml::from_str(&both).unwrap();
+        assert!(matches!(
+            StationConfig::try_from(doc.station.unwrap()),
+            Err(ConfigLoadError::TleSourceAmbiguous)
+        ));
     }
 
     #[test]

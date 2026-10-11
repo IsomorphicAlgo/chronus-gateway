@@ -316,8 +316,10 @@ impl SessionSim {
         );
         let mut carrier = exp_carrier + 30.0 * self.noise.next();
         let mut rx_power = exp_rx.map(|p| p + 0.8 * self.noise.next());
+        // A real antenna tracks the *apparent* (refracted) direction (D-042).
+        let pointing_el = ts.pointing_elevation_deg();
         let mut az = ts.azimuth_deg + 0.05 * self.noise.next();
-        let mut el = ts.elevation_deg + 0.05 * self.noise.next();
+        let mut el = pointing_el + 0.05 * self.noise.next();
 
         match self.scenario {
             Scenario::Nominal => {}
@@ -388,7 +390,8 @@ impl SessionSim {
                 "carrier_hz": exp_carrier,
                 "rx_power_dbm": exp_rx,
                 "azimuth_deg": ts.azimuth_deg,
-                "elevation_deg": ts.elevation_deg,
+                "elevation_deg": pointing_el,
+                "geometric_elevation_deg": ts.elevation_deg,
             },
             "measured": {
                 "carrier_hz": carrier,
