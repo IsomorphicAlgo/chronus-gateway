@@ -1,0 +1,10 @@
+# Lab-mode RF replay (Tranche 2): receiver measurements consistent with the public ISS TLE
+# at 2020-07-13T05:08:30Z (ISS ~31 deg above the default 35N/116W station).
+# Gateway config: [rf] bind_addr + [time] format = "cds", max_skew_s = 0.0 (see docs/RF_SIDE_CHANNEL.md).
+{"apid":256,"data_hex":"48454C4C4F","note":"nominal: all receiver measurements match physics","onboard_time":"2020-07-13T05:08:30.000Z","rf":{"az_deg":226.576,"carrier_hz":437508641.9,"el_deg":30.972,"rx_power_dbm":-105.81},"seq":1}
+{"apid":256,"data_hex":"48454C4C4F","note":"nominal again","onboard_time":"2020-07-13T05:08:30.000Z","rf":{"az_deg":226.576,"carrier_hz":437508641.9,"el_deg":30.972,"rx_power_dbm":-105.81},"seq":2}
+{"apid":256,"data_hex":"48454C4C4F","note":"Doppler fault: carrier +2 kHz -> physics_flags 0x01","onboard_time":"2020-07-13T05:08:30.000Z","rf":{"az_deg":226.576,"carrier_hz":437510641.9,"el_deg":30.972,"rx_power_dbm":-105.81},"seq":3}
+{"apid":256,"data_hex":"48454C4C4F","note":"link-budget fault: power +20 dB -> physics_flags 0x04","onboard_time":"2020-07-13T05:08:30.000Z","rf":{"az_deg":226.576,"carrier_hz":437508641.9,"el_deg":30.972,"rx_power_dbm":-85.81},"seq":4}
+{"apid":256,"data_hex":"48454C4C4F","note":"pointing fault: azimuth +5 deg -> physics_flags 0x08","onboard_time":"2020-07-13T05:08:30.000Z","rf":{"az_deg":231.576,"carrier_hz":437508641.9,"el_deg":30.972,"rx_power_dbm":-105.81},"seq":5}
+{"apid":256,"data_hex":"48454C4C4F","note":"all three receiver faults -> physics_flags 0x0D","onboard_time":"2020-07-13T05:08:30.000Z","rf":{"az_deg":231.576,"carrier_hz":437510641.9,"el_deg":30.972,"rx_power_dbm":-85.81},"seq":6}
+{"apid":256,"data_hex":"48454C4C4F","note":"nominal after the faults","onboard_time":"2020-07-13T05:08:30.000Z","rf":{"az_deg":226.576,"carrier_hz":437508641.9,"el_deg":30.972,"rx_power_dbm":-105.81},"seq":7}

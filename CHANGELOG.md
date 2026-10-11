@@ -8,6 +8,41 @@ Versions cover all three workspace crates (`chronus-gateway`, `chronus-hil-sim`,
 
 ## Unreleased
 
+## 0.4.0 — 2026-10-11
+
+Live receiver data and spacecraft time (Tranche 2 of the 1.0 plan, **D-047**). **Purely additive**
+against 0.3.0 (`cargo semver-checks` clean) and **off by default**: with no `[rf]` or `[time]`
+table the gateway behaves as in 0.3.0. The minor bump marks the new feature surface.
+
+- **`chronus.rf.v1` receiver side channel (new `rf` module).** A second, optional UDP port
+  (`[rf] bind_addr`) takes one JSON datagram per measurement (carrier Hz, received power dBm,
+  antenna az/el, optional timestamp). Each frame is matched to the sample nearest its receive time
+  within `rf.window_ms`; a bounded store (`rf.capacity`) holds recent samples. This makes the
+  Doppler (bit 0), link-budget (bit 2) and pointing (bit 3) checks work in the shipped binary,
+  where before only embedders could drive them. `RfSampleV1` builds and parses the datagram, and
+  `RfSampleV1::nominal_for` is the "perfect receiver" for simulators and tests.
+- **Spacecraft time (new `time` module).** `[time] format = "cds" | "cuc"` decodes the 6-byte time
+  code at the start of secondary-header packets. Physics runs at the **onboard time**, falling back
+  to receive time. `max_skew_s = 0` is lab/replay mode (recorded or simulated mission time is
+  trusted). The time field is excluded from `TelemetryFrame::user_data()`.
+- **`physics_flags_v2`** (new field): bit 0 time-tag skew, bit 1 time code invalid
+  (`FLAG_V2_TIME_TAG_SKEW`, `FLAG_V2_TIME_CODE_INVALID`). The Open MCT message also gains
+  `onboard_time`, `physics_time` and `rf_matched` (all additive; schema stays `openmct.realtime.v1`).
+- **Operator surface.** `/api/v1/chronus/metrics` gains an `rf` object; `/status` gains `CG-511`
+  (no or unmatched samples) and `CG-512` (invalid datagrams); `CG-129` for bad `[rf]` / `[time]`
+  values; `Listener::Rf` for bind errors. New docs: `docs/RF_SIDE_CHANNEL.md`.
+- **`chronus-replay`:** per-line `rf` objects with `--rf-dest`; described packets (`apid`, `seq`,
+  `data_hex`, `onboard_time` or `"now"`) encoded with a CDS/CUC time field (`--time-format`). New
+  fixture `demo/replay/fixtures/rf_lab.jsonl`.
+- **`chronus-hil-sim`:** `--time-code`, `--epoch`, `--epoch-visible`, a simulated receiver
+  (`--rf-dest`) and scripted receiver faults (`--rf-anomaly doppler|link-budget|pointing`).
+  `run_nexosim_hil(HilRunOptions)` is the new entry point; the old functions are unchanged.
+- **Exit criterion met:** the real `chronus-gateway` binary, fed over UDP, raises all seven bits
+  (`0x7F` in one frame with the `hil` feature), asserted in `crates/gateway/tests/live_rf_e2e.rs`
+  and, through the NeXosim simulator, in `crates/chronus-hil-sim/tests/hil_rf_pipeline.rs`.
+- **Tests:** 253 → 316 workspace tests (241 unit, 33 integration, 42 doctests); 262 when the
+  gateway is tested without `hil`.
+
 ## 0.3.0 — 2026-10-11
 
 API freeze preparation (Tranche 1 of the 1.0 plan, **D-046**): the public shapes that will keep

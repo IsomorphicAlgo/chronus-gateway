@@ -40,13 +40,15 @@ pub mod ingest;
 pub mod metrics;
 pub mod oem;
 pub mod propagator;
+pub mod rf;
 pub mod state;
+pub mod time;
 pub mod validate;
 
-pub use ccsds::{CcsdsError, TelemetryFrame, encode_synthetic_tm};
+pub use ccsds::{CcsdsError, TelemetryFrame, encode_synthetic_tm, encode_synthetic_tm_with_time};
 pub use config::{
-    ConfigError, ConfigLoadError, EphemerisSource, HilConfig, IngestConfig, SiteConfig,
-    StationConfig, ToleranceConfig, TrackingConfig, load_effective_gateway_config,
+    ConfigError, ConfigLoadError, EphemerisSource, HilConfig, IngestConfig, RfConfig, SiteConfig,
+    StationConfig, TimeConfig, ToleranceConfig, TrackingConfig, load_effective_gateway_config,
     load_gateway_from_path, resolve_config_path,
 };
 pub use diagnose::{Diagnosis, Explain, HealthReport, Severity, assess_health};
@@ -61,12 +63,15 @@ pub use propagator::nadir_sun_illumination_cos;
 pub use propagator::{
     EphemerustPropagator, OrbitalPropagator, TrackingError, TrackingProvider, TrackingState,
 };
+pub use rf::{RF_SCHEMA_V1, RfSampleV1, RfSnapshot, RfStore};
+pub use time::{TimeFormat, decode_time};
 pub use validate::{
     FLAG_ADCS_BODY_RATE_ANOMALY, FLAG_BELOW_HORIZON, FLAG_DOPPLER_ANOMALY,
     FLAG_EPS_SUBSYSTEM_ANOMALY, FLAG_LINK_BUDGET_ANOMALY, FLAG_POINTING_ANOMALY,
-    FLAG_RSSI_RESERVED, FLAG_THERMAL_SUBSYSTEM_ANOMALY, LinkBudgetStationParams, RfMetadata,
-    SPEED_OF_LIGHT_M_S, ValidationContext, angular_separation_deg, apply_physics_validation,
-    expected_carrier_hz, expected_rx_power_dbm, free_space_path_loss_db,
+    FLAG_RSSI_RESERVED, FLAG_THERMAL_SUBSYSTEM_ANOMALY, FLAG_V2_TIME_CODE_INVALID,
+    FLAG_V2_TIME_TAG_SKEW, LinkBudgetStationParams, RfMetadata, SPEED_OF_LIGHT_M_S,
+    ValidationContext, angular_separation_deg, apply_physics_validation, expected_carrier_hz,
+    expected_rx_power_dbm, free_space_path_loss_db,
 };
 
 #[cfg(feature = "hil")]

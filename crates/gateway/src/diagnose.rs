@@ -421,6 +421,19 @@ impl Explain for ConfigError {
                 "Set `station.{field}` to a value >= 0 (defaults: 1.0 km at epoch, 2.0 km/day), \
                  or delete the line."
             )),
+            ConfigError::InvalidRfTime {
+                field,
+                value,
+                expected,
+            } => Diagnosis::new(
+                "CG-129",
+                E,
+                format!("Setting `{field}` = {value} is not usable."),
+                format!("Expected {expected}."),
+            )
+            .fix(format!(
+                "Set `{field}` to an accepted value, or delete the line to use the default."
+            )),
             ConfigError::OemRead { path, source } => {
                 let cwd = current_dir_display();
                 Diagnosis::new(
@@ -696,6 +709,8 @@ pub enum Listener {
     Udp,
     /// The HTTP + WebSocket dashboard server (`ingest.http_bind`).
     Http,
+    /// The `chronus.rf.v1` receiver-metadata socket (`rf.bind_addr`).
+    Rf,
 }
 
 impl Listener {
@@ -703,6 +718,7 @@ impl Listener {
         match self {
             Listener::Udp => "ingest.bind_addr",
             Listener::Http => "ingest.http_bind",
+            Listener::Rf => "rf.bind_addr",
         }
     }
 
@@ -710,6 +726,7 @@ impl Listener {
         match self {
             Listener::Udp => "listen for telemetry on UDP",
             Listener::Http => "start the dashboard server on HTTP",
+            Listener::Rf => "listen for receiver metadata on UDP",
         }
     }
 }
@@ -1437,10 +1454,151 @@ pub fn assess_health(inputs: &HealthInputs<'_>) -> HealthReport {
     }
 }
 
+/// Findings about the `chronus.rf.v1` side channel and spacecraft time decoding, appended to the
+/// main health report by [`crate::state::SharedGateway::health_report`].
+///
+/// Empty when the side channel is disabled. Pure function of counters, like [`assess_health`].
+#[must_use]
+pub fn assess_rf(rf: &crate::rf::RfSnapshot, frames_received: u64) -> Vec<Diagnosis> {
+    let mut out = Vec::new();
+    if !rf.enabled {
+        return out;
+    }
+    if rf.samples_invalid > 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-512",
+                Severity::Warning,
+                format!(
+                    "{} receiver-metadata datagram(s) were rejected as invalid.",
+                    rf.samples_invalid
+                ),
+                "Something is sending to the `rf.bind_addr` port that is not valid \
+                 `chronus.rf.v1` JSON (wrong schema, malformed, or non-numeric values).",
+            )
+            .fix("Check the gateway log for the first rejected datagram.")
+            .fix("Make sure only your receiver sidecar sends to the `rf.bind_addr` port."),
+        );
+    }
+    if frames_received > 0 && rf.samples_received == 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-511",
+                Severity::Warning,
+                "Telemetry is arriving, but no receiver measurements have been received.",
+                "The Doppler, link-budget and pointing checks need `chronus.rf.v1` samples; \
+                 without them those three checks are skipped.",
+            )
+            .fix("Start your receiver sidecar (or `chronus-replay --rf-dest ...`) pointed at `rf.bind_addr`.")
+            .fix("Check that its destination address and port match `rf.bind_addr`."),
+        );
+    } else if rf.frames_unmatched >= 10 && rf.frames_unmatched > rf.frames_matched {
+        out.push(
+            Diagnosis::new(
+                "CG-511",
+                Severity::Warning,
+                format!(
+                    "Most telemetry frames ({} of {}) found no receiver measurement close in time.",
+                    rf.frames_unmatched,
+                    rf.frames_matched + rf.frames_unmatched
+                ),
+                "Samples are matched to frames by timestamp within `rf.window_ms`; the sender's \
+                 clock may be offset from the gateway's, or samples are arriving too rarely.",
+            )
+            .fix("Omit `t` from samples so the gateway stamps them on arrival, or sync the clocks (NTP).")
+            .fix("Raise `rf.window_ms`, or send RF samples at least as often as telemetry."),
+        );
+    }
+    out
+}
+
+impl HealthReport {
+    /// Merges extra findings (e.g. [`assess_rf`]) and re-derives status when they are worse.
+    #[must_use]
+    pub fn with_extra_findings(mut self, extra: Vec<Diagnosis>) -> Self {
+        if extra.is_empty() {
+            return self;
+        }
+        let worst = extra.iter().map(|d| d.severity).max();
+        self.findings.extend(extra);
+        self.findings.sort_by_key(|d| std::cmp::Reverse(d.severity));
+        match worst {
+            Some(Severity::Error) => {
+                self.status = OverallStatus::Problem;
+                self.headline = "Something needs fixing -- see the first finding.".to_string();
+            }
+            Some(Severity::Warning)
+                if matches!(self.status, OverallStatus::Ok | OverallStatus::Waiting) =>
+            {
+                self.status = OverallStatus::Attention;
+                self.headline = "Running, with warnings worth a look.".to_string();
+            }
+            _ => {}
+        }
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::Duration;
+
+    fn rf_snap(enabled: bool, rx: u64, bad: u64, hit: u64, miss: u64) -> crate::rf::RfSnapshot {
+        let s = crate::rf::RfStore::new(&crate::config::RfConfig::default());
+        let mut snap = s.snapshot();
+        snap.enabled = enabled;
+        snap.samples_received = rx;
+        snap.samples_invalid = bad;
+        snap.frames_matched = hit;
+        snap.frames_unmatched = miss;
+        snap
+    }
+
+    #[test]
+    fn rf_findings_stay_silent_when_disabled_or_healthy() {
+        assert!(assess_rf(&rf_snap(false, 0, 5, 0, 99), 100).is_empty());
+        assert!(assess_rf(&rf_snap(true, 50, 0, 40, 2), 100).is_empty());
+        assert!(
+            assess_rf(&rf_snap(true, 0, 0, 0, 0), 0).is_empty(),
+            "nothing expected yet"
+        );
+    }
+
+    #[test]
+    fn rf_findings_explain_missing_unmatched_and_invalid() {
+        let none = assess_rf(&rf_snap(true, 0, 0, 0, 0), 5);
+        assert_eq!(none[0].code, "CG-511");
+        assert!(none[0].summary.contains("no receiver measurements"));
+        let skew = assess_rf(&rf_snap(true, 100, 0, 2, 50), 52);
+        assert_eq!(skew[0].code, "CG-511");
+        assert!(skew[0].fixes.iter().any(|f| f.contains("window_ms")));
+        let bad = assess_rf(&rf_snap(true, 10, 3, 9, 1), 10);
+        assert_eq!(bad[0].code, "CG-512");
+        assert!(bad.iter().all(|d| !d.fixes.is_empty()));
+    }
+
+    #[test]
+    fn extra_findings_raise_status_but_never_hide_errors() {
+        let base = HealthReport {
+            status: OverallStatus::Ok,
+            headline: "fine".into(),
+            findings: vec![],
+        };
+        let r = base.clone().with_extra_findings(vec![]);
+        assert_eq!(r.status, OverallStatus::Ok);
+        let warn = Diagnosis::new("CG-511", Severity::Warning, "w", "c").fix("f");
+        let r = base.clone().with_extra_findings(vec![warn.clone()]);
+        assert_eq!(r.status, OverallStatus::Attention);
+        let problem = HealthReport {
+            status: OverallStatus::Problem,
+            headline: "bad".into(),
+            findings: vec![Diagnosis::new("CG-502", Severity::Error, "e", "c").fix("f")],
+        };
+        let r = problem.with_extra_findings(vec![warn]);
+        assert_eq!(r.status, OverallStatus::Problem);
+        assert_eq!(r.findings[0].code, "CG-502", "errors stay first");
+    }
 
     fn addr(s: &str) -> SocketAddr {
         s.parse().expect("test address")
@@ -1678,6 +1836,11 @@ mod tests {
             ConfigError::InvalidHilBodyRateMaxAbs(0.0),
             ConfigError::InvalidChannelCapacity(0),
             ConfigError::InvalidMaxDatagramSize(0),
+            ConfigError::InvalidRfTime {
+                field: "rf.window_ms",
+                value: "0".into(),
+                expected: "1..=60000 milliseconds",
+            },
             ConfigError::TleRead {
                 path: "x".into(),
                 source: io::Error::other("boom"),
@@ -1691,7 +1854,7 @@ mod tests {
             assert!(d.code.starts_with("CG-1"), "{d}");
             codes.insert(d.code);
         }
-        assert_eq!(codes.len(), 18, "each variant should have its own code");
+        assert_eq!(codes.len(), 19, "each variant should have its own code");
     }
 
     #[test]

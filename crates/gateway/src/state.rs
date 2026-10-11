@@ -9,6 +9,7 @@ use crate::config::StationConfig;
 use crate::ingest::{IngestStats, RawFrame};
 use crate::metrics::GatewayMetrics;
 use crate::propagator::TrackingProvider;
+use crate::rf::RfStore;
 use crate::validate::ValidationContext;
 
 /// Process-wide handles shared between the UDP ingest task and the Axum server.
@@ -27,6 +28,9 @@ pub struct SharedGateway {
     pub station: Arc<StationConfig>,
     /// Physics-check tunables, built once from [`Self::station`] in [`SharedGateway::new`].
     pub validation: ValidationContext,
+    /// Receiver-metadata store fed by the `chronus.rf.v1` side channel (empty and inert unless
+    /// `rf.bind_addr` is configured).
+    pub rf: Arc<RfStore>,
     /// Optional SGP4-backed tracking (throttled).
     pub tracking: Option<Arc<TrackingProvider>>,
     /// UDP telemetry address, when known (used in plain-English status messages).
@@ -45,12 +49,14 @@ impl SharedGateway {
         tracking: Option<Arc<TrackingProvider>>,
     ) -> Self {
         let validation = ValidationContext::from_station(&station);
+        let rf = Arc::new(RfStore::new(&station.rf));
         Self {
             frame_tx,
             ingest_stats,
             gateway_metrics,
             station,
             validation,
+            rf,
             tracking,
             udp_addr: None,
             http_addr: None,
@@ -70,6 +76,7 @@ impl SharedGateway {
     pub fn health_report(&self) -> crate::diagnose::HealthReport {
         let ingest = self.ingest_stats.snapshot_struct();
         let gateway = self.gateway_metrics.snapshot();
+        let frames_received = ingest.frames_received;
         crate::diagnose::assess_health(&crate::diagnose::HealthInputs {
             ingest: &ingest,
             gateway: &gateway,
@@ -77,6 +84,10 @@ impl SharedGateway {
             udp_addr: self.udp_addr,
             http_addr: self.http_addr,
         })
+        .with_extra_findings(crate::diagnose::assess_rf(
+            &self.rf.snapshot(),
+            frames_received,
+        ))
     }
 }
 

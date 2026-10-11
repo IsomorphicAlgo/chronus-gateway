@@ -642,6 +642,73 @@ contract today, `IngestConfig`, `RawFrame`, `TelemetryFrame`, `LinkBudgetStation
 complete, or should get `#[non_exhaustive]` plus a constructor in 0.4–0.6, since every field added
 later is a breaking change for anyone who builds them with a literal.
 
+### D-047 — Live receiver data and spacecraft time (Tranche 2 of the 1.0 plan; 0.4.0)
+**Decision:** Make the three receiver-dependent checks (bit 0 Doppler, bit 2 link budget, bit 3
+pointing) work in the shipped binary, and let physics run at the spacecraft's own time:
+
+1. **`chronus.rf.v1`, a second-socket side channel, not a wrapper header.** One JSON object per UDP
+   datagram carrying optional `carrier_hz`, `rx_power_dbm`, `az_deg`/`el_deg` and an optional
+   timestamp `t`. A sidecar is a few lines in any language (a GNU Radio flowgraph, an SDR script, a
+   rotator controller), the CCSDS packet stays untouched (so the wire contract that real downlinks
+   and recordings already satisfy does not change), and unknown fields are ignored so v1 grows
+   additively. Rejected: a header ahead of the Space Packet (breaks every existing sender and
+   recording) and CBOR (smaller, but unreadable in a terminal and no gain at these rates).
+2. **Correlation by time, nearest within a window (`rf.window_ms`, default 250 ms).** Samples go in
+   a bounded in-memory store (`rf.capacity`, oldest evicted); a frame takes the sample nearest its
+   *receive* time. Lookups are read-only, because every WebSocket client processes the frame itself
+   (the per-client processing model is unchanged), so consuming a sample would give different
+   clients different answers. Samples with no `t` are stamped on arrival, which removes the
+   cross-host clock problem for the common case. A frame with no sample in range runs without the
+   RF checks and is counted, never failed. Opt-in: no `rf.bind_addr` opens no socket and the store
+   never matches or counts.
+3. **Spacecraft time: CDS and CUC, implicit P-field, 6 bytes.** When `time.format` is set and the
+   packet has a secondary header, the data field starts with the time code. Physics is evaluated at
+   the **onboard time**; the receive time is the fallback. CUC is TAI-based, so
+   `cuc_tai_minus_utc_s` (37) is subtracted as one constant: adequate for current data and
+   documented as unsuitable for historical epochs. The time field is excluded from
+   `TelemetryFrame::user_data()` so payload interpreters (the HIL decoder) still see their own
+   bytes; `payload()` and the JSON `payload_base64` keep the whole data field, as before.
+4. **`physics_flags_v2`, per D-016.** Bit 0 = time-tag skew (|onboard − receive| > `time.max_skew_s`,
+   default 5 s), bit 1 = time code invalid (secondary header present but undecodable). Both fall
+   back to receive time. Time findings go in the new field rather than bit 7 because bit 7 stays
+   reserved and the time family will grow. The field is additive in the Open MCT message with
+   `onboard_time`, `physics_time` and `rf_matched`; frames with either flag set count as anomalies.
+5. **Lab mode is `max_skew_s = 0`.** A recording or a simulation is not "now": with the skew check
+   off, the onboard time is trusted, so a stream is validated at its own mission time. This also
+   settles an inconsistency in the HIL demo, which previously compared a 2020 simulation with a
+   wall-clock-now propagation. Live deployments keep a positive skew limit, because a drifted or
+   reset spacecraft clock otherwise shifts every Doppler and pointing prediction silently.
+6. **Reference adapters, no radio required:** `chronus-replay` sends per-line `rf` objects (and can
+   encode described packets with a time field) and `chronus-hil-sim` runs a simulated receiver that
+   reports exactly what the gateway's own model predicts, with scripted Doppler, link-budget and
+   pointing faults. `RfSampleV1::nominal_for` is that "perfect receiver" as library code, shared by
+   the simulator and the tests. Receiver-fault runs are paced (20 ms/frame) because matching is by
+   time.
+7. **Config placement keeps the frozen API frozen.** `RfConfig` and `TimeConfig` are new
+   `#[non_exhaustive]` fields on `StationConfig`, and the TOML gets optional top-level `[rf]` and
+   `[time]` tables mapped onto them, so `IngestConfig` and `load_*` signatures are unchanged.
+   Health: `CG-511` (no/unmatched samples), `CG-512` (invalid datagrams), `CG-129` (bad setting).
+
+**Why:** Tranche 1 froze the shapes; the biggest remaining functional gap was that three of the
+seven checks existed only for embedders. A deployment can now point a receiver at the gateway and
+get Doppler, link-budget and pointing alarms without writing Rust, and recorded data can be
+validated at the time it was recorded.
+**Validation:** `cargo semver-checks` against the Tranche 1 head (0.3.0) reports no breaking
+change: the release is purely additive. `crates/gateway/tests/live_rf_e2e.rs` starts the real
+`chronus-gateway` binary, feeds it over UDP sockets, and asserts the exact `physics_flags` for
+nominal data, each RF fault alone, all three together (`0x0D`), no sample, below horizon, and (with
+`hil`) each subsystem fault and **all seven bits at once (`0x7F`)**; it also covers CDS and CUC,
+skew, invalid time codes and the `rf` counters. `crates/chronus-hil-sim/tests/hil_rf_pipeline.rs`
+drives the same through the NeXosim sim. Both are repeated runs without flakes. A manual run of
+`chronus-replay` with `demo/replay/fixtures/rf_lab.jsonl` against the binary produced
+`0x00 0x00 0x01 0x04 0x08 0x0d 0x00`. Tests: 316 workspace (262 without `hil`).
+**Known limits:** no real receiver yet (that is the planned closing step of the 1.0 plan);
+free-space synthetic link model; transmitted P-fields and other epochs are not decoded; the RF port
+is unauthenticated (Tranche 4); a stream sent faster than a few milliseconds per frame cannot be
+paired with its samples by time alone, which is why senders pace and put the sample first.
+**Still open from D-046:** `TelemetryFrame` gained fields (its fields are crate-private to construct
+but public to read) and the decision to mark it `#[non_exhaustive]` stands for 0.5-0.6.
+
 ## Open decisions (to resolve as milestones land)
 
 - **OD-E — Multi-node / rack-scale co-simulation.** Backlog beyond the M7 laptop scope.

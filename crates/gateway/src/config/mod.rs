@@ -14,6 +14,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use crate::hil_tm::{CCSDS_APID_MAX, DEFAULT_HIL_TM_V1_APID_MAX, DEFAULT_HIL_TM_V1_APID_MIN};
+use crate::time::TimeFormat;
 
 /// Configuration for the asynchronous UDP ingestion loop.
 #[derive(Debug, Clone)]
@@ -127,6 +128,8 @@ impl Default for EphemerisSource {
 /// | [`tracking`](Self::tracking) | [`TrackingConfig`] | ephemeris source, Earth orientation, refraction, TLE-age margin |
 /// | [`tolerances`](Self::tolerances) | [`ToleranceConfig`] | check thresholds and link-budget model |
 /// | [`hil`](Self::hil) | [`HilConfig`] | synthetic HIL telemetry demo models (lab use) |
+/// | [`rf`](Self::rf) | [`RfConfig`] | the `chronus.rf.v1` receiver side channel (Tranche 2) |
+/// | [`time`](Self::time) | [`TimeConfig`] | spacecraft time-code decoding and skew policy (Tranche 2) |
 ///
 /// All config structs are `#[non_exhaustive]`: start from [`Default`] and assign the fields you
 /// need, so new fields in 1.x do not break callers.
@@ -152,6 +155,10 @@ pub struct StationConfig {
     pub tolerances: ToleranceConfig,
     /// Synthetic hardware-in-the-loop demo models (CV-3…CV-5).
     pub hil: HilConfig,
+    /// Receiver-metadata side channel (`chronus.rf.v1`); disabled unless a bind address is set.
+    pub rf: RfConfig,
+    /// Spacecraft time-code decoding; disabled unless a format is chosen.
+    pub time: TimeConfig,
 }
 
 /// Where the ground station is and the carrier it listens on.
@@ -323,6 +330,66 @@ impl Default for HilConfig {
     }
 }
 
+/// Largest accepted [`RfConfig::capacity`].
+pub const RF_CAPACITY_LIMIT: usize = 65_536;
+/// Largest accepted [`RfConfig::window_ms`] (one minute).
+pub const RF_WINDOW_MS_LIMIT: u64 = 60_000;
+
+/// The `chronus.rf.v1` receiver-metadata side channel (see [`crate::rf`]).
+///
+/// Off by default: with no [`bind_addr`](Self::bind_addr) the gateway opens no second socket and
+/// the Doppler, link-budget and pointing checks stay dormant unless a caller supplies
+/// [`RfMetadata`](crate::validate::RfMetadata) directly.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct RfConfig {
+    /// UDP address for `chronus.rf.v1` datagrams. `None` disables the side channel.
+    pub bind_addr: Option<SocketAddr>,
+    /// A frame is matched to the RF sample nearest in time, but only within this many ms.
+    pub window_ms: u64,
+    /// Maximum RF samples kept (oldest evicted first).
+    pub capacity: usize,
+}
+
+impl Default for RfConfig {
+    fn default() -> Self {
+        Self {
+            bind_addr: None,
+            window_ms: 250,
+            capacity: 1024,
+        }
+    }
+}
+
+/// Spacecraft time-code policy (see [`crate::time`]).
+///
+/// With [`format`](Self::format) set, secondary-header packets are expected to start with a time
+/// field. Physics is then evaluated at that **onboard** time; the receive time is the fallback when
+/// the packet carries no usable time or the time disagrees with the gateway clock.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct TimeConfig {
+    /// Which time code leads the packet data field. [`TimeFormat::None`] disables decoding.
+    pub format: TimeFormat,
+    /// Largest accepted |onboard − receive| difference in seconds before the frame is flagged
+    /// (`physics_flags_v2` bit 0) and physics falls back to receive time. **`0` disables the
+    /// check (lab / replay mode):** onboard time is trusted as-is, which is what a recorded or
+    /// simulated stream needs.
+    pub max_skew_s: f64,
+    /// TAI−UTC in seconds, used to decode CUC (TAI-based) time codes. 37 since 2017.
+    pub cuc_tai_minus_utc_s: i32,
+}
+
+impl Default for TimeConfig {
+    fn default() -> Self {
+        Self {
+            format: TimeFormat::None,
+            max_skew_s: 5.0,
+            cuc_tai_minus_utc_s: 37,
+        }
+    }
+}
+
 /// Errors produced while validating or resolving [`StationConfig`].
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -417,6 +484,16 @@ pub enum ConfigError {
         field: &'static str,
         /// The offending value.
         value: f64,
+    },
+    /// A `[rf]` or `[time]` setting is out of range.
+    #[error("setting `{field}` = {value} is invalid ({expected})")]
+    InvalidRfTime {
+        /// Dotted setting name, e.g. `rf.window_ms`.
+        field: &'static str,
+        /// The offending value, rendered.
+        value: String,
+        /// What would be accepted.
+        expected: &'static str,
     },
     /// An OEM ephemeris file could not be read.
     #[error("failed to read OEM file {path}: {source}")]
@@ -600,6 +677,34 @@ impl StationConfig {
             return Err(ConfigError::InvalidHilBodyRateMaxAbs(
                 self.hil.body_rate_max_abs_deg_s,
             ));
+        }
+        if self.rf.window_ms == 0 || self.rf.window_ms > RF_WINDOW_MS_LIMIT {
+            return Err(ConfigError::InvalidRfTime {
+                field: "rf.window_ms",
+                value: self.rf.window_ms.to_string(),
+                expected: "1..=60000 milliseconds",
+            });
+        }
+        if self.rf.capacity == 0 || self.rf.capacity > RF_CAPACITY_LIMIT {
+            return Err(ConfigError::InvalidRfTime {
+                field: "rf.capacity",
+                value: self.rf.capacity.to_string(),
+                expected: "1..=65536 samples",
+            });
+        }
+        if !self.time.max_skew_s.is_finite() || self.time.max_skew_s < 0.0 {
+            return Err(ConfigError::InvalidRfTime {
+                field: "time.max_skew_s",
+                value: self.time.max_skew_s.to_string(),
+                expected: "a finite number of seconds >= 0 (0 disables the check)",
+            });
+        }
+        if !(0..=100).contains(&self.time.cuc_tai_minus_utc_s) {
+            return Err(ConfigError::InvalidRfTime {
+                field: "time.cuc_tai_minus_utc_s",
+                value: self.time.cuc_tai_minus_utc_s.to_string(),
+                expected: "0..=100 seconds (37 today)",
+            });
         }
         Ok(())
     }

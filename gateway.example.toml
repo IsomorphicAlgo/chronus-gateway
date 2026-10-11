@@ -12,6 +12,25 @@ channel_capacity = 1024
 max_datagram_size = 65542
 http_bind = "127.0.0.1:8080"
 
+# Receiver-metadata side channel (Tranche 2, docs/RF_SIDE_CHANNEL.md). Optional; OFF unless
+# `bind_addr` is set. Without it the Doppler (bit 0), link-budget (bit 2) and pointing (bit 3)
+# checks have no measurements to compare and stay quiet. Send one `chronus.rf.v1` JSON datagram per
+# measurement (an SDR sidecar, `chronus-replay --rf-dest`, or `chronus-hil-sim --rf-dest`).
+# [rf]
+# bind_addr = "127.0.0.1:7302"
+# window_ms = 250      # a frame is matched to the sample nearest in time, within this window
+# capacity = 1024      # samples kept (oldest dropped first)
+
+# Spacecraft time codes (Tranche 2). Optional; OFF by default. With a format set, packets that have
+# a secondary header are expected to start with a 6-byte time field and physics is evaluated at that
+# ONBOARD time (falling back to receive time if it is missing, unreadable or too far from the
+# gateway clock). `max_skew_s = 0.0` is lab/replay mode: trust the onboard time as-is, so recorded
+# or simulated streams can be validated at their own mission time.
+# [time]
+# format = "cds"             # "none" (default), "cds" (UTC day+ms) or "cuc" (TAI seconds+fraction)
+# max_skew_s = 5.0           # |onboard - receive| beyond this sets physics_flags_v2 bit 0; 0 = off
+# cuc_tai_minus_utc_s = 37   # only used for "cuc"
+
 [station]
 latitude_deg = 35.0
 longitude_deg = -116.0
