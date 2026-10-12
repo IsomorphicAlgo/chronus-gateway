@@ -66,6 +66,19 @@ pub struct OpenMctRealtimeMessageV1 {
     /// Doppler acceptance band actually applied to this frame (Hz): **T-DOPPLER** plus any
     /// TLE-age margin (D-044). `None` without physics. Additive field (schema v1 unchanged).
     pub doppler_tolerance_hz: Option<f64>,
+    /// Extended co-validation bits (D-016 / D-047): bit 0 time-tag skew, bit 1 time code invalid.
+    /// Additive field (schema v1 unchanged); `0` when spacecraft time decoding is off.
+    pub physics_flags_v2: u8,
+    /// Spacecraft time decoded from the packet's secondary header, when `time.format` is set and
+    /// the packet carried one. Additive field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub onboard_time: Option<chrono::DateTime<chrono::Utc>>,
+    /// The instant physics was evaluated at: onboard time when trusted, else `received_at`.
+    /// Additive field.
+    pub physics_time: chrono::DateTime<chrono::Utc>,
+    /// Whether receiver measurements (`chronus.rf.v1` or caller-supplied) were available for the
+    /// Doppler / link-budget / pointing checks on this frame. Additive field.
+    pub rf_matched: bool,
     /// Base64 of the CCSDS packet data field (secondary header + user data).
     pub payload_base64: String,
 }
@@ -91,6 +104,7 @@ struct DictionaryStubResponse {
 struct CombinedMetricsResponse {
     pub ingest: crate::ingest::IngestSnapshot,
     pub gateway: GatewayMetricsSnapshot,
+    pub rf: crate::rf::RfSnapshot,
     pub avg_processing_latency_ms: Option<f64>,
 }
 
@@ -118,6 +132,7 @@ async fn metrics(State(state): State<Arc<SharedGateway>>) -> Json<CombinedMetric
     Json(CombinedMetricsResponse {
         ingest,
         gateway,
+        rf: state.rf.snapshot(),
         avg_processing_latency_ms: avg,
     })
 }
@@ -208,19 +223,31 @@ async fn handle_openmct_socket(mut socket: WebSocket, state: Arc<SharedGateway>)
 ///
 /// Public so embedders (e.g. the per-visitor demo sandbox) can drive the *same* parse → co-validate
 /// → Open MCT JSON path without a UDP socket.
+///
+/// Receiver measurements come from the `chronus.rf.v1` side channel
+/// ([`SharedGateway::rf`]): the sample nearest the frame's receive time, within the configured
+/// window. With the side channel disabled, the RF-dependent checks are skipped.
 pub fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
-    process_frame_with_rf(state, frame, RfMetadata::default())
+    process_inner(state, frame, None)
 }
 
 /// Like [`process_frame`], with receiver-chain measurements (`rf`) supplied alongside the frame so
 /// the Doppler, link-budget and pointing co-validation checks can run.
 ///
-/// Over the wire the gateway has no side channel for these yet (see `validate` module docs);
-/// lab and demo drivers pass them in directly.
+/// Over the wire these arrive on the `chronus.rf.v1` side channel ([`process_frame`] consults it);
+/// this entry point bypasses the store so lab and demo drivers can pass them in directly.
 pub fn process_frame_with_rf(
     state: &SharedGateway,
     frame: &RawFrame,
     rf: RfMetadata,
+) -> Option<String> {
+    process_inner(state, frame, Some(rf))
+}
+
+fn process_inner(
+    state: &SharedGateway,
+    frame: &RawFrame,
+    explicit_rf: Option<RfMetadata>,
 ) -> Option<String> {
     let mut tm = match ccsds::parse_telemetry(frame) {
         Ok(tm) => tm,
@@ -244,11 +271,16 @@ pub fn process_frame_with_rf(
     };
 
     let station = state.station.as_ref();
+    // Tranche 2: physics runs at the spacecraft's own time when it is present and trusted.
+    let physics_time = crate::time::resolve_frame_time(&station.time, &mut tm);
+    let rf = explicit_rf
+        .or_else(|| state.rf.lookup(tm.received_at))
+        .unwrap_or_default();
     // F-4: a propagator failure degrades to a physics-free frame (never drops it), but is
     // counted so operators can tell "physics off" from "physics failing" (e.g. stale TLE).
     let physics: Option<TrackingState> = match state.tracking.as_ref() {
         None => None,
-        Some(t) => match t.tracking_state(tm.received_at) {
+        Some(t) => match t.tracking_state(physics_time) {
             Ok(s) => Some(s),
             Err(e) => {
                 let prior = state
@@ -269,7 +301,7 @@ pub fn process_frame_with_rf(
         apply_physics_validation(&state.validation, &mut tm, s, rf);
     }
 
-    if tm.physics_flags != 0 {
+    if tm.physics_flags != 0 || tm.physics_flags_v2 != 0 {
         state
             .gateway_metrics
             .anomaly_frames
@@ -314,6 +346,10 @@ pub fn process_frame_with_rf(
         range_rate_km_s: rr,
         apparent_elevation_deg: apparent_el,
         doppler_tolerance_hz: doppler_tol,
+        physics_flags_v2: tm.physics_flags_v2,
+        onboard_time: tm.onboard_time,
+        physics_time,
+        rf_matched: !rf.is_empty(),
         payload_base64: payload_b64,
     };
 
@@ -472,5 +508,111 @@ mod tests {
             .await
             .expect("response");
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ---- Tranche 2: RF side channel + spacecraft time ------------------------------------
+
+    fn gateway_with(configure: impl FnOnce(&mut StationConfig)) -> Arc<SharedGateway> {
+        let mut station = StationConfig::default();
+        configure(&mut station);
+        let tracking = Arc::new(crate::propagator::TrackingProvider::new(
+            crate::propagator::propagator_from_station(&station).expect("propagator"),
+            0,
+        ));
+        let (tx, _rx) = broadcast::channel(4);
+        Arc::new(SharedGateway::new(
+            tx,
+            Arc::new(IngestStats::default()),
+            Arc::new(GatewayMetrics::default()),
+            Arc::new(station),
+            Some(tracking),
+        ))
+    }
+
+    fn json_of(g: &SharedGateway, frame: &RawFrame) -> serde_json::Value {
+        serde_json::from_str(&process_frame(g, frame).expect("emitted")).expect("json")
+    }
+
+    #[test]
+    fn process_frame_reports_v2_fields_even_without_time_decoding() {
+        let g = gateway();
+        let v = json_of(&g, &raw(ccsds::encode_synthetic_tm(1, 1, b"x")));
+        assert_eq!(v["physics_flags_v2"], 0);
+        assert_eq!(v["rf_matched"], false);
+        assert!(v.get("onboard_time").is_none());
+        assert_eq!(v["physics_time"], v["received_at"]);
+    }
+
+    #[test]
+    fn rf_store_sample_is_used_by_process_frame_and_explicit_rf_bypasses_it() {
+        let g = gateway_with(|s| {
+            s.rf.bind_addr = Some(SocketAddr::from(([127, 0, 0, 1], 0)));
+            s.rf.window_ms = 500;
+        });
+        let frame = raw(ccsds::encode_synthetic_tm(1, 1, b"x"));
+        // A wildly wrong carrier stored near the frame time raises the Doppler bit...
+        g.rf.insert(frame.received_at, RfMetadata::new().with_carrier_hz(1.0e6));
+        let v = json_of(&g, &frame);
+        assert_eq!(v["rf_matched"], true);
+        assert_eq!(v["physics_flags"].as_u64().unwrap() & 1, 1, "{v}");
+        // ...but explicit metadata (lab drivers) bypasses the store entirely.
+        let explicit = process_frame_with_rf(&g, &frame, RfMetadata::new()).expect("emit");
+        let v: serde_json::Value = serde_json::from_str(&explicit).unwrap();
+        assert_eq!(v["rf_matched"], false);
+        assert_eq!(v["physics_flags"].as_u64().unwrap() & 1, 0);
+        let snap = g.rf.snapshot();
+        assert_eq!((snap.frames_matched, snap.frames_unmatched), (1, 0));
+    }
+
+    #[test]
+    fn disabled_side_channel_never_matches_even_if_filled() {
+        let g = gateway_with(|_| {});
+        let frame = raw(ccsds::encode_synthetic_tm(1, 1, b"x"));
+        g.rf.insert(frame.received_at, RfMetadata::new().with_carrier_hz(1.0e6));
+        let v = json_of(&g, &frame);
+        assert_eq!(v["rf_matched"], false);
+    }
+
+    #[test]
+    fn onboard_time_drives_physics_and_skew_falls_back_to_receive_time() {
+        use crate::time::{TimeFormat, encode_cds};
+        let g = gateway_with(|s| {
+            s.time.format = TimeFormat::Cds;
+            s.time.max_skew_s = 5.0;
+        });
+        let rx = Utc::now();
+        let near = rx + chrono::Duration::milliseconds(300);
+        let pkt = ccsds::encode_synthetic_tm_with_time(7, 1, &encode_cds(near).unwrap(), b"hi");
+        let frame = RawFrame {
+            bytes: Arc::from(pkt.as_slice()),
+            received_at: rx,
+            source: SocketAddr::from(([127, 0, 0, 1], 1)),
+        };
+        let v = json_of(&g, &frame);
+        assert_eq!(v["physics_flags_v2"], 0);
+        assert!(v["onboard_time"].is_string());
+        let physics: chrono::DateTime<Utc> = v["physics_time"].as_str().unwrap().parse().unwrap();
+        assert!((physics - near).num_milliseconds().abs() <= 1, "{v}");
+
+        let far = rx - chrono::Duration::hours(1);
+        let pkt = ccsds::encode_synthetic_tm_with_time(7, 2, &encode_cds(far).unwrap(), b"hi");
+        let frame = RawFrame {
+            bytes: Arc::from(pkt.as_slice()),
+            received_at: rx,
+            source: SocketAddr::from(([127, 0, 0, 1], 1)),
+        };
+        let v = json_of(&g, &frame);
+        assert_eq!(v["physics_flags_v2"], 1, "time-tag skew bit");
+        assert_eq!(v["physics_time"], v["received_at"]);
+        assert!(g.gateway_metrics.snapshot().anomaly_frames >= 1);
+    }
+
+    #[tokio::test]
+    async fn metrics_route_exposes_rf_counters() {
+        let g = gateway_with(|s| s.rf.bind_addr = Some(SocketAddr::from(([127, 0, 0, 1], 0))));
+        g.rf.insert(Utc::now(), RfMetadata::new().with_carrier_hz(1.0));
+        let (_, v) = get_json(router(Arc::clone(&g)), "/api/v1/chronus/metrics").await;
+        assert_eq!(v["rf"]["enabled"], true);
+        assert_eq!(v["rf"]["samples_received"], 1);
     }
 }

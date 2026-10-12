@@ -59,6 +59,8 @@ Instead of trusting every field on the wire, the gateway runs **Physics–Teleme
 | 6 | Body rate | reported body rate exceeds the attitude ceiling, 5 °/s default (`hil` feature) |
 | 7 | Reserved | |
 
+Bits 0, 2 and 3 compare physics with what the **receiver** measured, which a CCSDS packet cannot carry. Point a receiver sidecar (or `chronus-replay` / `chronus-hil-sim`) at the gateway's optional **`chronus.rf.v1`** UDP port and they run in the shipped binary; without it they are skipped. With a **spacecraft time code** configured, physics is evaluated at the packet's onboard time and time-tag problems are reported in a separate `physics_flags_v2` field. See [`docs/RF_SIDE_CHANNEL.md`](docs/RF_SIDE_CHANNEL.md).
+
 **The shadow check.** A packet claims "full solar power" while the propagator says the spacecraft is in Earth's shadow. The frame is flagged.
 
 **The Doppler check.** A moving satellite shifts the carrier frequency you should see at the antenna. The gateway computes the non-relativistic shift from range-rate and your nominal carrier $f_0$:
@@ -118,13 +120,13 @@ The reasoning behind these and other choices is recorded in [`Methodology.md`](M
 
 ## Testing
 
-Testing is a first-class deliverable. Counts below are for the full workspace, which builds the gateway with its `hil` feature (the synthetic EPS/thermal/body-rate demo models). **253 tests, all passing**, in a layered suite: inline unit tests, integration tests over loopback UDP and in-process WebSockets, a NeXosim hardware-in-the-loop simulator, runnable doctests, and physics co-validation tests with explicitly documented tolerances.
+Testing is a first-class deliverable. Counts below are for the full workspace, which builds the gateway with its `hil` feature (the synthetic EPS/thermal/body-rate demo models). **316 tests, all passing**, in a layered suite: inline unit tests, integration tests over loopback UDP and in-process WebSockets, a NeXosim hardware-in-the-loop simulator, runnable doctests, and physics co-validation tests with explicitly documented tolerances.
 
 | Layer | Count | Where |
 |-------|------:|-------|
-| Unit tests | **192** | inline `#[cfg(test)]` modules across the workspace |
-| Integration tests | **24** | `crates/gateway/tests/` (UDP ingest, WebSocket distribution, public fixtures), `crates/chronus-hil-sim/tests/` (HIL soak against the real ingest loop), `crates/chronus-demo-server/tests/` (real WebSocket clients) |
-| Doctests | **37** | runnable examples in the public API docs |
+| Unit tests | **241** | inline `#[cfg(test)]` modules across the workspace |
+| Integration tests | **33** | `crates/gateway/tests/` (UDP ingest, WebSocket distribution, public fixtures, and the **real binary** driven over UDP with receiver data), `crates/chronus-hil-sim/tests/` (HIL soak and fault-injection runs against the real ingest and RF paths), `crates/chronus-demo-server/tests/` (real WebSocket clients) |
+| Doctests | **42** | runnable examples in the public API docs |
 | Benchmarks | Criterion | [`parse_validate.rs`](crates/gateway/benches/parse_validate.rs): the parse and validate hot paths |
 
 **What the tests assert, not just that they pass:**
@@ -137,8 +139,8 @@ Testing is a first-class deliverable. Counts below are for the full workspace, w
 **CI gates** ([`ci.yml`](.github/workflows/ci.yml)) on every push and pull request: `cargo test` (the whole workspace, then the gateway alone without the `hil` feature), `clippy -D warnings` in both configurations, benchmark compilation, a Docker Compose spec check, the demo dashboard build, a `cargo-semver-checks` job that compares the public API against the last release, plus supply-chain checks with `cargo audit` and `cargo deny`.
 
 ```bash
-cargo test --workspace          # everything above (253 tests)
-cargo test -p chronus-gateway   # the production configuration, without the `hil` demo models (216 tests)
+cargo test --workspace          # everything above (316 tests)
+cargo test -p chronus-gateway   # the production configuration, without the `hil` demo models (262 tests)
 cargo bench -p chronus-gateway  # Criterion benchmarks
 ```
 
@@ -157,7 +159,8 @@ chronus-gateway/
 │   ├── gateway/            The gateway library + binary: ingest, CCSDS parser,
 │   │                       physics co-validation, Axum/WebSocket, diagnostics
 │   ├── chronus-hil-sim/    NeXosim synthetic spacecraft → UDP, with scripted faults
-│   ├── chronus-replay/     Replay hex/JSONL CCSDS datagrams into the gateway
+│   │                       and a simulated receiver (chronus.rf.v1)
+│   ├── chronus-replay/     Replay hex/JSONL CCSDS datagrams (and receiver data) into the gateway
 │   └── chronus-demo-server/ Per-visitor sandbox server (not published to crates.io)
 ├── demo/
 │   ├── sandbox/            The visitor page served by the hosted sandbox
@@ -166,7 +169,7 @@ chronus-gateway/
 │   ├── Dockerfile, docker-compose.yml   Local demo stack
 │   └── Dockerfile.public   Image for the public sandbox
 ├── site/                   Landing page (GitHub Pages → chronusgateway.com)
-├── docs/                   USER_GUIDE, DEMO, PUBLIC_DEMO, HIL, Demo_Test, screenshots
+├── docs/                   USER_GUIDE, RF_SIDE_CHANNEL, DEMO, PUBLIC_DEMO, HIL, Demo_Test, screenshots
 └── Methodology.md          Decision log: the reasoning behind major choices
 ```
 
@@ -186,6 +189,12 @@ cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 2000        # synthetic
 cargo run -p chronus-replay -- --file demo/replay/fixtures/golden_tm.hex --repeat 2
 ```
 
+To exercise the Doppler, link-budget and pointing checks, enable the receiver side channel (`[rf]` and `[time]` in the config, see [`docs/RF_SIDE_CHANNEL.md`](docs/RF_SIDE_CHANNEL.md)) and replay the bundled recording, which carries receiver measurements and three deliberate faults:
+
+```bash
+cargo run -p chronus-replay -- --file demo/replay/fixtures/rf_lab.jsonl --rf-dest 127.0.0.1:7302 --delay-ms 200
+```
+
 Add a scripted fault to the simulator to see the CV-4/CV-5 alarms (bits 4–6):
 
 ```bash
@@ -202,6 +211,7 @@ Connect any WebSocket client to `ws://127.0.0.1:8080/telemetry/openmct`, or open
 | Topic | Doc |
 |-------|-----|
 | **Operators**: install, run, read `physics_flags` | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) |
+| Receiver data (`chronus.rf.v1`) and spacecraft time | [`docs/RF_SIDE_CHANNEL.md`](docs/RF_SIDE_CHANNEL.md) |
 | Demo runbook: native, Docker, dashboard, replay | [`docs/DEMO.md`](docs/DEMO.md) |
 | Hosting the public sandbox (Fly.io + custom domain) | [`docs/PUBLIC_DEMO.md`](docs/PUBLIC_DEMO.md) |
 | HIL profiling | [`docs/HIL.md`](docs/HIL.md) |

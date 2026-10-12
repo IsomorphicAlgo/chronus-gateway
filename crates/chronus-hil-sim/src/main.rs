@@ -8,8 +8,12 @@
 use std::net::SocketAddr;
 
 use anyhow::Context;
+use chronus_gateway::TimeFormat;
+use chronus_gateway::config::StationConfig;
+use chronus_hil_sim::rf::{RfFaultKind, RfModel, RfScriptedAnomaly};
 use chronus_hil_sim::{
-    HilScriptedAnomaly, HilScriptedAnomalyKind, run_nexosim_udp_hil_with_script,
+    HilRunOptions, HilScriptedAnomaly, HilScriptedAnomalyKind, default_hil_epoch_utc,
+    run_nexosim_hil,
 };
 use clap::{Parser, ValueEnum};
 
@@ -24,6 +28,30 @@ enum ScriptedAnomalyCli {
     Thermal,
     /// Force body rate above default ceiling (bit 6).
     BodyRate,
+}
+
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, ValueEnum)]
+enum TimeCodeCli {
+    /// Legacy packets with no secondary header.
+    #[default]
+    None,
+    /// CCSDS Day Segmented time code (UTC); gateway `time.format = "cds"`.
+    Cds,
+    /// CCSDS Unsegmented time code (TAI); gateway `time.format = "cuc"`.
+    Cuc,
+}
+
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, ValueEnum)]
+enum RfAnomalyCli {
+    /// Nominal, self-consistent receiver measurements.
+    #[default]
+    None,
+    /// Carrier offset beyond T-DOPPLER (`physics_flags` bit 0).
+    Doppler,
+    /// Received power beyond the link-budget tolerance (bit 2).
+    LinkBudget,
+    /// Antenna pointing beyond T-POINT (bit 3).
+    Pointing,
 }
 
 #[derive(Parser, Debug)]
@@ -51,6 +79,31 @@ struct Cli {
     /// How many consecutive frames carry the fault; **0** disables injection even if kind ≠ none.
     #[arg(long, default_value_t = 20)]
     anomaly_frame_count: u32,
+    /// Put this time code in every packet's secondary header (carries the simulated mission time).
+    /// The gateway must run with a matching `[time] format`; use `max_skew_s = 0` (lab mode) when
+    /// the mission time is not "now".
+    #[arg(long, value_enum, default_value_t = TimeCodeCli::None)]
+    time_code: TimeCodeCli,
+    /// Mission time of frame 0 (RFC 3339 UTC). Default: the public ISS TLE epoch, 2020-07-12 21:00.
+    #[arg(long)]
+    epoch: Option<chrono::DateTime<chrono::Utc>>,
+    /// Start on the first moment the ISS is >= 10 degrees above the default station's horizon
+    /// (searching 3 days from `--epoch`), so the pass is realistic instead of below the horizon.
+    #[arg(long)]
+    epoch_visible: bool,
+    /// Gateway `rf.bind_addr` (`HOST:PORT`): send a consistent `chronus.rf.v1` sample before every
+    /// frame, enabling the Doppler / link-budget / pointing checks. Frames are paced (20 ms).
+    #[arg(long)]
+    rf_dest: Option<SocketAddr>,
+    /// Scripted receiver fault (requires `--rf-dest`).
+    #[arg(long, value_enum, default_value_t = RfAnomalyCli::None)]
+    rf_anomaly: RfAnomalyCli,
+    /// First 0-based frame index of the receiver fault (inclusive).
+    #[arg(long, default_value_t = 50)]
+    rf_anomaly_after_frame: u32,
+    /// Consecutive frames carrying the receiver fault; **0** disables it.
+    #[arg(long, default_value_t = 20)]
+    rf_anomaly_frame_count: u32,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -68,6 +121,34 @@ fn main() -> anyhow::Result<()> {
     let frames = cli.frames.unwrap_or(100);
     let script = scripted_from_cli(&cli);
 
+    let mut epoch = cli.epoch.unwrap_or_else(default_hil_epoch_utc);
+    if cli.epoch_visible {
+        let model = RfModel::from_station(&StationConfig::default()).context("RF model")?;
+        epoch = model
+            .next_visible(epoch, chrono::Duration::days(3), 10.0)
+            .context("no pass >= 10 deg within 3 days of the epoch")?;
+        tracing::info!(%epoch, "starting on a visible pass");
+    }
+    let time_format = match cli.time_code {
+        TimeCodeCli::None => TimeFormat::None,
+        TimeCodeCli::Cds => TimeFormat::Cds,
+        TimeCodeCli::Cuc => TimeFormat::Cuc,
+    };
+    if time_format == TimeFormat::None && (cli.epoch.is_some() || cli.epoch_visible) {
+        tracing::warn!(
+            "--epoch/--epoch-visible only affect the RF model and HIL geometry unless --time-code is set; \
+             the gateway will still evaluate physics at its own receive time"
+        );
+    }
+    let mut opts = HilRunOptions::new(dest, frames, cli.apid)
+        .with_script(script)
+        .with_time(time_format, epoch);
+    if let Some(rf_dest) = cli.rf_dest {
+        opts = opts.with_rf(rf_dest, rf_script_from_cli(&cli));
+    } else if cli.rf_anomaly != RfAnomalyCli::None {
+        anyhow::bail!("--rf-anomaly requires --rf-dest");
+    }
+
     tracing::info!(
         %dest,
         frames,
@@ -75,7 +156,7 @@ fn main() -> anyhow::Result<()> {
         ?script,
         "starting NeXosim HIL downlink"
     );
-    run_nexosim_udp_hil_with_script(dest, frames, cli.apid, script).context("NeXosim UDP HIL")?;
+    run_nexosim_hil(opts).context("NeXosim UDP HIL")?;
     tracing::info!("NeXosim HIL run complete");
     Ok(())
 }
@@ -95,5 +176,23 @@ fn scripted_from_cli(cli: &Cli) -> Option<HilScriptedAnomaly> {
         kind,
         start_frame: cli.anomaly_after_frame,
         duration_frames: cli.anomaly_frame_count,
+    })
+}
+
+fn rf_script_from_cli(cli: &Cli) -> Option<RfScriptedAnomaly> {
+    let kind = match cli.rf_anomaly {
+        RfAnomalyCli::None => return None,
+        RfAnomalyCli::Doppler => RfFaultKind::Doppler,
+        RfAnomalyCli::LinkBudget => RfFaultKind::LinkBudget,
+        RfAnomalyCli::Pointing => RfFaultKind::Pointing,
+    };
+    if cli.rf_anomaly_frame_count == 0 {
+        tracing::warn!("rf_anomaly is set but rf_anomaly_frame_count is 0; no fault injected");
+        return None;
+    }
+    Some(RfScriptedAnomaly {
+        kind,
+        start_frame: cli.rf_anomaly_after_frame,
+        duration_frames: cli.rf_anomaly_frame_count,
     })
 }

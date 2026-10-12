@@ -40,7 +40,7 @@ mapped to Chronus like this:
 | Your intuition | In Chronus |
 |----------------|------------|
 | **“What the satellite sent in the bits”** | The **UDP payload** after parsing: especially the **CCSDS data field**. If the APID is in the configured **HIL band**, those bytes should match **`chronus.hil.tm.v1`**. Otherwise they can be arbitrary TM payload for parse/distribute (co-validation on those bytes is limited). |
-| **“What the ground measured from the radio”** (frequency, power, where the dish pointed) | The design has a place for that (**`RfMetadata`**: carrier Hz, received power, azimuth/elevation). **Wiring real receivers into those fields is a forward step**; the story in the validation engine is already written, but the live path may not populate them from every UDP frame yet. |
+| **“What the ground measured from the radio”** (frequency, power, where the dish pointed) | Your receiver sidecar sends it on a **second UDP port** as a small JSON message (**`chronus.rf.v1`**: carrier Hz, received power, azimuth/elevation) and the gateway pairs each sample with the telemetry frame nearest in time. Turn it on with the `[rf]` table; see [`RF_SIDE_CHANNEL.md`](RF_SIDE_CHANNEL.md). Without it those checks are simply skipped. |
 | **“Where is the bird, how is it moving, what does geometry say?”** | Comes from **configuration and time**: a **TLE** (two-line element set) plus your station’s location and nominal carrier, so the gateway can **compute** look angles, range-rate, and related checks **without** those numbers being repeated inside every telemetry packet. The **demo simulator** uses a **public ISS reference TLE** only so orbit and Sun geometry are **self-consistent and reproducible** — not because the payload is “ISS flight data.” |
 
 **One sentence takeaway:** Chronus listens for **UDP telemetry frames**, understands **CCSDS TM
@@ -169,10 +169,10 @@ mission is healthy — it only means **this gateway** did not flag those specifi
 
 | Bit | Value (hex) | Meaning in plain terms | When it is usually skipped |
 |-----|-------------|------------------------|----------------------------|
-| **0** | `0x01` | **Doppler** — “The measured carrier frequency I was given does not match what I expect from the current line-of-sight range rate and your nominal carrier, beyond **T-DOPPLER**.” | Skipped if **no measured carrier** is supplied, or it is not finite. **Today’s default HTTP path supplies none**, so bit **0** stays quiet unless you integrate **`RfMetadata`** from your receiver chain. |
+| **0** | `0x01` | **Doppler** — “The measured carrier frequency I was given does not match what I expect from the current line-of-sight range rate and your nominal carrier, beyond **T-DOPPLER**.” | Skipped if **no measured carrier** reaches the frame (the `[rf]` side channel is off, or no sample arrived within `rf.window_ms`), or it is not finite. |
 | **1** | `0x02` | **Horizon** — “From the TLE and your station, this spacecraft is **below** your configured minimum elevation.” | Needs a working propagator and valid geometry. |
-| **2** | `0x04` | **Link budget (free-space)** — “The measured received power I was given disagrees with a **simple free-space** prediction by more than **T-RSSI**.” | Skipped if **no measured Rx power**, or non-finite, or impossible geometry (e.g. zero range). Same story as bit **0**: **needs `RfMetadata` wiring** to light in production. |
-| **3** | `0x08` | **Pointing** — “The measured azimuth/elevation I was given point more than **T-POINT** away from where I think the dish should aim” (the *apparent*, refracted direction by default). | Skipped unless **both** azimuth **and** elevation are supplied and finite. Again: **default path = skip**. |
+| **2** | `0x04` | **Link budget (free-space)** — “The measured received power I was given disagrees with a **simple free-space** prediction by more than **T-RSSI**.” | Skipped if **no measured Rx power**, or non-finite, or impossible geometry (e.g. zero range). Same story as bit **0**: it needs `chronus.rf.v1` samples. |
+| **3** | `0x08` | **Pointing** — “The measured azimuth/elevation I was given point more than **T-POINT** away from where I think the dish should aim” (the *apparent*, refracted direction by default). | Skipped unless **both** azimuth **and** elevation are supplied and finite. Again: no `chronus.rf.v1` sample means skip. |
 | **4** | `0x10` | **EPS (toy)** — “The **HIL v1** bus voltage does not match the toy Sun-illumination map within **T-EPS**.” | Only in a `--features hil` build, when the frame is **HIL v1** (allowed APID + valid decode) and illumination is usable. |
 | **5** | `0x20` | **Thermal (toy)** — “The **HIL v1** panel temperature is outside the toy thermal band (**T-THERMAL**).” | Same gate as bit **4**. |
 | **6** | `0x40` | **Body rate (toy)** — “The **HIL v1** spin-rate scalar exceeds your configured ceiling (**T-BODYRATE**).” | Skipped if the ceiling is misconfigured or the rate is non-finite. |
@@ -181,6 +181,22 @@ mission is healthy — it only means **this gateway** did not flag those specifi
 If you ever need **more than eight** independent alarms, the project charter says to add a **new
 field** (for example `physics_flags_v2`) in the JSON contract — **not** to silently repurpose bit
 **7**. See **`Methodology.md` D-016** and `docs/EXTENDED_COVALIDATION_PLAN.md` (now in local `PLANS.md`).
+
+### The second field: `physics_flags_v2` (spacecraft time)
+
+When you set `[time] format` (`"cds"` or `"cuc"`), the gateway reads the time the spacecraft stamped
+on each packet and checks the physics **at that moment** instead of when the datagram arrived. If
+the stamp cannot be trusted it falls back to the arrival time and raises a bit in a **separate**
+field, `physics_flags_v2` (it is `0` when time decoding is off):
+
+| Bit | Value | Meaning |
+|-----|-------|---------|
+| **0** | `0x01` | **Time-tag skew** — the onboard time and the gateway clock differ by more than `time.max_skew_s` (default 5 s). Usually a drifted or reset spacecraft clock, or the wrong time format. |
+| **1** | `0x02` | **Time code invalid** — the packet claims a secondary header but its time field is too short or impossible. |
+
+Replaying a recording or running the simulator? Set `max_skew_s = 0.0` so the recorded time is
+trusted as-is. Full details, the `chronus.rf.v1` message format, and ready-to-run examples are in
+[`RF_SIDE_CHANNEL.md`](RF_SIDE_CHANNEL.md).
 
 ### Where the numbers come from
 

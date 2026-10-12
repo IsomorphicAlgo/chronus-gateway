@@ -126,6 +126,24 @@ async fn run() -> Result<(), Failure> {
         }
     };
 
+    // Tranche 2: optional chronus.rf.v1 receiver-metadata side channel.
+    let rf_socket = match station.rf.bind_addr {
+        Some(addr) => {
+            let sock = tokio::net::UdpSocket::bind(addr)
+                .await
+                .map_err(|e| Failure::Startup(explain_bind_error(Listener::Rf, addr, &e)))?;
+            let local = sock.local_addr().map_err(|e| Failure::Runtime(e.into()))?;
+            tracing::info!(
+                rf_local = %local,
+                window_ms = station.rf.window_ms,
+                capacity = station.rf.capacity,
+                "chronus.rf.v1 receiver-metadata channel listening"
+            );
+            Some(sock)
+        }
+        None => None,
+    };
+
     let listener = TcpListener::bind(ingest_cfg.http_bind).await.map_err(|e| {
         Failure::Startup(explain_bind_error(Listener::Http, ingest_cfg.http_bind, &e))
     })?;
@@ -161,6 +179,23 @@ async fn run() -> Result<(), Failure> {
         }
     });
 
+    let rf_handle = rf_socket.map(|sock| {
+        let store = Arc::clone(&state.rf);
+        let rf_cancel = cancel.child_token();
+        tokio::spawn(async move {
+            chronus_gateway::rf::run_listener(sock, store, rf_cancel.cancelled()).await
+        })
+    });
+
+    if station.time.format != chronus_gateway::TimeFormat::None {
+        tracing::info!(
+            format = ?station.time.format,
+            max_skew_s = station.time.max_skew_s,
+            "spacecraft time decoding on: physics runs at onboard time{}",
+            if station.time.max_skew_s == 0.0 { " (lab mode: skew check off)" } else { "" }
+        );
+    }
+
     tracing::info!(%http_local, "HTTP + WebSocket (GET /telemetry/openmct) listening");
     tracing::info!(
         "\n  Gateway is running.\n  \
@@ -185,6 +220,12 @@ async fn run() -> Result<(), Failure> {
         .await
         .map_err(|e| Failure::Runtime(anyhow::Error::new(e).context("ingest task join")))?
         .map_err(|e| Failure::Runtime(anyhow::Error::new(e).context("ingest loop")))?;
+
+    if let Some(h) = rf_handle {
+        h.await
+            .map_err(|e| Failure::Runtime(anyhow::Error::new(e).context("rf task join")))?
+            .map_err(|e| Failure::Runtime(anyhow::Error::new(e).context("rf listener")))?;
+    }
 
     let (frames, bytes, oversized, errors) = state.ingest_stats.snapshot();
     tracing::info!(frames, bytes, oversized, errors, "shutdown complete");

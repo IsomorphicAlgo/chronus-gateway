@@ -54,3 +54,25 @@ All telemetry is **synthetic** (public demo / compliance posture; see repository
 **Credit:** [NeXosim](https://github.com/asynchronics/nexosim) — MIT OR Apache-2.0.
 
 *Last updated: 2026-06-04.*
+
+## Time codes and the simulated receiver (Tranche 2)
+
+By default the sim sends packets without a secondary header and the gateway evaluates physics at
+**its own receive time**. Two options change that (full guide: [`RF_SIDE_CHANNEL.md`](RF_SIDE_CHANNEL.md)):
+
+- `--time-code cds|cuc` puts the simulated **mission time** (frame 0 = `--epoch`, +1 ms per frame)
+  in each packet's secondary header. Run the gateway with `[time] format` to match and
+  `max_skew_s = 0.0`; physics is then evaluated at the simulated time, so the CV-4 self-consistency
+  above holds regardless of the wall clock. `--epoch-visible` picks a start when the ISS is at least
+  10° above the default station's horizon.
+- `--rf-dest HOST:PORT` adds a **simulated receiver**: before each frame it sends a
+  `chronus.rf.v1` sample that a perfect receiver would report at that mission time (expected
+  Doppler-shifted carrier, free-space power, computed look angles). Frames are paced at 20 ms so
+  every sample matches its own frame. Scripted receiver faults mirror the subsystem ones:
+  `--rf-anomaly doppler|link-budget|pointing` with `--rf-anomaly-after-frame` and
+  `--rf-anomaly-frame-count` raise `physics_flags` bits 0, 2 and 3 on exactly those frames.
+
+`crates/chronus-hil-sim/tests/hil_rf_pipeline.rs` runs these through real UDP sockets and checks the
+exact flag value of every frame (nominal run, each RF fault, each subsystem fault, a run below the
+horizon, and overlapping RF and subsystem faults).
+
