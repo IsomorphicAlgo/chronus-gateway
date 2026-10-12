@@ -26,9 +26,12 @@
 //! v1 — see **T-RSSI** in `TEST_PLAN.md`). Station-side **synthetic** `P_tx`, `G_tx`, and `G_rx`
 //! come from [`LinkBudgetStationParams`]. Anomaly sets bit 2 ([`FLAG_LINK_BUDGET_ANOMALY`]).
 //!
-//! ## HIL subsystem toy checks (**CV-4** / **CV-5**)
+//! ## HIL subsystem toy checks (**CV-4** / **CV-5**) — `hil` feature
 //!
-//! When a frame carries decoded [`crate::hil_tm::DecodedHilTmV1`] and [`HilSubsystemCvParams`] is
+//! Built only with the **`hil`** cargo feature (off by default; `Methodology.md` D-046). Without
+//! it, bits 4–6 are never set.
+//!
+//! When a frame carries decoded [`crate::hil_tm::DecodedHilTmV1`] and `HilSubsystemCvParams` is
 //! supplied, expected **bus voltage** and **panel temperature** are linear maps of
 //! [`crate::propagator::TrackingState::nadir_sun_illum_cos`] (see `Methodology.md` **D-021**, **CV-4**).
 //! **`body_rate_deg_s`** is checked against a configurable absolute ceiling (**CV-5**, **D-022**)
@@ -80,7 +83,8 @@
 use std::f64::consts::PI;
 
 use crate::ccsds::TelemetryFrame;
-use crate::hil_tm::DecodedHilTmV1;
+#[cfg(feature = "hil")]
+use crate::hil_tm::{DecodedHilTmV1, decode_hil_tm_v1};
 use crate::propagator::TrackingState;
 
 /// Speed of light in vacuum (m/s); CODATA-compatible constant for Doppler arithmetic.
@@ -112,6 +116,7 @@ pub const FLAG_ADCS_BODY_RATE_ANOMALY: u8 = 0x40;
 /// Spacecraft-reported engineering scalars use the versioned CCSDS payload path (**CV-3** decode),
 /// not this struct.
 #[derive(Debug, Clone, Copy, Default)]
+#[non_exhaustive]
 pub struct RfMetadata {
     /// Measured downlink carrier frequency (Hz). `None` skips the Doppler check.
     pub measured_carrier_hz: Option<f64>,
@@ -122,6 +127,56 @@ pub struct RfMetadata {
     pub measured_azimuth_deg: Option<f64>,
     /// Measured antenna elevation (degrees above local horizon).
     pub measured_elevation_deg: Option<f64>,
+}
+
+impl RfMetadata {
+    /// No receiver measurements: every physics check that needs RF input is skipped.
+    ///
+    /// The struct is `#[non_exhaustive]` so measurement channels can be added in 1.x without
+    /// breaking callers; build values with this constructor and the `with_*` methods.
+    ///
+    /// ```
+    /// use chronus_gateway::validate::RfMetadata;
+    ///
+    /// let rf = RfMetadata::new()
+    ///     .with_carrier_hz(437_500_000.0)
+    ///     .with_rx_power_dbm(-110.0)
+    ///     .with_pointing_deg(120.0, 35.0);
+    /// assert_eq!(rf.measured_carrier_hz, Some(437_500_000.0));
+    /// assert_eq!(rf.measured_elevation_deg, Some(35.0));
+    /// assert!(RfMetadata::new().measured_rx_power_dbm.is_none());
+    /// ```
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            measured_carrier_hz: None,
+            measured_rx_power_dbm: None,
+            measured_azimuth_deg: None,
+            measured_elevation_deg: None,
+        }
+    }
+
+    /// Sets the measured downlink carrier frequency (Hz) for the Doppler check.
+    #[must_use]
+    pub const fn with_carrier_hz(mut self, hz: f64) -> Self {
+        self.measured_carrier_hz = Some(hz);
+        self
+    }
+
+    /// Sets the measured received power (dBm) for the link-budget check.
+    #[must_use]
+    pub const fn with_rx_power_dbm(mut self, dbm: f64) -> Self {
+        self.measured_rx_power_dbm = Some(dbm);
+        self
+    }
+
+    /// Sets the measured antenna azimuth and elevation (degrees) for the pointing check.
+    #[must_use]
+    pub const fn with_pointing_deg(mut self, azimuth_deg: f64, elevation_deg: f64) -> Self {
+        self.measured_azimuth_deg = Some(azimuth_deg);
+        self.measured_elevation_deg = Some(elevation_deg);
+        self
+    }
 }
 
 /// Station-side **synthetic** parameters for the free-space link-budget prediction (CV-1).
@@ -137,11 +192,17 @@ pub struct LinkBudgetStationParams {
     pub tolerance_db: f64,
 }
 
+#[cfg(feature = "hil")]
 /// Tunables for **CV-4** / **CV-5** HIL subsystem cross-checks (synthetic demo only).
 ///
-/// Built from [`crate::config::StationConfig`] at the HTTP/WebSocket distribution layer.
+/// Built from [`crate::config::StationConfig`] via [`ValidationContext::from_station`].
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct HilSubsystemCvParams {
+    /// Inclusive lower bound of CCSDS APIDs carrying `chronus.hil.tm.v1` payloads (**CV-3**).
+    pub hil_tm_v1_apid_min: u16,
+    /// Inclusive upper bound of CCSDS APIDs carrying `chronus.hil.tm.v1` payloads.
+    pub hil_tm_v1_apid_max: u16,
     /// Model bus voltage at full toy illumination (`nadir_sun_illum_cos` = 1), volts.
     pub hil_eps_voltage_full_sun_v: f64,
     /// Model bus voltage at zero illumination, volts.
@@ -158,19 +219,140 @@ pub struct HilSubsystemCvParams {
     pub hil_body_rate_max_abs_deg_s: f64,
 }
 
+#[cfg(feature = "hil")]
 impl HilSubsystemCvParams {
     /// Copies CV-4 / CV-5 fields from a validated [`crate::config::StationConfig`].
     #[must_use]
     pub fn from_station(station: &crate::config::StationConfig) -> Self {
         Self {
-            hil_eps_voltage_full_sun_v: station.hil_eps_voltage_full_sun_v,
-            hil_eps_voltage_eclipse_v: station.hil_eps_voltage_eclipse_v,
-            hil_thermal_c_full_sun: station.hil_thermal_c_full_sun,
-            hil_thermal_c_eclipse: station.hil_thermal_c_eclipse,
-            hil_eps_relative_tolerance: station.hil_eps_relative_tolerance,
-            hil_thermal_absolute_tolerance_k: station.hil_thermal_absolute_tolerance_k,
-            hil_body_rate_max_abs_deg_s: station.hil_body_rate_max_abs_deg_s,
+            hil_tm_v1_apid_min: station.hil.tm_v1_apid_min,
+            hil_tm_v1_apid_max: station.hil.tm_v1_apid_max,
+            hil_eps_voltage_full_sun_v: station.hil.eps_voltage_full_sun_v,
+            hil_eps_voltage_eclipse_v: station.hil.eps_voltage_eclipse_v,
+            hil_thermal_c_full_sun: station.hil.thermal_c_full_sun,
+            hil_thermal_c_eclipse: station.hil.thermal_c_eclipse,
+            hil_eps_relative_tolerance: station.hil.eps_relative_tolerance,
+            hil_thermal_absolute_tolerance_k: station.hil.thermal_absolute_tolerance_k,
+            hil_body_rate_max_abs_deg_s: station.hil.body_rate_max_abs_deg_s,
         }
+    }
+
+    /// `true` when `apid` lies in the configured synthetic HIL TM v1 range (inclusive).
+    #[must_use]
+    pub fn allows_apid(&self, apid: u16) -> bool {
+        (self.hil_tm_v1_apid_min..=self.hil_tm_v1_apid_max).contains(&apid)
+    }
+}
+
+/// Station-level inputs to [`apply_physics_validation`], built **once** (at startup or per
+/// session) instead of being threaded through every call as positional arguments.
+///
+/// Per-frame inputs (the frame, its [`TrackingState`] and [`RfMetadata`]) stay separate, so a new
+/// check adds a field here and a branch in the validator without changing any signature. The
+/// struct is `#[non_exhaustive]`: build it with [`ValidationContext::from_station`] or
+/// [`ValidationContext::new`] plus the `with_*` methods.
+///
+/// ```
+/// use chronus_gateway::config::StationConfig;
+/// use chronus_gateway::validate::ValidationContext;
+///
+/// let ctx = ValidationContext::from_station(&StationConfig::default());
+/// assert_eq!(ctx.doppler_tolerance_hz, 150.0);
+/// assert!(ctx.link_budget.is_some());
+///
+/// // Hand-built: Doppler + horizon only.
+/// let ctx = ValidationContext::new(437_500_000.0).with_doppler_tolerance_hz(200.0);
+/// assert!(ctx.link_budget.is_none());
+/// ```
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct ValidationContext {
+    /// Nominal (un-shifted) downlink carrier (Hz) the Doppler and link-budget checks start from.
+    pub nominal_carrier_hz: f64,
+    /// **T-DOPPLER:** allowed \|measured − expected\| carrier deviation (Hz) before any TLE-age
+    /// margin (see [`effective_doppler_tolerance_hz`]).
+    pub doppler_tolerance_hz: f64,
+    /// Minimum elevation (degrees) below which bit 1 ([`FLAG_BELOW_HORIZON`]) is set.
+    pub minimum_elevation_deg: f64,
+    /// **T-POINT:** great-circle pointing tolerance (degrees); non-positive disables the check.
+    pub pointing_tolerance_deg: f64,
+    /// Link-budget parameters (**CV-1**); `None` skips the check.
+    pub link_budget: Option<LinkBudgetStationParams>,
+    /// HIL subsystem toy-check parameters (**CV-4** / **CV-5**); `None` skips them. Present only
+    /// with the `hil` cargo feature.
+    #[cfg(feature = "hil")]
+    pub hil: Option<HilSubsystemCvParams>,
+}
+
+impl ValidationContext {
+    /// Minimal context: Doppler (±150 Hz) and horizon (0°) only; no link budget, pointing
+    /// (tolerance 0) or HIL checks until enabled with the `with_*` methods.
+    #[must_use]
+    pub fn new(nominal_carrier_hz: f64) -> Self {
+        Self {
+            nominal_carrier_hz,
+            doppler_tolerance_hz: 150.0,
+            minimum_elevation_deg: 0.0,
+            pointing_tolerance_deg: 0.0,
+            link_budget: None,
+            #[cfg(feature = "hil")]
+            hil: None,
+        }
+    }
+
+    /// Builds the full context from a validated [`crate::config::StationConfig`].
+    #[must_use]
+    pub fn from_station(station: &crate::config::StationConfig) -> Self {
+        Self {
+            nominal_carrier_hz: station.site.nominal_carrier_hz,
+            doppler_tolerance_hz: station.tolerances.doppler_tolerance_hz,
+            minimum_elevation_deg: station.tolerances.minimum_elevation_deg,
+            pointing_tolerance_deg: station.tolerances.pointing_tolerance_deg,
+            link_budget: Some(LinkBudgetStationParams {
+                tx_power_dbm: station.tolerances.tx_power_dbm,
+                tx_gain_dbi: station.tolerances.tx_gain_dbi,
+                rx_gain_dbi: station.tolerances.rx_gain_dbi,
+                tolerance_db: station.tolerances.link_budget_tolerance_db,
+            }),
+            #[cfg(feature = "hil")]
+            hil: Some(HilSubsystemCvParams::from_station(station)),
+        }
+    }
+
+    /// Sets **T-DOPPLER** (Hz).
+    #[must_use]
+    pub fn with_doppler_tolerance_hz(mut self, hz: f64) -> Self {
+        self.doppler_tolerance_hz = hz;
+        self
+    }
+
+    /// Sets the minimum elevation (degrees) for the horizon check.
+    #[must_use]
+    pub fn with_minimum_elevation_deg(mut self, deg: f64) -> Self {
+        self.minimum_elevation_deg = deg;
+        self
+    }
+
+    /// Enables the pointing check with **T-POINT** (degrees).
+    #[must_use]
+    pub fn with_pointing_tolerance_deg(mut self, deg: f64) -> Self {
+        self.pointing_tolerance_deg = deg;
+        self
+    }
+
+    /// Enables the link-budget check.
+    #[must_use]
+    pub fn with_link_budget(mut self, lb: LinkBudgetStationParams) -> Self {
+        self.link_budget = Some(lb);
+        self
+    }
+
+    /// Enables the HIL subsystem toy checks (requires the `hil` cargo feature).
+    #[cfg(feature = "hil")]
+    #[must_use]
+    pub fn with_hil(mut self, hil: HilSubsystemCvParams) -> Self {
+        self.hil = Some(hil);
+        self
     }
 }
 
@@ -344,23 +526,22 @@ pub fn effective_doppler_tolerance_hz(
 /// Always resets flags to `0` first so repeated validation does not OR stale bits.
 /// Non-finite `TrackingState` fields skip checks that depend on them (no panic).
 ///
-/// Pass `link_budget: None` to skip the link-budget check entirely.
-///
-/// `pointing_tolerance_deg` is **T-POINT** (must be finite and `> 0`); when non-positive or
-/// non-finite, the pointing check is skipped.
-#[allow(clippy::too_many_arguments)] // M4 + CV-1…CV-5 parameters; grouping would churn every call site.
+/// Station-level tunables ([`ValidationContext`]) are built once; only the per-frame inputs
+/// (`frame`, `state`, `rf`) change per call, so adding a check never changes this signature.
+/// A context with `link_budget: None` skips the link-budget check entirely, and a non-finite or
+/// non-positive `pointing_tolerance_deg` (**T-POINT**) skips the pointing check.
 pub fn apply_physics_validation(
+    ctx: &ValidationContext,
     frame: &mut TelemetryFrame,
     state: &TrackingState,
-    nominal_carrier_hz: f64,
     rf: RfMetadata,
-    doppler_tolerance_hz: f64,
-    minimum_elevation_deg: f64,
-    link_budget: Option<LinkBudgetStationParams>,
-    pointing_tolerance_deg: f64,
-    hil_tm: Option<DecodedHilTmV1>,
-    hil_subsystem: Option<HilSubsystemCvParams>,
 ) {
+    let nominal_carrier_hz = ctx.nominal_carrier_hz;
+    let doppler_tolerance_hz = ctx.doppler_tolerance_hz;
+    let minimum_elevation_deg = ctx.minimum_elevation_deg;
+    let link_budget = ctx.link_budget;
+    let pointing_tolerance_deg = ctx.pointing_tolerance_deg;
+
     frame.physics_flags = 0;
 
     if state.elevation_deg.is_finite() && state.elevation_deg < minimum_elevation_deg {
@@ -417,48 +598,68 @@ pub fn apply_physics_validation(
         frame.physics_flags |= FLAG_POINTING_ANOMALY;
     }
 
-    // CV-4 / CV-5 — decoded HIL v1 (skip unless params valid; never panic on floats).
-    if let (Some(hil), Some(p)) = (hil_tm, hil_subsystem) {
-        // CV-5 — ADCS body-rate envelope (independent of Sun illumination).
-        if p.hil_body_rate_max_abs_deg_s.is_finite() && p.hil_body_rate_max_abs_deg_s > 0.0 {
-            let w = hil.body_rate_deg_s as f64;
-            if w.is_finite() && w.abs() > p.hil_body_rate_max_abs_deg_s {
-                frame.physics_flags |= FLAG_ADCS_BODY_RATE_ANOMALY;
+    // CV-4 / CV-5 — decoded HIL v1 (only for APIDs in the configured synthetic range).
+    #[cfg(feature = "hil")]
+    {
+        if let Some(p) = ctx.hil.as_ref()
+            && p.allows_apid(frame.apid)
+            && let Ok(hil) = decode_hil_tm_v1(frame.payload())
+        {
+            apply_hil_subsystem_checks(frame, state, hil, p);
+        }
+    }
+}
+
+#[cfg(feature = "hil")]
+/// Runs the **CV-4** / **CV-5** HIL subsystem toy checks for one decoded `chronus.hil.tm.v1`
+/// payload, OR-ing any anomaly bits into [`TelemetryFrame::physics_flags`] (it does not reset them).
+///
+/// Skipped per check when inputs or tunables are non-finite; never panics on untrusted floats.
+fn apply_hil_subsystem_checks(
+    frame: &mut TelemetryFrame,
+    state: &TrackingState,
+    hil: DecodedHilTmV1,
+    p: &HilSubsystemCvParams,
+) {
+    // CV-5 — ADCS body-rate envelope (independent of Sun illumination).
+    if p.hil_body_rate_max_abs_deg_s.is_finite() && p.hil_body_rate_max_abs_deg_s > 0.0 {
+        let w = hil.body_rate_deg_s as f64;
+        if w.is_finite() && w.abs() > p.hil_body_rate_max_abs_deg_s {
+            frame.physics_flags |= FLAG_ADCS_BODY_RATE_ANOMALY;
+        }
+    }
+
+    let illum = state.nadir_sun_illum_cos;
+    if illum.is_finite() && (0.0..=1.0).contains(&illum) {
+        if p.hil_eps_relative_tolerance.is_finite()
+            && p.hil_eps_relative_tolerance > 0.0
+            && p.hil_eps_voltage_full_sun_v.is_finite()
+            && p.hil_eps_voltage_eclipse_v.is_finite()
+        {
+            let v_exp = p.hil_eps_voltage_eclipse_v
+                + (p.hil_eps_voltage_full_sun_v - p.hil_eps_voltage_eclipse_v) * illum;
+            if v_exp.is_finite() {
+                let span = (p.hil_eps_voltage_full_sun_v - p.hil_eps_voltage_eclipse_v).abs();
+                let tol_v = (p.hil_eps_relative_tolerance * span.max(1e-6)).max(1e-6);
+                let v_meas = hil.eps_bus_voltage_v as f64;
+                if v_meas.is_finite() && (v_meas - v_exp).abs() > tol_v {
+                    frame.physics_flags |= FLAG_EPS_SUBSYSTEM_ANOMALY;
+                }
             }
         }
 
-        let illum = state.nadir_sun_illum_cos;
-        if illum.is_finite() && (0.0..=1.0).contains(&illum) {
-            if p.hil_eps_relative_tolerance.is_finite()
-                && p.hil_eps_relative_tolerance > 0.0
-                && p.hil_eps_voltage_full_sun_v.is_finite()
-                && p.hil_eps_voltage_eclipse_v.is_finite()
-            {
-                let v_exp = p.hil_eps_voltage_eclipse_v
-                    + (p.hil_eps_voltage_full_sun_v - p.hil_eps_voltage_eclipse_v) * illum;
-                if v_exp.is_finite() {
-                    let span = (p.hil_eps_voltage_full_sun_v - p.hil_eps_voltage_eclipse_v).abs();
-                    let tol_v = (p.hil_eps_relative_tolerance * span.max(1e-6)).max(1e-6);
-                    let v_meas = hil.eps_bus_voltage_v as f64;
-                    if v_meas.is_finite() && (v_meas - v_exp).abs() > tol_v {
-                        frame.physics_flags |= FLAG_EPS_SUBSYSTEM_ANOMALY;
-                    }
-                }
-            }
-
-            if p.hil_thermal_absolute_tolerance_k.is_finite()
-                && p.hil_thermal_absolute_tolerance_k > 0.0
-                && p.hil_thermal_c_full_sun.is_finite()
-                && p.hil_thermal_c_eclipse.is_finite()
-            {
-                let t_exp = p.hil_thermal_c_eclipse
-                    + (p.hil_thermal_c_full_sun - p.hil_thermal_c_eclipse) * illum;
-                if t_exp.is_finite() {
-                    let tol_t = p.hil_thermal_absolute_tolerance_k;
-                    let t_meas = hil.thermal_panel_c as f64;
-                    if t_meas.is_finite() && (t_meas - t_exp).abs() > tol_t {
-                        frame.physics_flags |= FLAG_THERMAL_SUBSYSTEM_ANOMALY;
-                    }
+        if p.hil_thermal_absolute_tolerance_k.is_finite()
+            && p.hil_thermal_absolute_tolerance_k > 0.0
+            && p.hil_thermal_c_full_sun.is_finite()
+            && p.hil_thermal_c_eclipse.is_finite()
+        {
+            let t_exp = p.hil_thermal_c_eclipse
+                + (p.hil_thermal_c_full_sun - p.hil_thermal_c_eclipse) * illum;
+            if t_exp.is_finite() {
+                let tol_t = p.hil_thermal_absolute_tolerance_k;
+                let t_meas = hil.thermal_panel_c as f64;
+                if t_meas.is_finite() && (t_meas - t_exp).abs() > tol_t {
+                    frame.physics_flags |= FLAG_THERMAL_SUBSYSTEM_ANOMALY;
                 }
             }
         }
@@ -474,6 +675,45 @@ mod tests {
 
     /// Default **T-POINT** for tests (`TEST_PLAN.md`).
     const T_POINT: f64 = 0.25;
+
+    #[cfg(feature = "hil")]
+    type HilTmArg = DecodedHilTmV1;
+    #[cfg(feature = "hil")]
+    type HilParamsArg = HilSubsystemCvParams;
+    #[cfg(not(feature = "hil"))]
+    type HilTmArg = ();
+    #[cfg(not(feature = "hil"))]
+    type HilParamsArg = ();
+
+    /// Test shim: builds a one-off [`ValidationContext`] from explicit station tunables, runs the
+    /// validator, and (for tests that hand-feed a decoded payload) the HIL subsystem checks.
+    #[allow(clippy::too_many_arguments)]
+    fn run_validation(
+        frame: &mut TelemetryFrame,
+        state: &TrackingState,
+        nominal_carrier_hz: f64,
+        rf: RfMetadata,
+        doppler_tolerance_hz: f64,
+        minimum_elevation_deg: f64,
+        link_budget: Option<LinkBudgetStationParams>,
+        pointing_tolerance_deg: f64,
+        hil_tm: Option<HilTmArg>,
+        hil_subsystem: Option<HilParamsArg>,
+    ) {
+        let mut ctx = ValidationContext::new(nominal_carrier_hz)
+            .with_doppler_tolerance_hz(doppler_tolerance_hz)
+            .with_minimum_elevation_deg(minimum_elevation_deg)
+            .with_pointing_tolerance_deg(pointing_tolerance_deg);
+        ctx.link_budget = link_budget;
+        apply_physics_validation(&ctx, frame, state, rf);
+        // The decoded payload is supplied directly, so bypass the APID-range decode path.
+        #[cfg(feature = "hil")]
+        if let (Some(hil), Some(p)) = (hil_tm, hil_subsystem) {
+            apply_hil_subsystem_checks(frame, state, hil, &p);
+        }
+        #[cfg(not(feature = "hil"))]
+        let _ = (hil_tm, hil_subsystem);
+    }
 
     fn dummy_tm() -> TelemetryFrame {
         TelemetryFrame {
@@ -517,7 +757,7 @@ mod tests {
         let s = state(45.0, 0.2648964327533433); // ISS-like range rate from propagator tests
         let f0 = 437_500_000.0;
         let expected = expected_carrier_hz(f0, s.range_rate_km_s);
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             f0,
@@ -543,7 +783,7 @@ mod tests {
         let s = state(45.0, 0.0);
         let f0 = 437_500_000.0;
         let expected = expected_carrier_hz(f0, 0.0);
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             f0,
@@ -566,7 +806,7 @@ mod tests {
     fn below_horizon_sets_bit1() {
         let mut tm = dummy_tm();
         let s = state(-5.0, 0.0);
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437_500_000.0,
@@ -586,7 +826,7 @@ mod tests {
     fn elevation_at_horizon_not_flagged_when_minimum_is_zero() {
         let mut tm = dummy_tm();
         let s = state(0.0, 0.0);
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -606,7 +846,7 @@ mod tests {
         let mut tm = dummy_tm();
         let s = state(-10.0, 0.0);
         let f0 = 100e6;
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             f0,
@@ -629,7 +869,7 @@ mod tests {
     fn no_measured_carrier_skips_doppler_even_if_would_be_bad() {
         let mut tm = dummy_tm();
         let s = state(30.0, 0.0);
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             100e6,
@@ -649,7 +889,7 @@ mod tests {
         let mut tm = dummy_tm();
         let s = state(30.0, 0.0);
         let f0 = 100e6;
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             f0,
@@ -672,7 +912,7 @@ mod tests {
     fn nan_measured_skips_doppler_no_panic() {
         let mut tm = dummy_tm();
         let s = state(10.0, 1.0);
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -716,7 +956,7 @@ mod tests {
         let s = state(45.0, 0.0);
         let f0 = 437_500_000.0;
         let pred = expected_rx_power_dbm(s.range_km, f0, 30.0, 2.0, 5.0).expect("pred");
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             f0,
@@ -741,7 +981,7 @@ mod tests {
         let s = state(45.0, 0.0);
         let f0 = 437_500_000.0;
         let pred = expected_rx_power_dbm(s.range_km, f0, 30.0, 2.0, 5.0).expect("pred");
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             f0,
@@ -765,7 +1005,7 @@ mod tests {
     fn no_measured_rx_skips_link_budget_even_if_would_be_bad() {
         let mut tm = dummy_tm();
         let s = state(45.0, 0.0);
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437_500_000.0,
@@ -784,7 +1024,7 @@ mod tests {
     fn nan_measured_rx_skips_link_no_panic() {
         let mut tm = dummy_tm();
         let s = state(45.0, 0.0);
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437_500_000.0,
@@ -815,7 +1055,7 @@ mod tests {
             apparent_elevation_deg: f64::NAN,
             range_rate_uncertainty_km_s: 0.0,
         };
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437_500_000.0,
@@ -848,7 +1088,7 @@ mod tests {
 
     fn flags_for(s: &TrackingState, rf: RfMetadata) -> u8 {
         let mut tm = dummy_tm();
-        apply_physics_validation(
+        run_validation(
             &mut tm, s, 437.5e6, rf, 150.0, 0.0, None, T_POINT, None, None,
         );
         tm.physics_flags
@@ -932,7 +1172,7 @@ mod tests {
             apparent_elevation_deg: f64::NAN,
             range_rate_uncertainty_km_s: 0.0,
         };
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -964,7 +1204,7 @@ mod tests {
             apparent_elevation_deg: f64::NAN,
             range_rate_uncertainty_km_s: 0.0,
         };
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -996,7 +1236,7 @@ mod tests {
             apparent_elevation_deg: f64::NAN,
             range_rate_uncertainty_km_s: 0.0,
         };
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -1028,7 +1268,7 @@ mod tests {
             apparent_elevation_deg: f64::NAN,
             range_rate_uncertainty_km_s: 0.0,
         };
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -1048,11 +1288,14 @@ mod tests {
         assert_eq!(tm.physics_flags & FLAG_POINTING_ANOMALY, 0);
     }
 
+    #[cfg(feature = "hil")]
     #[test]
     fn hil_cv4_voltage_and_thermal_in_band() {
         let mut tm = dummy_tm();
         let illum = 0.8125_f64;
         let p = HilSubsystemCvParams {
+            hil_tm_v1_apid_min: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MIN,
+            hil_tm_v1_apid_max: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MAX,
             hil_eps_voltage_full_sun_v: 28.0,
             hil_eps_voltage_eclipse_v: 24.0,
             hil_thermal_c_full_sun: 32.0,
@@ -1078,7 +1321,7 @@ mod tests {
             apparent_elevation_deg: f64::NAN,
             range_rate_uncertainty_km_s: 0.0,
         };
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -1096,11 +1339,14 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "hil")]
     #[test]
     fn hil_cv4_bad_voltage_sets_bit4() {
         let mut tm = dummy_tm();
         let illum = 0.5_f64;
         let p = HilSubsystemCvParams {
+            hil_tm_v1_apid_min: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MIN,
+            hil_tm_v1_apid_max: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MAX,
             hil_eps_voltage_full_sun_v: 28.0,
             hil_eps_voltage_eclipse_v: 24.0,
             hil_thermal_c_full_sun: 32.0,
@@ -1126,7 +1372,7 @@ mod tests {
             apparent_elevation_deg: f64::NAN,
             range_rate_uncertainty_km_s: 0.0,
         };
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -1142,11 +1388,14 @@ mod tests {
         assert_eq!(tm.physics_flags & FLAG_THERMAL_SUBSYSTEM_ANOMALY, 0);
     }
 
+    #[cfg(feature = "hil")]
     #[test]
     fn hil_cv4_bad_thermal_sets_bit5() {
         let mut tm = dummy_tm();
         let illum = 0.25_f64;
         let p = HilSubsystemCvParams {
+            hil_tm_v1_apid_min: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MIN,
+            hil_tm_v1_apid_max: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MAX,
             hil_eps_voltage_full_sun_v: 28.0,
             hil_eps_voltage_eclipse_v: 24.0,
             hil_thermal_c_full_sun: 32.0,
@@ -1172,7 +1421,7 @@ mod tests {
             apparent_elevation_deg: f64::NAN,
             range_rate_uncertainty_km_s: 0.0,
         };
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -1188,10 +1437,13 @@ mod tests {
         assert!(tm.physics_flags & FLAG_THERMAL_SUBSYSTEM_ANOMALY != 0);
     }
 
+    #[cfg(feature = "hil")]
     #[test]
     fn hil_cv4_skips_when_illum_non_finite() {
         let mut tm = dummy_tm();
         let p = HilSubsystemCvParams {
+            hil_tm_v1_apid_min: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MIN,
+            hil_tm_v1_apid_max: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MAX,
             hil_eps_voltage_full_sun_v: 28.0,
             hil_eps_voltage_eclipse_v: 24.0,
             hil_thermal_c_full_sun: 32.0,
@@ -1215,7 +1467,7 @@ mod tests {
             apparent_elevation_deg: f64::NAN,
             range_rate_uncertainty_km_s: 0.0,
         };
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -1233,10 +1485,13 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "hil")]
     #[test]
     fn hil_cv5_body_rate_within_ceiling_no_bit6() {
         let mut tm = dummy_tm();
         let p = HilSubsystemCvParams {
+            hil_tm_v1_apid_min: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MIN,
+            hil_tm_v1_apid_max: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MAX,
             hil_eps_voltage_full_sun_v: 28.0,
             hil_eps_voltage_eclipse_v: 24.0,
             hil_thermal_c_full_sun: 32.0,
@@ -1260,7 +1515,7 @@ mod tests {
             apparent_elevation_deg: f64::NAN,
             range_rate_uncertainty_km_s: 0.0,
         };
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -1275,10 +1530,13 @@ mod tests {
         assert_eq!(tm.physics_flags & FLAG_ADCS_BODY_RATE_ANOMALY, 0);
     }
 
+    #[cfg(feature = "hil")]
     #[test]
     fn hil_cv5_body_rate_exceeds_ceiling_sets_bit6() {
         let mut tm = dummy_tm();
         let p = HilSubsystemCvParams {
+            hil_tm_v1_apid_min: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MIN,
+            hil_tm_v1_apid_max: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MAX,
             hil_eps_voltage_full_sun_v: 28.0,
             hil_eps_voltage_eclipse_v: 24.0,
             hil_thermal_c_full_sun: 32.0,
@@ -1302,7 +1560,7 @@ mod tests {
             apparent_elevation_deg: f64::NAN,
             range_rate_uncertainty_km_s: 0.0,
         };
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -1317,10 +1575,13 @@ mod tests {
         assert!(tm.physics_flags & FLAG_ADCS_BODY_RATE_ANOMALY != 0);
     }
 
+    #[cfg(feature = "hil")]
     #[test]
     fn hil_cv5_skips_when_body_rate_non_finite() {
         let mut tm = dummy_tm();
         let p = HilSubsystemCvParams {
+            hil_tm_v1_apid_min: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MIN,
+            hil_tm_v1_apid_max: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MAX,
             hil_eps_voltage_full_sun_v: 28.0,
             hil_eps_voltage_eclipse_v: 24.0,
             hil_thermal_c_full_sun: 32.0,
@@ -1344,7 +1605,7 @@ mod tests {
             apparent_elevation_deg: f64::NAN,
             range_rate_uncertainty_km_s: 0.0,
         };
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -1359,10 +1620,13 @@ mod tests {
         assert_eq!(tm.physics_flags & FLAG_ADCS_BODY_RATE_ANOMALY, 0);
     }
 
+    #[cfg(feature = "hil")]
     #[test]
     fn hil_cv5_skips_when_max_not_positive() {
         let mut tm = dummy_tm();
         let p = HilSubsystemCvParams {
+            hil_tm_v1_apid_min: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MIN,
+            hil_tm_v1_apid_max: crate::hil_tm::DEFAULT_HIL_TM_V1_APID_MAX,
             hil_eps_voltage_full_sun_v: 28.0,
             hil_eps_voltage_eclipse_v: 24.0,
             hil_thermal_c_full_sun: 32.0,
@@ -1386,7 +1650,7 @@ mod tests {
             apparent_elevation_deg: f64::NAN,
             range_rate_uncertainty_km_s: 0.0,
         };
-        apply_physics_validation(
+        run_validation(
             &mut tm,
             &s,
             437e6,
@@ -1399,5 +1663,101 @@ mod tests {
             Some(p),
         );
         assert_eq!(tm.physics_flags & FLAG_ADCS_BODY_RATE_ANOMALY, 0);
+    }
+
+    #[cfg(feature = "hil")]
+    fn parsed_hil_frame(apid: u16, body_rate: f32) -> TelemetryFrame {
+        use crate::hil_tm::encode_hil_tm_v1_payload;
+        use crate::ingest::RawFrame;
+        use std::sync::Arc;
+        let payload = encode_hil_tm_v1_payload(1, 26.0, 22.0, body_rate);
+        let packet = crate::ccsds::encode_synthetic_tm(apid, 0, &payload);
+        crate::ccsds::parse_telemetry(&RawFrame {
+            bytes: Arc::from(packet.as_slice()),
+            received_at: Utc::now(),
+            source: SocketAddr::from(([127, 0, 0, 1], 1)),
+        })
+        .expect("synthetic packet parses")
+    }
+
+    #[cfg(feature = "hil")]
+    #[test]
+    fn context_from_station_mirrors_config() {
+        let station = crate::config::StationConfig::default();
+        let ctx = ValidationContext::from_station(&station);
+        assert_eq!(ctx.nominal_carrier_hz, station.site.nominal_carrier_hz);
+        assert_eq!(
+            ctx.doppler_tolerance_hz,
+            station.tolerances.doppler_tolerance_hz
+        );
+        assert_eq!(
+            ctx.pointing_tolerance_deg,
+            station.tolerances.pointing_tolerance_deg
+        );
+        let lb = ctx.link_budget.expect("link budget enabled from station");
+        assert_eq!(lb.tolerance_db, station.tolerances.link_budget_tolerance_db);
+        #[cfg(feature = "hil")]
+        assert!(ctx.hil.is_some());
+    }
+
+    #[cfg(feature = "hil")]
+    #[test]
+    fn context_decodes_hil_payload_only_inside_configured_apid_range() {
+        let station = crate::config::StationConfig::default();
+        let ctx = ValidationContext::from_station(&station);
+        let s = state(45.0, 0.0);
+        let rf = RfMetadata::new();
+
+        // In range: a 90 deg/s body rate trips the CV-5 ceiling through the context path.
+        let mut in_range = parsed_hil_frame(station.hil.tm_v1_apid_min, 90.0);
+        apply_physics_validation(&ctx, &mut in_range, &s, rf);
+        assert_ne!(in_range.physics_flags & FLAG_ADCS_BODY_RATE_ANOMALY, 0);
+
+        // Same payload on an APID outside the range is opaque user data: no HIL checks.
+        let outside = station.hil.tm_v1_apid_max + 1;
+        let mut out_of_range = parsed_hil_frame(outside, 90.0);
+        apply_physics_validation(&ctx, &mut out_of_range, &s, rf);
+        assert_eq!(out_of_range.physics_flags & FLAG_ADCS_BODY_RATE_ANOMALY, 0);
+    }
+
+    #[test]
+    fn minimal_context_runs_doppler_and_horizon_only() {
+        let ctx = ValidationContext::new(437_500_000.0);
+        let mut tm = dummy_tm();
+        let s = state(-5.0, 0.0);
+        let rf = RfMetadata::new()
+            .with_rx_power_dbm(-200.0)
+            .with_pointing_deg(0.0, 80.0);
+        apply_physics_validation(&ctx, &mut tm, &s, rf);
+        // Below horizon is flagged; link budget and pointing were never enabled.
+        assert_eq!(tm.physics_flags, FLAG_BELOW_HORIZON);
+    }
+
+    #[cfg(not(feature = "hil"))]
+    #[test]
+    fn hil_subsystem_checks_are_inert_without_the_hil_feature() {
+        use crate::hil_tm::encode_hil_tm_v1_payload;
+        use crate::ingest::RawFrame;
+        use std::sync::Arc;
+        let station = crate::config::StationConfig::default();
+        // A 90 deg/s body rate on an in-range APID would trip CV-5 in a `hil` build.
+        let payload = encode_hil_tm_v1_payload(1, 26.0, 22.0, 90.0);
+        let packet = crate::ccsds::encode_synthetic_tm(station.hil.tm_v1_apid_min, 0, &payload);
+        let mut tm = crate::ccsds::parse_telemetry(&RawFrame {
+            bytes: Arc::from(packet.as_slice()),
+            received_at: Utc::now(),
+            source: SocketAddr::from(([127, 0, 0, 1], 1)),
+        })
+        .unwrap();
+        let ctx = ValidationContext::from_station(&station);
+        let s = TrackingState::new(90.0, 45.0, 800.0, 0.0).with_sun_illumination(1.0);
+        apply_physics_validation(&ctx, &mut tm, &s, RfMetadata::new());
+        assert_eq!(
+            tm.physics_flags
+                & (FLAG_EPS_SUBSYSTEM_ANOMALY
+                    | FLAG_THERMAL_SUBSYSTEM_ANOMALY
+                    | FLAG_ADCS_BODY_RATE_ANOMALY),
+            0
+        );
     }
 }

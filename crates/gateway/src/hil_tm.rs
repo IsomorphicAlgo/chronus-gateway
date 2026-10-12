@@ -56,6 +56,7 @@ pub struct DecodedHilTmV1 {
 
 /// Recoverable decode failure (never panics on arbitrary bytes).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum HilTmV1DecodeError {
     /// Slice shorter than [`HIL_TM_V1_PAYLOAD_LEN`].
     TooShort {

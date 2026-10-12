@@ -25,6 +25,7 @@ pub const CCSDS_PRIMARY_HEADER_LEN: usize = 6;
 /// All variants are recoverable: the caller drops the offending datagram and continues. No input
 /// can cause a panic or an unbounded allocation.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum CcsdsError {
     /// The datagram is shorter than a CCSDS primary header.
     #[error(

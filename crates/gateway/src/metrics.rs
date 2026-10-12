@@ -48,15 +48,25 @@ impl GatewayMetrics {
 
 /// Serializable metrics snapshot (see `GET /api/v1/chronus/metrics`).
 #[derive(Debug, Clone, serde::Serialize)]
+#[non_exhaustive]
 pub struct GatewayMetricsSnapshot {
+    /// Frames parsed, validated and serialized for WebSocket clients.
     pub telemetry_frames_emitted: u64,
+    /// Datagrams rejected as invalid CCSDS packets.
     pub telemetry_parse_errors: u64,
+    /// Frames emitted with a non-zero `physics_flags`.
     pub anomaly_frames: u64,
+    /// Frames emitted without physics because the propagator failed.
     pub tracking_errors: u64,
+    /// JSON serialization failures.
     pub serialize_errors: u64,
+    /// WebSocket messages sent across all clients.
     pub ws_messages_sent: u64,
+    /// Sum of per-frame processing latency (ms).
     pub processing_latency_ms_sum: u64,
+    /// Number of latency samples in the sum.
     pub processing_latency_ms_count: u64,
+    /// WebSocket clients connected right now.
     pub ws_clients_connected: u64,
 }
 

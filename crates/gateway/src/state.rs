@@ -9,8 +9,13 @@ use crate::config::StationConfig;
 use crate::ingest::{IngestStats, RawFrame};
 use crate::metrics::GatewayMetrics;
 use crate::propagator::TrackingProvider;
+use crate::validate::ValidationContext;
 
 /// Process-wide handles shared between the UDP ingest task and the Axum server.
+///
+/// `#[non_exhaustive]`: construct it with [`SharedGateway::new`] so new shared handles can be
+/// added in 1.x.
+#[non_exhaustive]
 pub struct SharedGateway {
     /// Fan-out of raw datagrams to WebSocket subscribers (and any other consumers).
     pub frame_tx: broadcast::Sender<RawFrame>,
@@ -20,6 +25,8 @@ pub struct SharedGateway {
     pub gateway_metrics: Arc<GatewayMetrics>,
     /// Station + validation thresholds (immutable at runtime for the MVP).
     pub station: Arc<StationConfig>,
+    /// Physics-check tunables, built once from [`Self::station`] in [`SharedGateway::new`].
+    pub validation: ValidationContext,
     /// Optional SGP4-backed tracking (throttled).
     pub tracking: Option<Arc<TrackingProvider>>,
     /// UDP telemetry address, when known (used in plain-English status messages).
@@ -37,11 +44,13 @@ impl SharedGateway {
         station: Arc<StationConfig>,
         tracking: Option<Arc<TrackingProvider>>,
     ) -> Self {
+        let validation = ValidationContext::from_station(&station);
         Self {
             frame_tx,
             ingest_stats,
             gateway_metrics,
             station,
+            validation,
             tracking,
             udp_addr: None,
             http_addr: None,

@@ -24,7 +24,7 @@
 STATIC_DIR=demo/sandbox cargo run --release -p chronus-demo-server
 
 # Or the real UDP gateway, fed by the synthetic spacecraft simulator:
-cargo run -p chronus-gateway                                   # terminal 1
+cargo run -p chronus-gateway --features hil                    # terminal 1 (`hil` = the synthetic EPS/thermal/body-rate checks)
 cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 2000  # terminal 2
 ```
 
@@ -54,9 +54,9 @@ Instead of trusting every field on the wire, the gateway runs **Physics–Teleme
 | 1 | Below horizon | the spacecraft is below your minimum elevation |
 | 2 | Link budget | received power disagrees with the free-space prediction (3 dB default) |
 | 3 | Pointing | measured antenna direction differs from the computed, refraction-corrected look angle (0.25° default) |
-| 4 | EPS voltage | reported bus voltage disagrees with the sun-illumination model |
-| 5 | Thermal | reported panel temperature disagrees with the sun-illumination model |
-| 6 | Body rate | reported body rate exceeds the attitude ceiling (5 °/s default) |
+| 4 | EPS voltage | reported bus voltage disagrees with the sun-illumination model (`hil` feature) |
+| 5 | Thermal | reported panel temperature disagrees with the sun-illumination model (`hil` feature) |
+| 6 | Body rate | reported body rate exceeds the attitude ceiling, 5 °/s default (`hil` feature) |
 | 7 | Reserved | |
 
 **The shadow check.** A packet claims "full solar power" while the propagator says the spacecraft is in Earth's shadow. The frame is flagged.
@@ -118,13 +118,13 @@ The reasoning behind these and other choices is recorded in [`Methodology.md`](M
 
 ## Testing
 
-Testing is a first-class deliverable. **216 tests, all passing**, in a layered suite: inline unit tests, integration tests over loopback UDP and in-process WebSockets, a NeXosim hardware-in-the-loop simulator, runnable doctests, and physics co-validation tests with explicitly documented tolerances.
+Testing is a first-class deliverable. Counts below are for the full workspace, which builds the gateway with its `hil` feature (the synthetic EPS/thermal/body-rate demo models). **253 tests, all passing**, in a layered suite: inline unit tests, integration tests over loopback UDP and in-process WebSockets, a NeXosim hardware-in-the-loop simulator, runnable doctests, and physics co-validation tests with explicitly documented tolerances.
 
 | Layer | Count | Where |
 |-------|------:|-------|
-| Unit tests | **170** | inline `#[cfg(test)]` modules across the workspace |
-| Integration tests | **20** | `crates/gateway/tests/` (UDP ingest, WebSocket distribution, public fixtures), `crates/chronus-hil-sim/tests/` (HIL soak against the real ingest loop), `crates/chronus-demo-server/tests/` (real WebSocket clients) |
-| Doctests | **26** | runnable examples in the public API docs |
+| Unit tests | **192** | inline `#[cfg(test)]` modules across the workspace |
+| Integration tests | **24** | `crates/gateway/tests/` (UDP ingest, WebSocket distribution, public fixtures), `crates/chronus-hil-sim/tests/` (HIL soak against the real ingest loop), `crates/chronus-demo-server/tests/` (real WebSocket clients) |
+| Doctests | **37** | runnable examples in the public API docs |
 | Benchmarks | Criterion | [`parse_validate.rs`](crates/gateway/benches/parse_validate.rs): the parse and validate hot paths |
 
 **What the tests assert, not just that they pass:**
@@ -134,10 +134,11 @@ Testing is a first-class deliverable. **216 tests, all passing**, in a layered s
 - **The sandbox is checked end to end.** Nominal telemetry raises no alarm over a full orbit; every fault scenario raises exactly its documented `physics_flags` bit; one visitor's fault never reaches another's session; the per-IP cap, `Origin` allow-list and session time limit are enforced over real WebSockets.
 - **Parsers are fuzzed.** Property tests (`proptest`) throw arbitrary bytes at the CCSDS parser.
 
-**CI gates** ([`ci.yml`](.github/workflows/ci.yml)) on every push and pull request: `cargo test`, `clippy -D warnings`, benchmark compilation, a Docker Compose spec check, the demo dashboard build, plus supply-chain checks with `cargo audit` and `cargo deny`.
+**CI gates** ([`ci.yml`](.github/workflows/ci.yml)) on every push and pull request: `cargo test` (the whole workspace, then the gateway alone without the `hil` feature), `clippy -D warnings` in both configurations, benchmark compilation, a Docker Compose spec check, the demo dashboard build, a `cargo-semver-checks` job that compares the public API against the last release, plus supply-chain checks with `cargo audit` and `cargo deny`.
 
 ```bash
-cargo test --workspace          # everything above
+cargo test --workspace          # everything above (253 tests)
+cargo test -p chronus-gateway   # the production configuration, without the `hil` demo models (216 tests)
 cargo bench -p chronus-gateway  # Criterion benchmarks
 ```
 

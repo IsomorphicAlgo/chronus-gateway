@@ -7,7 +7,7 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use chronus_gateway::config::load_effective_gateway_config;
+use chronus_gateway::config::{EphemerisSource, load_effective_gateway_config};
 use chronus_gateway::diagnose::{
     Diagnosis, Explain, Listener, Severity, check_oem_coverage, check_tle_age, config_warnings,
     explain_bind_error, explain_tracking_error, tle_epoch,
@@ -59,7 +59,8 @@ enum Failure {
 fn report(d: &Diagnosis) {
     match d.severity {
         Severity::Info => tracing::info!("\n{d}"),
-        Severity::Warning | Severity::Error => tracing::warn!("\n{d}"),
+        // `Severity` is #[non_exhaustive]: unknown future levels are logged as warnings.
+        _ => tracing::warn!("\n{d}"),
     }
 }
 
@@ -86,25 +87,25 @@ async fn run() -> Result<(), Failure> {
     let tracking = match propagator_from_station(station.as_ref()) {
         Ok(prop) => {
             tracing::info!(
-                lat = station.latitude_deg,
-                lon = station.longitude_deg,
-                carrier_hz = station.nominal_carrier_hz,
-                ephemeris = if station.oem_file.is_some() {
+                lat = station.site.latitude_deg,
+                lon = station.site.longitude_deg,
+                carrier_hz = station.site.nominal_carrier_hz,
+                ephemeris = if matches!(station.tracking.ephemeris, EphemerisSource::OemFile(_)) {
                     "oem"
                 } else {
                     "tle"
                 },
-                refraction = station.refraction,
-                tle_age_doppler_margin = station.doppler_tle_age_margin,
+                refraction = station.tracking.refraction,
+                tle_age_doppler_margin = station.tracking.doppler_tle_age_margin,
                 "orbital tracking provider ready"
             );
             let now = chrono::Utc::now();
-            let freshness = match &station.oem_file {
+            let freshness = match &station.tracking.ephemeris {
                 // Startup-only second read of the file, purely for the coverage check.
-                Some(path) => OemEphemeris::from_file(path)
+                EphemerisSource::OemFile(path) => OemEphemeris::from_file(path)
                     .ok()
                     .and_then(|eph| check_oem_coverage(eph.coverage(), now)),
-                None => station
+                _ => station
                     .resolve_tle_text()
                     .ok()
                     .as_deref()
@@ -116,7 +117,7 @@ async fn run() -> Result<(), Failure> {
             }
             Some(Arc::new(TrackingProvider::new(
                 prop,
-                station.min_recompute_interval_ms,
+                station.tracking.min_recompute_interval_ms,
             )))
         }
         Err(e) => {

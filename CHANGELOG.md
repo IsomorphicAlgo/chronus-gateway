@@ -8,6 +8,41 @@ Versions cover all three workspace crates (`chronus-gateway`, `chronus-hil-sim`,
 
 ## Unreleased
 
+## 0.3.0 — 2026-10-11
+
+API freeze preparation (Tranche 1 of the 1.0 plan, **D-046**): the public shapes that will keep
+growing are fixed *before* the 1.0 promise. Contains **breaking** API changes, hence the minor
+bump. Operator-facing behaviour and the TOML config format are unchanged, with one exception: the
+toy EPS / thermal / body-rate checks (bits 4–6) now need the `hil` cargo feature.
+
+- **`#[non_exhaustive]`** on `ConfigError`, `ConfigLoadError`, `CcsdsError`, `HilTmV1DecodeError`,
+  `OemError`, `TrackingError`, `Severity`, `EphemerisSource`, `OemFrame`, `OemTimeSystem`,
+  `Listener`, `OverallStatus`, `RfMetadata`, `OpenMctRealtimeMessageV1`, `GatewayMetricsSnapshot`,
+  `IngestSnapshot`, `SharedGateway`, `ValidationContext` and the config structs. Build `RfMetadata`
+  with `RfMetadata::new()` and `with_carrier_hz` / `with_rx_power_dbm` / `with_pointing_deg`;
+  configure `StationConfig` by starting from `Default` and assigning fields.
+- **`validate::ValidationContext`** (new) replaces the ten positional arguments of
+  `apply_physics_validation`, which is now `(ctx, frame, state, rf)`. `SharedGateway` builds the
+  context once from the station config; the HIL payload is decoded inside the validator.
+- **Typed `propagator::TrackingError`** (`Config` / `Oem` / `Astro` / `Backend`) replaces
+  `anyhow::Error` in `OrbitalPropagator::tracking_state`, `TrackingProvider`, the backend
+  constructors, `OemEphemeris::from_file` and `explain_tracking_error`. Custom backends return
+  `TrackingError::backend(..)`.
+- **`StationConfig` is grouped** into `site`, `tracking`, `tolerances` and `hil`
+  (`SiteConfig`, `TrackingConfig`, `ToleranceConfig`, `HilConfig`). `EphemerisSource`
+  (`TleInline` / `TleFile` / `OemFile`) replaces `TleSource` and `oem_file`. New
+  `ConfigError::NotATleSource` (`CG-128`). The TOML keys are unchanged.
+- **`hil` cargo feature (off by default)** gates the CV-4 / CV-5 toy checks (bits 4–6),
+  `HilSubsystemCvParams` and the nadir-array Sun-illumination model. Run the gateway with
+  `--features hil` to use them with the HIL simulator; `chronus-hil-sim`, `chronus-demo-server`
+  and the demo Docker image enable it. Without it, bits 4–6 are never set and
+  `TrackingState::nadir_sun_illum_cos` is `NaN`.
+- **`#![warn(missing_docs)]`** on the gateway library (all public fields documented) and a
+  **`cargo-semver-checks`** CI job against the latest release tag.
+- **CI** now also tests and lints the gateway on its own, without `hil`.
+- **Tests:** 243 → 253 workspace tests (192 unit, 24 integration, 37 doctests); 216 when the
+  gateway is tested without `hil`.
+
 ## 0.2.0 — 2026-10-11
 
 Operator-facing diagnostics, sharper physics (Earth orientation, refraction, TLE-age-aware

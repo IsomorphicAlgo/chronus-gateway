@@ -9,10 +9,10 @@
 use std::path::Path;
 
 use chrono::{Duration, TimeZone, Utc};
-use chronus_gateway::config::{StationConfig, TleSource};
+use chronus_gateway::config::{EphemerisSource, StationConfig};
 use chronus_gateway::oem::{OemEphemeris, OemError, OemPropagator};
 use chronus_gateway::propagator::{
-    EphemerustPropagator, OrbitalPropagator, StationModel, propagator_from_station,
+    EphemerustPropagator, OrbitalPropagator, StationModel, TrackingError, propagator_from_station,
 };
 use ephemerust::EarthOrientation;
 
@@ -105,6 +105,7 @@ fn oem_backend_tracks_the_same_orbit_as_the_tle_backend() {
         d_az = d_az.max((a.elevation_deg - b.elevation_deg).abs());
         d_rng = d_rng.max((a.range_km - b.range_km).abs());
         d_rr = d_rr.max((a.range_rate_km_s - b.range_rate_km_s).abs());
+        #[cfg(feature = "hil")]
         assert!(a.nadir_sun_illum_cos.is_finite());
     }
     eprintln!(
@@ -119,13 +120,13 @@ fn oem_backend_tracks_the_same_orbit_as_the_tle_backend() {
 
 #[test]
 fn station_config_selects_the_oem_backend_and_refuses_extrapolation() {
-    let cfg = StationConfig {
-        latitude_deg: 47.9088,
-        longitude_deg: -122.2503,
-        altitude_m: 0.0,
-        tle: TleSource::Inline(String::new()), // unused when an OEM is configured
-        oem_file: Some(data("iss_eme2000_tai.oem")),
-        ..StationConfig::default()
+    let cfg = {
+        let mut c = StationConfig::default();
+        c.site.latitude_deg = 47.9088;
+        c.site.longitude_deg = -122.2503;
+        c.site.altitude_m = 0.0;
+        c.tracking.ephemeris = EphemerisSource::OemFile(data("iss_eme2000_tai.oem"));
+        c
     };
     let prop = propagator_from_station(&cfg).expect("OEM backend from config");
     let s = prop.tracking_state(t0() + Duration::minutes(30)).unwrap();
@@ -135,8 +136,8 @@ fn station_config_selects_the_oem_backend_and_refuses_extrapolation() {
 
     let err = prop.tracking_state(t0() - Duration::hours(1)).unwrap_err();
     assert!(matches!(
-        err.downcast_ref::<OemError>(),
-        Some(OemError::OutOfCoverage { .. })
+        err,
+        TrackingError::Oem(OemError::OutOfCoverage { .. })
     ));
     let d = chronus_gateway::diagnose::explain_tracking_error(&err);
     assert_eq!(d.code, "CG-322");
@@ -144,9 +145,10 @@ fn station_config_selects_the_oem_backend_and_refuses_extrapolation() {
 
 #[test]
 fn missing_oem_file_is_explained() {
-    let cfg = StationConfig {
-        oem_file: Some("no/such/ephemeris.oem".into()),
-        ..StationConfig::default()
+    let cfg = {
+        let mut c = StationConfig::default();
+        c.tracking.ephemeris = EphemerisSource::OemFile("no/such/ephemeris.oem".into());
+        c
     };
     let err = propagator_from_station(&cfg).err().expect("must fail");
     assert_eq!(

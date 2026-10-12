@@ -26,14 +26,11 @@ use serde::Serialize;
 use tower_http::trace::TraceLayer;
 
 use crate::ccsds;
-use crate::hil_tm::decode_hil_tm_v1;
 use crate::ingest::RawFrame;
 use crate::metrics::GatewayMetricsSnapshot;
 use crate::propagator::TrackingState;
 use crate::state::SharedGateway;
-use crate::validate::{
-    HilSubsystemCvParams, LinkBudgetStationParams, RfMetadata, apply_physics_validation,
-};
+use crate::validate::{RfMetadata, apply_physics_validation};
 
 /// JSON envelope for each WebSocket text message (one line per telemetry frame).
 ///
@@ -41,18 +38,27 @@ use crate::validate::{
 /// If more than eight independent alarms are needed, add a new field (e.g. `physics_flags_v2`)
 /// rather than repurposing reserved bits.
 #[derive(Debug, Serialize)]
+#[non_exhaustive]
 pub struct OpenMctRealtimeMessageV1 {
     /// Contract identifier for adapters.
     pub chronus_schema: &'static str,
+    /// CCSDS APID of the packet.
     pub apid: u16,
+    /// CCSDS packet sequence count (14 bit).
     pub seq_count: u16,
+    /// Gateway receive time (UTC), the clock the physics checks are evaluated at.
     pub received_at: chrono::DateTime<chrono::Utc>,
     /// Bitfield per D-016 / `validate` module docs (M4 + CV-1…CV-5 for assigned bits).
     pub physics_flags: u8,
+    /// Sender `ip:port` of the UDP datagram.
     pub source: String,
+    /// Geometric elevation (degrees); `None` without physics.
     pub elevation_deg: Option<f64>,
+    /// Azimuth (degrees clockwise from true north); `None` without physics.
     pub azimuth_deg: Option<f64>,
+    /// Slant range (km); `None` without physics.
     pub range_km: Option<f64>,
+    /// Line-of-sight range rate (km/s, positive receding); `None` without physics.
     pub range_rate_km_s: Option<f64>,
     /// Apparent (refracted) elevation the antenna should point at, when the station models
     /// refraction (D-042). Additive field (schema v1 unchanged).
@@ -260,30 +266,7 @@ pub fn process_frame_with_rf(
     };
 
     if let Some(s) = physics.as_ref() {
-        let link_budget = Some(LinkBudgetStationParams {
-            tx_power_dbm: station.tx_power_dbm,
-            tx_gain_dbi: station.tx_gain_dbi,
-            rx_gain_dbi: station.rx_gain_dbi,
-            tolerance_db: station.link_budget_tolerance_db,
-        });
-        let hil_tm = if station.apid_allows_hil_tm_v1(tm.apid) {
-            decode_hil_tm_v1(tm.payload()).ok()
-        } else {
-            None
-        };
-        let hil_cv = Some(HilSubsystemCvParams::from_station(station));
-        apply_physics_validation(
-            &mut tm,
-            s,
-            station.nominal_carrier_hz,
-            rf,
-            station.doppler_tolerance_hz,
-            station.minimum_elevation_deg,
-            link_budget,
-            station.pointing_tolerance_deg,
-            hil_tm,
-            hil_cv,
-        );
+        apply_physics_validation(&state.validation, &mut tm, s, rf);
     }
 
     if tm.physics_flags != 0 {
@@ -312,8 +295,8 @@ pub fn process_frame_with_rf(
         .filter(|x| x.is_finite());
     let doppler_tol = physics.as_ref().map(|s| {
         crate::validate::effective_doppler_tolerance_hz(
-            station.doppler_tolerance_hz,
-            station.nominal_carrier_hz,
+            station.tolerances.doppler_tolerance_hz,
+            station.site.nominal_carrier_hz,
             s,
         )
     });

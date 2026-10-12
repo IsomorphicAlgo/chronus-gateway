@@ -9,7 +9,8 @@ RUN apt-get update \
 
 WORKDIR /workspace/chronus-gateway
 COPY . .
-RUN cargo build --release -p chronus-gateway -p chronus-hil-sim
+# `hil`: the demo image runs the synthetic EPS/thermal/body-rate checks (physics_flags bits 4-6).
+RUN cargo build --release -p chronus-gateway -p chronus-hil-sim --features chronus-gateway/hil
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update \

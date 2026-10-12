@@ -14,7 +14,7 @@ name = "chronus-demo-server"
 path = "src/main.rs"
 
 [dependencies]
-chronus-gateway = { path = "../gateway" }
+chronus-gateway = { path = "../gateway", features = ["hil"] }
 chronus-hil-sim = { path = "../chronus-hil-sim" }
 tokio.workspace = true
 tracing.workspace = true

@@ -28,6 +28,7 @@
 // unsafe-free by construction, and library (non-test) code must justify panics — prefer `Result`
 // or an invariant-documented `expect`.
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 #![cfg_attr(not(test), warn(clippy::unwrap_used))]
 
 pub mod ccsds;
@@ -44,8 +45,9 @@ pub mod validate;
 
 pub use ccsds::{CcsdsError, TelemetryFrame, encode_synthetic_tm};
 pub use config::{
-    ConfigError, ConfigLoadError, IngestConfig, StationConfig, TleSource,
-    load_effective_gateway_config, load_gateway_from_path, resolve_config_path,
+    ConfigError, ConfigLoadError, EphemerisSource, HilConfig, IngestConfig, SiteConfig,
+    StationConfig, ToleranceConfig, TrackingConfig, load_effective_gateway_config,
+    load_gateway_from_path, resolve_config_path,
 };
 pub use diagnose::{Diagnosis, Explain, HealthReport, Severity, assess_health};
 pub use hil_tm::{
@@ -54,17 +56,21 @@ pub use hil_tm::{
     decode_hil_tm_v1, encode_hil_tm_v1_payload,
 };
 pub use ingest::{IngestStats, RawFrame};
+#[cfg(feature = "hil")]
+pub use propagator::nadir_sun_illumination_cos;
 pub use propagator::{
-    EphemerustPropagator, OrbitalPropagator, TrackingProvider, TrackingState,
-    nadir_sun_illumination_cos,
+    EphemerustPropagator, OrbitalPropagator, TrackingError, TrackingProvider, TrackingState,
 };
 pub use validate::{
     FLAG_ADCS_BODY_RATE_ANOMALY, FLAG_BELOW_HORIZON, FLAG_DOPPLER_ANOMALY,
     FLAG_EPS_SUBSYSTEM_ANOMALY, FLAG_LINK_BUDGET_ANOMALY, FLAG_POINTING_ANOMALY,
-    FLAG_RSSI_RESERVED, FLAG_THERMAL_SUBSYSTEM_ANOMALY, HilSubsystemCvParams,
-    LinkBudgetStationParams, RfMetadata, SPEED_OF_LIGHT_M_S, angular_separation_deg,
-    apply_physics_validation, expected_carrier_hz, expected_rx_power_dbm, free_space_path_loss_db,
+    FLAG_RSSI_RESERVED, FLAG_THERMAL_SUBSYSTEM_ANOMALY, LinkBudgetStationParams, RfMetadata,
+    SPEED_OF_LIGHT_M_S, ValidationContext, angular_separation_deg, apply_physics_validation,
+    expected_carrier_hz, expected_rx_power_dbm, free_space_path_loss_db,
 };
+
+#[cfg(feature = "hil")]
+pub use validate::HilSubsystemCvParams;
 
 pub use http::{OpenMctRealtimeMessageV1, router};
 pub use metrics::{GatewayMetrics, GatewayMetricsSnapshot};

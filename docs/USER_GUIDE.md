@@ -74,6 +74,8 @@ cargo build -p chronus-gateway
 
 (Optional) `cargo build -p chronus-hil-sim` if you want the synthetic “satellite” feeder below.
 
+**The `hil` feature.** Bits **4–6** (the toy EPS, thermal and body-rate checks) belong to the synthetic hardware-in-the-loop demo models, not to flight-grade physics, so they are compiled in only with the `hil` cargo feature: `cargo run -p chronus-gateway --features hil`. A default build never sets those bits and does not compute the toy Sun-illumination model. Everything else (bits 0–3) is always on.
+
 ### Start the gateway (defaults)
 
 With **no config file**, the binary loads **`IngestConfig::default()`** and **`StationConfig::default()`**: validated numbers, plus the **inline public ISS (ZARYA) reference TLE** already embedded in the code (not a live network fetch). That gives you a propagator for demos.
@@ -171,7 +173,7 @@ mission is healthy — it only means **this gateway** did not flag those specifi
 | **1** | `0x02` | **Horizon** — “From the TLE and your station, this spacecraft is **below** your configured minimum elevation.” | Needs a working propagator and valid geometry. |
 | **2** | `0x04` | **Link budget (free-space)** — “The measured received power I was given disagrees with a **simple free-space** prediction by more than **T-RSSI**.” | Skipped if **no measured Rx power**, or non-finite, or impossible geometry (e.g. zero range). Same story as bit **0**: **needs `RfMetadata` wiring** to light in production. |
 | **3** | `0x08` | **Pointing** — “The measured azimuth/elevation I was given point more than **T-POINT** away from where I think the dish should aim” (the *apparent*, refracted direction by default). | Skipped unless **both** azimuth **and** elevation are supplied and finite. Again: **default path = skip**. |
-| **4** | `0x10` | **EPS (toy)** — “The **HIL v1** bus voltage does not match the toy Sun-illumination map within **T-EPS**.” | Only when the frame is **HIL v1** (allowed APID + valid decode) and illumination is usable. |
+| **4** | `0x10` | **EPS (toy)** — “The **HIL v1** bus voltage does not match the toy Sun-illumination map within **T-EPS**.” | Only in a `--features hil` build, when the frame is **HIL v1** (allowed APID + valid decode) and illumination is usable. |
 | **5** | `0x20` | **Thermal (toy)** — “The **HIL v1** panel temperature is outside the toy thermal band (**T-THERMAL**).” | Same gate as bit **4**. |
 | **6** | `0x40` | **Body rate (toy)** — “The **HIL v1** spin-rate scalar exceeds your configured ceiling (**T-BODYRATE**).” | Skipped if the ceiling is misconfigured or the rate is non-finite. |
 | **7** | `0x80` | **Reserved** — do not interpret; should stay **0** until a future charter assigns it. | — |
