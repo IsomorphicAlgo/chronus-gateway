@@ -1,7 +1,7 @@
 # Demo & showcase assets (workspace root)
 
 This directory holds **Showcase S1–S4** assets: Docker spine, **Vite dashboard**, **UDP replay** fixtures,
-**curated public CCSDS fixtures** (S4), and Open MCT backlog notes.
+**curated public CCSDS fixtures** (S4), and a NASA Open MCT page with history (Tranche 3).
 It is **not** shipped inside crates.io packages (`Methodology.md` **D-025**).
 
 ## Quick links
@@ -13,7 +13,7 @@ It is **not** shipped inside crates.io packages (`Methodology.md` **D-025**).
 | [`dashboard/README.md`](dashboard/README.md) | **S2** Vite + TypeScript UI (`npm run dev`) |
 | [`replay/README.md`](replay/README.md) | **S3** synthetic TM UDP replay (`chronus-replay`, hex/JSONL fixtures) |
 | [`fixtures/README.md`](fixtures/README.md) | **S4** ISS + AMSAT CCSDS fixtures (clean + robustness pairs) |
-| [`openmct/README.md`](openmct/README.md) | Open MCT adapter backlog (**Track A**) |
+| [`openmct/README.md`](openmct/README.md) | NASA Open MCT + Chronus plugin: dictionary, history, realtime (**Track A**) |
 | [`Dockerfile`](Dockerfile) | Multi-stage image: build both binaries (deps from crates.io, **D-037**) |
 | [`gateway.docker.toml`](gateway.docker.toml) | Ingest + HTTP bind on `0.0.0.0` for container networking |
 

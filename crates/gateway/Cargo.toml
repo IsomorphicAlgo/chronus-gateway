@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Fast Rust TMTC gateway: CCSDS ingest, physics co-validation (Ephemerust), Open MCT JSON fan-out"
+description = "Fast Rust CCSDS telemetry gateway: space packets and TM transfer frames, physics co-validation (Ephemerust), Open MCT realtime + history"
 # Packaged into the tarball root as README.md; crates.io renders it (relative links resolve
 # against `repository`). See finalization plan D.3.
 readme = "../../README.md"
@@ -51,6 +51,8 @@ tower = { workspace = true, features = ["util"] }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake"] }
 criterion = { version = "0.8", features = ["async_tokio"] }
 proptest = "1"
+# Tranche 3: validates real gateway output against the published JSON Schemas (no network).
+jsonschema = { version = "0.60", default-features = false }
 
 [[bench]]
 name = "parse_validate"

@@ -2,7 +2,13 @@
 /target
 .git
 .gitignore
-personal.mdlogs_*
+personal.md
+logs_*
 PLANS.md
 *.pdf
 .cg-src.tgz
+# Demo front ends' Node dependencies and build output (installed locally, never needed in images)
+demo/dashboard/node_modules
+demo/dashboard/dist
+demo/openmct/node_modules
+demo/openmct/dist

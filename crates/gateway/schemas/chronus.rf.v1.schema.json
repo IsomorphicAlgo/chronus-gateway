@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/IsomorphicAlgo/chronus-gateway/blob/master/crates/gateway/schemas/chronus.rf.v1.schema.json",
+  "title": "chronus.rf.v1",
+  "description": "One receiver measurement, sent as a single JSON object per UDP datagram (at most 2048 bytes) to the gateway's rf.bind_addr. Any subset of the measurements may be present; a check without its measurement is skipped. Unknown fields are ignored.",
+  "type": "object",
+  "required": ["chronus_schema"],
+  "additionalProperties": true,
+  "properties": {
+    "chronus_schema": { "const": "chronus.rf.v1" },
+    "t": { "type": "string", "format": "date-time", "description": "When the measurement was taken (UTC). Omit it to have the gateway stamp the arrival time." },
+    "carrier_hz": { "type": "number", "exclusiveMinimum": 0, "description": "Measured downlink carrier frequency (Doppler check)." },
+    "rx_power_dbm": { "type": "number", "description": "Measured received power (link-budget check)." },
+    "az_deg": { "type": "number", "description": "Measured antenna azimuth, clockwise from true north (pointing check; needs el_deg too)." },
+    "el_deg": { "type": "number", "description": "Measured antenna elevation above the horizon (pointing check; needs az_deg too)." }
+  },
+  "dependentRequired": { "az_deg": ["el_deg"], "el_deg": ["az_deg"] }
+}

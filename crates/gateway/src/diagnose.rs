@@ -421,6 +421,33 @@ impl Explain for ConfigError {
                 "Set `station.{field}` to a value >= 0 (defaults: 1.0 km at epoch, 2.0 km/day), \
                  or delete the line."
             )),
+            ConfigError::InvalidRfTime {
+                field,
+                value,
+                expected,
+            } => Diagnosis::new(
+                "CG-129",
+                E,
+                format!("Setting `{field}` = {value} is not usable."),
+                format!("Expected {expected}."),
+            )
+            .fix(format!(
+                "Set `{field}` to an accepted value, or delete the line to use the default."
+            )),
+            ConfigError::InvalidSetting {
+                field,
+                value,
+                expected,
+            } => Diagnosis::new(
+                "CG-134",
+                E,
+                format!("Setting `{field}` = {value} is not usable."),
+                format!("Expected {expected}."),
+            )
+            .fix(format!(
+                "Set `{field}` to an accepted value, or delete the line to use the default."
+            ))
+            .fix("`docs/TM_TRANSFER_FRAMES.md` and `gateway.example.toml` describe every framing and history setting."),
             ConfigError::OemRead { path, source } => {
                 let cwd = current_dir_display();
                 Diagnosis::new(
@@ -681,7 +708,60 @@ pub fn config_warnings(ingest: &IngestConfig, station: &StationConfig) -> Vec<Di
             .fix("Use the default `ingest.max_datagram_size = 65542` unless you have a reason not to."),
         );
     }
+    let fr = &station.framing;
+    if fr.mode == crate::config::FramingMode::TmFrames
+        && !fr.asm
+        && fr
+            .frame_length
+            .is_some_and(|l| l > ingest.max_datagram_size)
+    {
+        out.push(
+            Diagnosis::new(
+                "CG-136",
+                Severity::Warning,
+                format!(
+                    "Transfer frames of {} bytes cannot fit in a {}-byte datagram.",
+                    fr.frame_length.unwrap_or_default(),
+                    ingest.max_datagram_size
+                ),
+                "Without a sync marker each datagram must hold whole frames, so every frame \
+                 would be cut off and rejected.",
+            )
+            .fix("Raise `ingest.max_datagram_size`, or set `framing.asm = true` if the stream has sync markers."),
+        );
+    }
     out
+}
+
+impl Explain for crate::history::HistoryError {
+    fn explain(&self) -> Diagnosis {
+        match self {
+            crate::history::HistoryError::Io { path, source } => Diagnosis::new(
+                "CG-135",
+                Severity::Error,
+                format!(
+                    "The history file {} can't be used: {source}.",
+                    path.display()
+                ),
+                "`history.persist_path` must point to a file the gateway can read and write; \
+                 its folder must already exist.",
+            )
+            .fix("Create the folder, or point `history.persist_path` somewhere writable.")
+            .fix("Remove `history.persist_path` to keep history in memory only.")
+            .fix(format!(
+                "Relative paths are resolved from the folder the gateway runs in ({}).",
+                current_dir_display()
+            )),
+            #[allow(unreachable_patterns)]
+            other => Diagnosis::new(
+                "CG-135",
+                Severity::Error,
+                format!("The history file can't be used: {other}."),
+                "`history.persist_path` could not be opened.",
+            )
+            .fix("Remove `history.persist_path` to keep history in memory only."),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -696,6 +776,8 @@ pub enum Listener {
     Udp,
     /// The HTTP + WebSocket dashboard server (`ingest.http_bind`).
     Http,
+    /// The `chronus.rf.v1` receiver-metadata socket (`rf.bind_addr`).
+    Rf,
 }
 
 impl Listener {
@@ -703,6 +785,7 @@ impl Listener {
         match self {
             Listener::Udp => "ingest.bind_addr",
             Listener::Http => "ingest.http_bind",
+            Listener::Rf => "rf.bind_addr",
         }
     }
 
@@ -710,6 +793,7 @@ impl Listener {
         match self {
             Listener::Udp => "listen for telemetry on UDP",
             Listener::Http => "start the dashboard server on HTTP",
+            Listener::Rf => "listen for receiver metadata on UDP",
         }
     }
 }
@@ -1282,6 +1366,7 @@ pub fn assess_health(inputs: &HealthInputs<'_>) -> HealthReport {
                  sending to this port.",
             )
             .fix("Configure the sender for CCSDS Space Packets (telemetry, one packet per UDP message).")
+            .fix("If the sender emits TM Transfer Frames or CADUs (sync marker 1ACFFC1D), set `[framing] mode = \"tm_frames\"` (docs/TM_TRANSFER_FRAMES.md).")
             .fix("Check the gateway log for the first rejected packet; it explains exactly what was wrong."),
         );
     } else if parse_errors > 0 && parse_errors * 10 > parse_errors + emitted {
@@ -1382,7 +1467,9 @@ pub fn assess_health(inputs: &HealthInputs<'_>) -> HealthReport {
                 "CG-509",
                 Severity::Info,
                 "Telemetry is arriving, but no dashboard is connected to view it.",
-                "Telemetry is streamed live only to connected dashboards; nothing is stored.",
+                "Telemetry is still processed and the most recent messages are kept in history \
+                 (unless `history.capacity = 0`), so a dashboard that connects later can catch up \
+                 from `GET /api/v1/chronus/history`.",
             )
             .fix(format!(
                 "Connect Open MCT or another WebSocket client to {ws}."
@@ -1437,10 +1524,277 @@ pub fn assess_health(inputs: &HealthInputs<'_>) -> HealthReport {
     }
 }
 
+/// Findings about the `chronus.rf.v1` side channel and spacecraft time decoding, appended to the
+/// main health report by [`crate::state::SharedGateway::health_report`].
+///
+/// Empty when the side channel is disabled. Pure function of counters, like [`assess_health`].
+#[must_use]
+pub fn assess_rf(rf: &crate::rf::RfSnapshot, frames_received: u64) -> Vec<Diagnosis> {
+    let mut out = Vec::new();
+    if !rf.enabled {
+        return out;
+    }
+    if rf.samples_invalid > 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-512",
+                Severity::Warning,
+                format!(
+                    "{} receiver-metadata datagram(s) were rejected as invalid.",
+                    rf.samples_invalid
+                ),
+                "Something is sending to the `rf.bind_addr` port that is not valid \
+                 `chronus.rf.v1` JSON (wrong schema, malformed, or non-numeric values).",
+            )
+            .fix("Check the gateway log for the first rejected datagram.")
+            .fix("Make sure only your receiver sidecar sends to the `rf.bind_addr` port."),
+        );
+    }
+    if frames_received > 0 && rf.samples_received == 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-511",
+                Severity::Warning,
+                "Telemetry is arriving, but no receiver measurements have been received.",
+                "The Doppler, link-budget and pointing checks need `chronus.rf.v1` samples; \
+                 without them those three checks are skipped.",
+            )
+            .fix("Start your receiver sidecar (or `chronus-replay --rf-dest ...`) pointed at `rf.bind_addr`.")
+            .fix("Check that its destination address and port match `rf.bind_addr`."),
+        );
+    } else if rf.frames_unmatched >= 10 && rf.frames_unmatched > rf.frames_matched {
+        out.push(
+            Diagnosis::new(
+                "CG-511",
+                Severity::Warning,
+                format!(
+                    "Most telemetry frames ({} of {}) found no receiver measurement close in time.",
+                    rf.frames_unmatched,
+                    rf.frames_matched + rf.frames_unmatched
+                ),
+                "Samples are matched to frames by timestamp within `rf.window_ms`; the sender's \
+                 clock may be offset from the gateway's, or samples are arriving too rarely.",
+            )
+            .fix("Omit `t` from samples so the gateway stamps them on arrival, or sync the clocks (NTP).")
+            .fix("Raise `rf.window_ms`, or send RF samples at least as often as telemetry."),
+        );
+    }
+    out
+}
+
+/// Plain-English findings about TM Transfer Frame deframing (`CG-513`); none in packet mode.
+#[must_use]
+pub fn assess_framing(f: &crate::frames::FramingSnapshot) -> Vec<Diagnosis> {
+    let mut out = Vec::new();
+    if f.mode != "tm_frames" || f.datagrams == 0 {
+        return out;
+    }
+    let settings = "framing.frame_length, framing.fecf, framing.asm and framing.derandomize";
+    if f.frames_ok == 0 {
+        let rejected = f.frames_crc_error + f.frames_invalid;
+        let (headline, why) = if rejected > 0 {
+            (
+                format!(
+                    "Transfer frames are arriving, but none are usable ({} failed the CRC, {} were malformed).",
+                    f.frames_crc_error, f.frames_invalid
+                ),
+                format!(
+                    "Every frame is checked against the link's managed parameters ({settings}); \
+                     when all of them fail, one of those settings does not match the spacecraft, \
+                     or the frames still carry Reed-Solomon parity or randomization."
+                ),
+            )
+        } else if f.frames_other_spacecraft + f.frames_vc_filtered > 0 {
+            (
+                format!(
+                    "Every frame was filtered out ({} from another spacecraft, {} on an excluded virtual channel).",
+                    f.frames_other_spacecraft, f.frames_vc_filtered
+                ),
+                "`framing.spacecraft_id` or `framing.virtual_channels` excludes all of the \
+                 frames that arrive."
+                    .to_string(),
+            )
+        } else {
+            (
+                "Data is arriving, but no transfer frame has been found in it yet.".to_string(),
+                format!(
+                    "With `framing.asm = true` the gateway waits for the sync marker 1ACFFC1D; \
+                     {} byte(s) were searched without finding a complete frame.",
+                    f.bytes_discarded
+                ),
+            )
+        };
+        out.push(
+            Diagnosis::new("CG-513", Severity::Error, headline, why)
+                .fix("Check the frame length: it counts the frame header through the CRC, without the 4-byte sync marker.")
+                .fix("If the front end already removed the sync marker, set `framing.asm = false`; if frames have no CRC, set `framing.fecf = false`.")
+                .fix("Feed frames after Reed-Solomon decoding (gr-satellites and most SDR decoders do this), and set `framing.derandomize` to match.")
+                .fix("Unset `framing.spacecraft_id` / `framing.virtual_channels` to accept everything while testing."),
+        );
+        return out;
+    }
+    let total = f.frames_ok + f.frames_crc_error + f.frames_invalid;
+    if (f.frames_crc_error + f.frames_invalid) * 10 > total {
+        out.push(
+            Diagnosis::new(
+                "CG-513",
+                Severity::Warning,
+                format!(
+                    "{} of {total} transfer frames were rejected ({} CRC errors).",
+                    f.frames_crc_error + f.frames_invalid,
+                    f.frames_crc_error
+                ),
+                "More than 10% of frames are damaged: the radio link is marginal, or frames are \
+                 being cut off on the way to the gateway.",
+            )
+            .fix("Check signal quality and the front end's decoder statistics.")
+            .fix("Make sure `ingest.max_datagram_size` is larger than one frame."),
+        );
+    }
+    if f.vc_frame_gaps > 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-513",
+                Severity::Info,
+                format!(
+                    "{} gap(s) in the virtual-channel frame counters: frames were lost before reaching the gateway.",
+                    f.vc_frame_gaps
+                ),
+                format!(
+                    "A packet that spans a lost frame cannot be rebuilt; {} partial packet(s) were dropped.",
+                    f.packets_dropped
+                ),
+            )
+            .fix("Occasional gaps are normal at the edges of a pass; frequent gaps point to a weak link or UDP loss."),
+        );
+    }
+    out
+}
+
+/// Plain-English findings about the history file (`CG-514`).
+#[must_use]
+pub fn assess_history(h: &crate::history::HistorySnapshot) -> Vec<Diagnosis> {
+    let mut out = Vec::new();
+    if h.persist_errors > 0 || h.persist_dropped > 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-514",
+                Severity::Warning,
+                format!(
+                    "{} message(s) could not be written to the history file ({} errors, {} skipped because the disk was too slow).",
+                    h.persist_errors + h.persist_dropped,
+                    h.persist_errors,
+                    h.persist_dropped
+                ),
+                "History is still kept in memory, but those messages will be missing after a restart.",
+            )
+            .fix("Check free disk space and permissions on `history.persist_path`; the gateway log has the first error."),
+        );
+    }
+    if h.load_skipped > 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-514",
+                Severity::Info,
+                format!(
+                    "{} line(s) of the history file could not be reloaded at startup and were skipped.",
+                    h.load_skipped
+                ),
+                "They were not valid telemetry messages (a damaged file, or one written by another program).",
+            )
+            .fix("Nothing to do: the file has been rewritten without them."),
+        );
+    }
+    out
+}
+
+impl HealthReport {
+    /// Merges extra findings (e.g. [`assess_rf`]) and re-derives status when they are worse.
+    #[must_use]
+    pub fn with_extra_findings(mut self, extra: Vec<Diagnosis>) -> Self {
+        if extra.is_empty() {
+            return self;
+        }
+        let worst = extra.iter().map(|d| d.severity).max();
+        self.findings.extend(extra);
+        self.findings.sort_by_key(|d| std::cmp::Reverse(d.severity));
+        match worst {
+            Some(Severity::Error) => {
+                self.status = OverallStatus::Problem;
+                self.headline = "Something needs fixing -- see the first finding.".to_string();
+            }
+            Some(Severity::Warning)
+                if matches!(self.status, OverallStatus::Ok | OverallStatus::Waiting) =>
+            {
+                self.status = OverallStatus::Attention;
+                self.headline = "Running, with warnings worth a look.".to_string();
+            }
+            _ => {}
+        }
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::Duration;
+
+    fn rf_snap(enabled: bool, rx: u64, bad: u64, hit: u64, miss: u64) -> crate::rf::RfSnapshot {
+        let s = crate::rf::RfStore::new(&crate::config::RfConfig::default());
+        let mut snap = s.snapshot();
+        snap.enabled = enabled;
+        snap.samples_received = rx;
+        snap.samples_invalid = bad;
+        snap.frames_matched = hit;
+        snap.frames_unmatched = miss;
+        snap
+    }
+
+    #[test]
+    fn rf_findings_stay_silent_when_disabled_or_healthy() {
+        assert!(assess_rf(&rf_snap(false, 0, 5, 0, 99), 100).is_empty());
+        assert!(assess_rf(&rf_snap(true, 50, 0, 40, 2), 100).is_empty());
+        assert!(
+            assess_rf(&rf_snap(true, 0, 0, 0, 0), 0).is_empty(),
+            "nothing expected yet"
+        );
+    }
+
+    #[test]
+    fn rf_findings_explain_missing_unmatched_and_invalid() {
+        let none = assess_rf(&rf_snap(true, 0, 0, 0, 0), 5);
+        assert_eq!(none[0].code, "CG-511");
+        assert!(none[0].summary.contains("no receiver measurements"));
+        let skew = assess_rf(&rf_snap(true, 100, 0, 2, 50), 52);
+        assert_eq!(skew[0].code, "CG-511");
+        assert!(skew[0].fixes.iter().any(|f| f.contains("window_ms")));
+        let bad = assess_rf(&rf_snap(true, 10, 3, 9, 1), 10);
+        assert_eq!(bad[0].code, "CG-512");
+        assert!(bad.iter().all(|d| !d.fixes.is_empty()));
+    }
+
+    #[test]
+    fn extra_findings_raise_status_but_never_hide_errors() {
+        let base = HealthReport {
+            status: OverallStatus::Ok,
+            headline: "fine".into(),
+            findings: vec![],
+        };
+        let r = base.clone().with_extra_findings(vec![]);
+        assert_eq!(r.status, OverallStatus::Ok);
+        let warn = Diagnosis::new("CG-511", Severity::Warning, "w", "c").fix("f");
+        let r = base.clone().with_extra_findings(vec![warn.clone()]);
+        assert_eq!(r.status, OverallStatus::Attention);
+        let problem = HealthReport {
+            status: OverallStatus::Problem,
+            headline: "bad".into(),
+            findings: vec![Diagnosis::new("CG-502", Severity::Error, "e", "c").fix("f")],
+        };
+        let r = problem.with_extra_findings(vec![warn]);
+        assert_eq!(r.status, OverallStatus::Problem);
+        assert_eq!(r.findings[0].code, "CG-502", "errors stay first");
+    }
 
     fn addr(s: &str) -> SocketAddr {
         s.parse().expect("test address")
@@ -1678,6 +2032,11 @@ mod tests {
             ConfigError::InvalidHilBodyRateMaxAbs(0.0),
             ConfigError::InvalidChannelCapacity(0),
             ConfigError::InvalidMaxDatagramSize(0),
+            ConfigError::InvalidRfTime {
+                field: "rf.window_ms",
+                value: "0".into(),
+                expected: "1..=60000 milliseconds",
+            },
             ConfigError::TleRead {
                 path: "x".into(),
                 source: io::Error::other("boom"),
@@ -1691,7 +2050,7 @@ mod tests {
             assert!(d.code.starts_with("CG-1"), "{d}");
             codes.insert(d.code);
         }
-        assert_eq!(codes.len(), 18, "each variant should have its own code");
+        assert_eq!(codes.len(), 19, "each variant should have its own code");
     }
 
     #[test]

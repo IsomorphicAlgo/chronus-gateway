@@ -70,6 +70,9 @@ async fn health_returns_200() {
 async fn websocket_receives_openmct_json() {
     let cancel = CancellationToken::new();
     let state = test_gateway();
+    // Since 0.5.0 the WebSocket relays what the single processing pipeline publishes.
+    let _pipeline =
+        chronus_gateway::pipeline::spawn(Arc::clone(&state), cancel.clone().cancelled_owned());
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
         .await
         .expect("bind");
@@ -119,6 +122,9 @@ async fn websocket_receives_openmct_json() {
 async fn second_client_still_receives_after_first_disconnects() {
     let cancel = CancellationToken::new();
     let state = test_gateway();
+    // Since 0.5.0 the WebSocket relays what the single processing pipeline publishes.
+    let _pipeline =
+        chronus_gateway::pipeline::spawn(Arc::clone(&state), cancel.clone().cancelled_owned());
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
         .await
         .expect("bind");

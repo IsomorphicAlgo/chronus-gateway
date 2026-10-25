@@ -82,6 +82,13 @@ pub struct TelemetryFrame {
     /// Bitwise anomaly flags set by the Physics-Telemetry Co-Validation engine (Milestone 4).
     /// `0` means no anomaly detected.
     pub physics_flags: u8,
+    /// Extended co-validation bits (`physics_flags_v2`, Methodology D-016/D-047): time-tag
+    /// anomalies from [`crate::time`]. `0` means none.
+    pub physics_flags_v2: u8,
+    /// Spacecraft time decoded from the secondary header (Tranche 2), if configured and present.
+    pub onboard_time: Option<DateTime<Utc>>,
+    /// Bytes at the start of the data field occupied by the decoded time field (0 if none).
+    pub(crate) time_field_len: usize,
 }
 
 impl TelemetryFrame {
@@ -90,6 +97,14 @@ impl TelemetryFrame {
         // Invariant (F-5): `parse_telemetry` only constructs a frame after verifying
         // `raw.len() >= CCSDS_PRIMARY_HEADER_LEN + payload_len`, so this index cannot panic.
         &self.raw[CCSDS_PRIMARY_HEADER_LEN..CCSDS_PRIMARY_HEADER_LEN + self.payload_len]
+    }
+
+    /// The packet data field **after** any decoded time field: the application's own bytes.
+    ///
+    /// Equals [`Self::payload`] unless spacecraft time decoding is enabled and the packet carried
+    /// a time code. Payload interpreters (for example the HIL decoder) read from here.
+    pub fn user_data(&self) -> &[u8] {
+        self.payload().get(self.time_field_len..).unwrap_or(&[])
     }
 
     /// Length of the packet data field in bytes.
@@ -160,6 +175,9 @@ pub fn parse_telemetry(frame: &RawFrame) -> Result<TelemetryFrame, CcsdsError> {
         received_at: frame.received_at,
         source: frame.source,
         physics_flags: 0,
+        physics_flags_v2: 0,
+        onboard_time: None,
+        time_field_len: 0,
     })
 }
 
@@ -180,13 +198,50 @@ pub fn parse_telemetry(frame: &RawFrame) -> Result<TelemetryFrame, CcsdsError> {
 /// assert_eq!(u16::from_be_bytes([pkt[4], pkt[5]]), 9);
 /// ```
 pub fn encode_synthetic_tm(apid: u16, seq_count: u16, payload: &[u8]) -> Vec<u8> {
+    encode_tm(apid, seq_count, false, payload)
+}
+
+/// Like [`encode_synthetic_tm`], but sets the **secondary-header flag** and places `time_field`
+/// (see [`crate::time::encode_cds`] / [`crate::time::encode_cuc`]) ahead of `user_data`.
+///
+/// This is the packet shape the gateway expects when `time.format` is configured.
+///
+/// ```
+/// use chronus_gateway::ccsds::{encode_synthetic_tm_with_time, parse_telemetry};
+/// use chronus_gateway::ingest::RawFrame;
+/// use chronus_gateway::time::encode_cds;
+///
+/// let t = chrono::Utc::now();
+/// let pkt = encode_synthetic_tm_with_time(0x42, 1, &encode_cds(t).unwrap(), b"data");
+/// let tm = parse_telemetry(&RawFrame {
+///     bytes: pkt.as_slice().into(),
+///     received_at: t,
+///     source: "127.0.0.1:1".parse().unwrap(),
+/// })
+/// .unwrap();
+/// assert!(tm.has_secondary_header);
+/// assert_eq!(tm.payload().len(), 6 + 4);
+/// ```
+pub fn encode_synthetic_tm_with_time(
+    apid: u16,
+    seq_count: u16,
+    time_field: &[u8],
+    user_data: &[u8],
+) -> Vec<u8> {
+    let mut body = Vec::with_capacity(time_field.len() + user_data.len());
+    body.extend_from_slice(time_field);
+    body.extend_from_slice(user_data);
+    encode_tm(apid, seq_count, true, &body)
+}
+
+fn encode_tm(apid: u16, seq_count: u16, secondary_header: bool, payload: &[u8]) -> Vec<u8> {
     assert!(
         !payload.is_empty(),
         "CCSDS data field must be at least 1 byte"
     );
     let version = 0u16;
     let ptype = 0u16; // TM
-    let sec_hdr = 0u16;
+    let sec_hdr = u16::from(secondary_header);
     let word1 = (version << 13) | (ptype << 12) | (sec_hdr << 11) | (apid & 0x07FF);
     let seq_flags = 0b11u16; // unsegmented
     let word2 = (seq_flags << 14) | (seq_count & 0x3FFF);
@@ -326,5 +381,32 @@ mod tests {
             };
             let _ = parse_telemetry(&frame);
         }
+    }
+
+    #[test]
+    fn user_data_equals_payload_until_a_time_field_is_decoded() {
+        let t = Utc::now();
+        let field = crate::time::encode_cds(t).unwrap();
+        let pkt = encode_synthetic_tm_with_time(9, 1, &field, b"data");
+        let mut tm = parse_telemetry(&frame_from(pkt)).unwrap();
+        assert!(tm.has_secondary_header);
+        assert_eq!(tm.user_data(), tm.payload(), "nothing decoded yet");
+        let cfg = crate::config::TimeConfig {
+            format: crate::time::TimeFormat::Cds,
+            ..Default::default()
+        };
+        crate::time::resolve_frame_time(&cfg, &mut tm);
+        assert!(tm.onboard_time.is_some());
+        assert_eq!(tm.user_data(), b"data", "time field is skipped");
+        assert_eq!(tm.payload().len(), 6 + 4);
+    }
+
+    #[test]
+    fn plain_packets_have_no_secondary_header_or_time() {
+        let tm = parse_telemetry(&frame_from(encode_synthetic_tm(9, 1, b"abc"))).unwrap();
+        assert!(!tm.has_secondary_header);
+        assert!(tm.onboard_time.is_none());
+        assert_eq!(tm.physics_flags_v2, 0);
+        assert_eq!(tm.user_data(), b"abc");
     }
 }

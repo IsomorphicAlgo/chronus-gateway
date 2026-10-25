@@ -6,9 +6,13 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 
 use crate::config::StationConfig;
+use crate::frames::FramingStats;
+use crate::history::HistoryStore;
 use crate::ingest::{IngestStats, RawFrame};
 use crate::metrics::GatewayMetrics;
+use crate::pipeline::{PipelineStats, TELEMETRY_CHANNEL_CAPACITY};
 use crate::propagator::TrackingProvider;
+use crate::rf::RfStore;
 use crate::validate::ValidationContext;
 
 /// Process-wide handles shared between the UDP ingest task and the Axum server.
@@ -17,8 +21,18 @@ use crate::validate::ValidationContext;
 /// added in 1.x.
 #[non_exhaustive]
 pub struct SharedGateway {
-    /// Fan-out of raw datagrams to WebSocket subscribers (and any other consumers).
+    /// Fan-out of raw datagrams from UDP ingest to the processing pipeline (and any other
+    /// consumers).
     pub frame_tx: broadcast::Sender<RawFrame>,
+    /// Processed `openmct.realtime.v1` messages, published once per packet by the
+    /// [`pipeline`](crate::pipeline) and relayed to every WebSocket client.
+    pub telemetry_tx: broadcast::Sender<Arc<str>>,
+    /// Recent-telemetry history (ring buffer, optionally file-backed).
+    pub history: Arc<HistoryStore>,
+    /// TM Transfer Frame deframing counters (all zero in packet mode).
+    pub framing: Arc<FramingStats>,
+    /// Processing-pipeline counters.
+    pub pipeline: Arc<PipelineStats>,
     /// UDP ingest counters.
     pub ingest_stats: Arc<IngestStats>,
     /// Telemetry / WebSocket counters (Milestone 6).
@@ -27,6 +41,9 @@ pub struct SharedGateway {
     pub station: Arc<StationConfig>,
     /// Physics-check tunables, built once from [`Self::station`] in [`SharedGateway::new`].
     pub validation: ValidationContext,
+    /// Receiver-metadata store fed by the `chronus.rf.v1` side channel (empty and inert unless
+    /// `rf.bind_addr` is configured).
+    pub rf: Arc<RfStore>,
     /// Optional SGP4-backed tracking (throttled).
     pub tracking: Option<Arc<TrackingProvider>>,
     /// UDP telemetry address, when known (used in plain-English status messages).
@@ -37,6 +54,10 @@ pub struct SharedGateway {
 
 impl SharedGateway {
     /// Builds shared state; does **not** spawn tasks.
+    ///
+    /// History is kept in memory with `station.history.capacity`; use [`Self::with_history`] to
+    /// install a file-backed store opened with [`HistoryStore::open`]. Start the processing
+    /// pipeline with [`crate::pipeline::spawn`].
     pub fn new(
         frame_tx: broadcast::Sender<RawFrame>,
         ingest_stats: Arc<IngestStats>,
@@ -45,12 +66,20 @@ impl SharedGateway {
         tracking: Option<Arc<TrackingProvider>>,
     ) -> Self {
         let validation = ValidationContext::from_station(&station);
+        let rf = Arc::new(RfStore::new(&station.rf));
+        let (telemetry_tx, _) = broadcast::channel(TELEMETRY_CHANNEL_CAPACITY);
+        let history = Arc::new(HistoryStore::in_memory(station.history.capacity));
         Self {
             frame_tx,
+            telemetry_tx,
+            history,
+            framing: Arc::new(FramingStats::default()),
+            pipeline: Arc::new(PipelineStats::default()),
             ingest_stats,
             gateway_metrics,
             station,
             validation,
+            rf,
             tracking,
             udp_addr: None,
             http_addr: None,
@@ -66,10 +95,19 @@ impl SharedGateway {
         self
     }
 
+    /// Replaces the history store (for example with a file-backed one from
+    /// [`HistoryStore::open`]).
+    #[must_use]
+    pub fn with_history(mut self, history: Arc<HistoryStore>) -> Self {
+        self.history = history;
+        self
+    }
+
     /// Plain-English health assessment of the live counters (see [`crate::diagnose`]).
     pub fn health_report(&self) -> crate::diagnose::HealthReport {
         let ingest = self.ingest_stats.snapshot_struct();
         let gateway = self.gateway_metrics.snapshot();
+        let frames_received = ingest.frames_received;
         crate::diagnose::assess_health(&crate::diagnose::HealthInputs {
             ingest: &ingest,
             gateway: &gateway,
@@ -77,6 +115,14 @@ impl SharedGateway {
             udp_addr: self.udp_addr,
             http_addr: self.http_addr,
         })
+        .with_extra_findings(crate::diagnose::assess_rf(
+            &self.rf.snapshot(),
+            frames_received,
+        ))
+        .with_extra_findings(crate::diagnose::assess_framing(
+            &self.framing.snapshot(self.station.framing.mode),
+        ))
+        .with_extra_findings(crate::diagnose::assess_history(&self.history.snapshot()))
     }
 }
 

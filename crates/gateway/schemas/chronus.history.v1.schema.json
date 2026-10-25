@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/IsomorphicAlgo/chronus-gateway/blob/master/crates/gateway/schemas/chronus.history.v1.schema.json",
+  "title": "chronus.history.v1",
+  "description": "Response of GET /api/v1/chronus/history: recent telemetry messages from the gateway's history ring, oldest first. When more messages match than 'limit' allows, the newest are returned and 'truncated' is true.",
+  "type": "object",
+  "required": ["chronus_schema", "count", "truncated", "capacity", "messages"],
+  "additionalProperties": true,
+  "properties": {
+    "chronus_schema": { "const": "chronus.history.v1" },
+    "start": { "type": ["integer", "null"], "description": "Lower time bound applied (ms since the Unix epoch), or null." },
+    "end": { "type": ["integer", "null"], "description": "Upper time bound applied (ms since the Unix epoch), or null." },
+    "apid": { "type": ["integer", "null"], "minimum": 0, "maximum": 2047, "description": "APID filter applied, or null." },
+    "count": { "type": "integer", "minimum": 0, "description": "Number of messages returned." },
+    "truncated": { "type": "boolean", "description": "True when older matching messages were left out." },
+    "capacity": { "type": "integer", "minimum": 0, "description": "How many messages the gateway keeps (history.capacity)." },
+    "messages": {
+      "type": "array",
+      "items": { "$ref": "https://github.com/IsomorphicAlgo/chronus-gateway/blob/master/crates/gateway/schemas/openmct.realtime.v1.schema.json" }
+    }
+  }
+}

@@ -12,6 +12,9 @@ Two ways to run the gateway stack: **native Rust** or **Docker Compose**. All de
 | HTTP health | `http://127.0.0.1:8080/health` |
 | Metrics JSON | `http://127.0.0.1:8080/api/v1/chronus/metrics` |
 | Open MCT WebSocket | `ws://127.0.0.1:8080/telemetry/openmct` |
+| Recent history (0.5.0) | `http://127.0.0.1:8080/api/v1/chronus/history` |
+| Open MCT dictionary (0.5.0) | `http://127.0.0.1:8080/api/v1/chronus/openmct/dictionary` |
+| Open MCT demo page (0.5.0) | `http://127.0.0.1:5174` (`npm run dev` in `demo/openmct/`) |
 
 ---
 
@@ -171,6 +174,39 @@ telecommand, and garbage lines without panicking; metrics should advance only fo
 interleave a clean line. Automated checks: `cargo test -p chronus-gateway --test s4_fixtures`.
 
 Acceptance: [`docs/Demo_Test.md`](Demo_Test.md#s4--optional-public-fixtures-acceptance).
+
+---
+
+## Path F — NASA Open MCT with history and TM frames (Tranche 3)
+
+**Prerequisites:** Rust **1.89+**, Node.js **24 LTS**.
+
+1. Start the gateway with a config that has the settings the fixtures need. History is on by
+   default; add `persist_path` to keep it across restarts:
+
+   ```toml
+   [rf]
+   bind_addr = "127.0.0.1:7302"
+   [time]
+   format = "cds"
+   max_skew_s = 0.0
+   [history]
+   persist_path = "history.jsonl"
+   ```
+
+2. `cd demo/openmct && npm install && npm run dev`, then open `http://127.0.0.1:5174`.
+3. Replay a lab ISS pass with a Doppler fault part-way through:
+
+   ```bash
+   cargo run -p chronus-replay -- -f demo/replay/fixtures/iss_pass_lab.jsonl --rf-dest 127.0.0.1:7302 --delay-ms 30
+   ```
+
+4. In Open MCT, open **ISS (ZARYA) → Elevation** and **Physics alarm flags**. Reload the page, or
+   stop and restart the gateway: the pass is still there, served from history.
+
+**Transfer frames:** add `[framing] mode = "tm_frames"`, `frame_length = 223`, `asm = true`,
+`derandomize = true` and replay `demo/replay/fixtures/tm_frames_lab.hex` instead. See
+[`TM_TRANSFER_FRAMES.md`](TM_TRANSFER_FRAMES.md) and [`OPENMCT.md`](OPENMCT.md).
 
 ---
 

@@ -1,7 +1,7 @@
 //! # ChronusGateway-RS
 //!
-//! An asynchronous, physics-validated Telemetry & Command (TMTC) gateway that bridges raw
-//! spacecraft downlinks and web-based mission control (e.g. NASA Open MCT).
+//! An asynchronous, physics-validated CCSDS telemetry gateway (the telemetry half of TMTC) that
+//! bridges raw spacecraft downlinks and web-based mission control (e.g. NASA Open MCT).
 //!
 //! Implemented so far: the [`propagator`] seam, the asynchronous UDP [`ingest`] loop (Milestone 1),
 //! [`ccsds`] Space Packet parsing (Milestone 2), station-configured tracking (Milestone 3), the
@@ -9,6 +9,15 @@
 //! distribution with Open MCT–shaped JSON ([`http`], Milestone 5), observability / benches / CI
 //! gates (Milestone 6), the NeXosim HIL workspace crate `chronus-hil-sim` (Milestone 7), and
 //! optional TOML file configuration ([`config::file`], Milestone 8). See `docs/BUILD_PLAN.md`.
+//! The 1.0 plan added the `chronus.rf.v1` receiver side channel ([`rf`]) and spacecraft time
+//! ([`time`]) in 0.4, then CCSDS TM Transfer Frames ([`frames`]), the single processing
+//! [`pipeline`], recent-telemetry [`history`] and the Open MCT dictionary ([`openmct`]) in 0.5.
+//!
+//! ## Scope: telemetry only
+//!
+//! Despite the TMTC name, the gateway is **downlink-only**: it never builds, forwards or transmits
+//! telecommands, and TC packets arriving on the telemetry port are rejected. Uplink is out of scope
+//! for 1.x (`docs/TELECOMMAND.md`, `Methodology.md` D-050).
 //! Post-M8 co-validation extensions are chartered in **`Methodology.md` D-016** and
 //! `docs/EXTENDED_COVALIDATION_PLAN.md` (**CV-0…CV-5**; **CV-1…CV-5** implemented — synthetic HIL TM in [`hil_tm`], subsystem checks in [`validate`] / [`propagator`]).
 //!
@@ -34,39 +43,50 @@
 pub mod ccsds;
 pub mod config;
 pub mod diagnose;
+pub mod frames;
 pub mod hil_tm;
+pub mod history;
 pub mod http;
 pub mod ingest;
 pub mod metrics;
 pub mod oem;
+pub mod openmct;
+pub mod pipeline;
 pub mod propagator;
+pub mod rf;
 pub mod state;
+pub mod time;
 pub mod validate;
 
-pub use ccsds::{CcsdsError, TelemetryFrame, encode_synthetic_tm};
+pub use ccsds::{CcsdsError, TelemetryFrame, encode_synthetic_tm, encode_synthetic_tm_with_time};
 pub use config::{
-    ConfigError, ConfigLoadError, EphemerisSource, HilConfig, IngestConfig, SiteConfig,
-    StationConfig, ToleranceConfig, TrackingConfig, load_effective_gateway_config,
-    load_gateway_from_path, resolve_config_path,
+    ConfigError, ConfigLoadError, EphemerisSource, FramingConfig, FramingMode, HilConfig,
+    HistoryConfig, IngestConfig, RfConfig, SiteConfig, StationConfig, TimeConfig, ToleranceConfig,
+    TrackingConfig, load_effective_gateway_config, load_gateway_from_path, resolve_config_path,
 };
 pub use diagnose::{Diagnosis, Explain, HealthReport, Severity, assess_health};
+pub use frames::{FramingSnapshot, TmDeframer, TmFrameBuilder};
 pub use hil_tm::{
     CCSDS_APID_MAX, DEFAULT_HIL_TM_V1_APID_MAX, DEFAULT_HIL_TM_V1_APID_MIN, DecodedHilTmV1,
     HIL_TM_V1_MAGIC, HIL_TM_V1_PAYLOAD_LEN, HIL_TM_V1_SCHEMA_VERSION, HilTmV1DecodeError,
     decode_hil_tm_v1, encode_hil_tm_v1_payload,
 };
+pub use history::{HistoryQuery, HistoryStore};
 pub use ingest::{IngestStats, RawFrame};
 #[cfg(feature = "hil")]
 pub use propagator::nadir_sun_illumination_cos;
 pub use propagator::{
     EphemerustPropagator, OrbitalPropagator, TrackingError, TrackingProvider, TrackingState,
 };
+pub use rf::{RF_SCHEMA_V1, RfSampleV1, RfSnapshot, RfStore};
+pub use time::{TimeFormat, decode_time};
 pub use validate::{
     FLAG_ADCS_BODY_RATE_ANOMALY, FLAG_BELOW_HORIZON, FLAG_DOPPLER_ANOMALY,
     FLAG_EPS_SUBSYSTEM_ANOMALY, FLAG_LINK_BUDGET_ANOMALY, FLAG_POINTING_ANOMALY,
-    FLAG_RSSI_RESERVED, FLAG_THERMAL_SUBSYSTEM_ANOMALY, LinkBudgetStationParams, RfMetadata,
-    SPEED_OF_LIGHT_M_S, ValidationContext, angular_separation_deg, apply_physics_validation,
-    expected_carrier_hz, expected_rx_power_dbm, free_space_path_loss_db,
+    FLAG_RSSI_RESERVED, FLAG_THERMAL_SUBSYSTEM_ANOMALY, FLAG_V2_TIME_CODE_INVALID,
+    FLAG_V2_TIME_TAG_SKEW, LinkBudgetStationParams, RfMetadata, SPEED_OF_LIGHT_M_S,
+    ValidationContext, angular_separation_deg, apply_physics_validation, expected_carrier_hz,
+    expected_rx_power_dbm, free_space_path_loss_db,
 };
 
 #[cfg(feature = "hil")]

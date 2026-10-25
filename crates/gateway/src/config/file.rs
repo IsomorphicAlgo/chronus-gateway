@@ -8,8 +8,10 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::time::TimeFormat;
+
 use super::{
-    ConfigError, EphemerisSource, HilConfig, IngestConfig, SiteConfig, StationConfig,
+    ConfigError, EphemerisSource, FramingMode, HilConfig, IngestConfig, SiteConfig, StationConfig,
     ToleranceConfig, TrackingConfig,
 };
 
@@ -59,6 +61,151 @@ struct GatewayToml {
     ingest: Option<IngestToml>,
     #[serde(default)]
     station: Option<StationToml>,
+    #[serde(default)]
+    rf: Option<RfToml>,
+    #[serde(default)]
+    time: Option<TimeToml>,
+    #[serde(default)]
+    framing: Option<FramingToml>,
+    #[serde(default)]
+    history: Option<HistoryToml>,
+}
+
+/// Optional `[framing]` table: every key is optional and falls back to `FramingConfig::default`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FramingToml {
+    mode: Option<String>,
+    frame_length: Option<usize>,
+    asm: Option<bool>,
+    derandomize: Option<bool>,
+    fecf: Option<bool>,
+    spacecraft_id: Option<u16>,
+    virtual_channels: Option<Vec<u8>>,
+}
+
+/// Optional `[history]` table: every key is optional and falls back to `HistoryConfig::default`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HistoryToml {
+    capacity: Option<usize>,
+    persist_path: Option<PathBuf>,
+}
+
+/// Applies the optional `[framing]` / `[history]` tables onto an already-built station config.
+fn apply_framing_history(
+    station: &mut StationConfig,
+    framing: Option<FramingToml>,
+    history: Option<HistoryToml>,
+) -> Result<(), ConfigLoadError> {
+    if let Some(f) = framing {
+        if let Some(mode) = f.mode {
+            station.framing.mode = match mode.to_ascii_lowercase().as_str() {
+                "packets" => FramingMode::Packets,
+                "tm" | "tm_frames" => FramingMode::TmFrames,
+                _ => {
+                    return Err(ConfigError::InvalidSetting {
+                        field: "framing.mode",
+                        value: format!("\"{mode}\""),
+                        expected: "\"packets\" or \"tm_frames\"",
+                    }
+                    .into());
+                }
+            };
+        }
+        if f.frame_length.is_some() {
+            station.framing.frame_length = f.frame_length;
+        }
+        if let Some(v) = f.asm {
+            station.framing.asm = v;
+        }
+        if let Some(v) = f.derandomize {
+            station.framing.derandomize = v;
+        }
+        if let Some(v) = f.fecf {
+            station.framing.fecf = v;
+        }
+        if f.spacecraft_id.is_some() {
+            station.framing.spacecraft_id = f.spacecraft_id;
+        }
+        if f.virtual_channels.is_some() {
+            station.framing.virtual_channels = f.virtual_channels;
+        }
+    }
+    if let Some(h) = history {
+        if let Some(v) = h.capacity {
+            station.history.capacity = v;
+        }
+        if h.persist_path.is_some() {
+            station.history.persist_path = h.persist_path;
+        }
+    }
+    Ok(())
+}
+
+/// Optional `[rf]` table: every key is optional and falls back to `RfConfig::default`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RfToml {
+    bind_addr: Option<String>,
+    window_ms: Option<u64>,
+    capacity: Option<usize>,
+}
+
+/// Optional `[time]` table: every key is optional and falls back to `TimeConfig::default`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TimeToml {
+    format: Option<String>,
+    max_skew_s: Option<f64>,
+    cuc_tai_minus_utc_s: Option<i32>,
+}
+
+/// Applies the optional `[rf]` / `[time]` tables onto an already-built station config.
+fn apply_rf_time(
+    station: &mut StationConfig,
+    rf: Option<RfToml>,
+    time: Option<TimeToml>,
+) -> Result<(), ConfigLoadError> {
+    if let Some(rf) = rf {
+        if let Some(addr) = rf.bind_addr {
+            station.rf.bind_addr =
+                Some(addr.parse().map_err(|source| ConfigLoadError::AddrParse {
+                    field: "rf.bind_addr",
+                    source,
+                })?);
+        }
+        if let Some(v) = rf.window_ms {
+            station.rf.window_ms = v;
+        }
+        if let Some(v) = rf.capacity {
+            station.rf.capacity = v;
+        }
+    }
+    if let Some(time) = time {
+        if let Some(f) = time.format {
+            station.time.format = match f.to_ascii_lowercase().as_str() {
+                "none" => TimeFormat::None,
+                "cds" => TimeFormat::Cds,
+                "cuc" => TimeFormat::Cuc,
+                _ => {
+                    return Err(ConfigError::InvalidRfTime {
+                        field: "time.format",
+                        value: format!("\"{f}\""),
+                        expected: "\"none\", \"cds\" or \"cuc\"",
+                    }
+                    .into());
+                }
+            };
+        }
+        if let Some(v) = time.max_skew_s {
+            station.time.max_skew_s = v;
+        }
+        if let Some(v) = time.cuc_tai_minus_utc_s {
+            station.time.cuc_tai_minus_utc_s = v;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
@@ -243,6 +390,10 @@ impl TryFrom<StationToml> for StationConfig {
                     .hil_body_rate_max_abs_deg_s
                     .unwrap_or(def.hil.body_rate_max_abs_deg_s),
             },
+            rf: def.rf,
+            time: def.time,
+            framing: def.framing,
+            history: def.history,
         })
     }
 }
@@ -261,10 +412,12 @@ pub fn load_gateway_from_path(
         Some(t) => IngestConfig::try_from(t)?,
         None => IngestConfig::default(),
     };
-    let station = match doc.station {
+    let mut station = match doc.station {
         Some(t) => StationConfig::try_from(t)?,
         None => StationConfig::default(),
     };
+    apply_rf_time(&mut station, doc.rf, doc.time)?;
+    apply_framing_history(&mut station, doc.framing, doc.history)?;
     ingest.validate()?;
     station.validate()?;
     if !matches!(station.tracking.ephemeris, EphemerisSource::OemFile(_)) {
@@ -622,5 +775,160 @@ tle_file = "nope-not-here.tle"
             }
             other => panic!("expected Io, got {other:?}"),
         }
+    }
+
+    // ---- Tranche 2: [rf] and [time] tables ---------------------------------------------------
+
+    fn load_str(toml_text: &str) -> Result<(IngestConfig, StationConfig), ConfigLoadError> {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let p = dir.path().join("gw.toml");
+        std::fs::write(&p, toml_text).expect("write");
+        load_gateway_from_path(&p)
+    }
+
+    #[test]
+    fn rf_and_time_default_to_off() {
+        let (_, st) = load_str("").expect("empty doc loads");
+        assert!(st.rf.bind_addr.is_none());
+        assert_eq!(st.time.format, TimeFormat::None);
+    }
+
+    #[test]
+    fn rf_and_time_tables_round_trip_partial_keys() {
+        let (_, st) = load_str(
+            r#"
+[rf]
+bind_addr = "127.0.0.1:7302"
+window_ms = 80
+
+[time]
+format = "CUC"
+max_skew_s = 0.0
+"#,
+        )
+        .expect("loads");
+        assert_eq!(st.rf.bind_addr, Some("127.0.0.1:7302".parse().unwrap()));
+        assert_eq!(st.rf.window_ms, 80);
+        assert_eq!(st.rf.capacity, 1024, "omitted keys keep defaults");
+        assert_eq!(
+            st.time.format,
+            TimeFormat::Cuc,
+            "format is case-insensitive"
+        );
+        assert_eq!(st.time.max_skew_s, 0.0);
+        assert_eq!(st.time.cuc_tai_minus_utc_s, 37);
+    }
+
+    #[test]
+    fn rf_time_tables_apply_alongside_a_station_table() {
+        let (_, st) = load_str(&format!(
+            "[station]\nlatitude_deg = 10.0\nlongitude_deg = 20.0\naltitude_m = 0.0\n\
+             nominal_carrier_hz = 437500000.0\nmin_recompute_interval_ms = 10\n\
+             doppler_tolerance_hz = 150.0\nminimum_elevation_deg = 0.0\n\
+             tle_inline = \"\"\"\n{}\n\"\"\"\n[time]\nformat = \"cds\"\n",
+            crate::config::DEFAULT_ISS_TLE
+        ))
+        .expect("loads");
+        assert_eq!(st.site.latitude_deg, 10.0);
+        assert_eq!(st.time.format, TimeFormat::Cds);
+    }
+
+    #[test]
+    fn bad_rf_time_values_are_clear_errors() {
+        for (doc, field) in [
+            ("[rf]\nbind_addr = \"nonsense\"", "rf.bind_addr"),
+            ("[time]\nformat = \"utc\"", "time.format"),
+            ("[time]\nmax_skew_s = -1.0", "time.max_skew_s"),
+            (
+                "[time]\ncuc_tai_minus_utc_s = 500",
+                "time.cuc_tai_minus_utc_s",
+            ),
+            ("[rf]\nwindow_ms = 0", "rf.window_ms"),
+            ("[rf]\ncapacity = 0", "rf.capacity"),
+            ("[rf]\ncapacity = 99999999", "rf.capacity"),
+        ] {
+            let err = load_str(doc).expect_err(doc);
+            assert!(err.to_string().contains(field), "{doc} -> {err}");
+        }
+    }
+
+    #[test]
+    fn unknown_keys_in_rf_and_time_are_rejected() {
+        assert!(load_str("[rf]\nbogus = 1").is_err());
+        assert!(load_str("[time]\nbogus = 1").is_err());
+    }
+
+    // ---- Tranche 3: [framing] and [history] tables -------------------------------------------
+
+    #[test]
+    fn framing_and_history_default_to_packets_and_memory_only() {
+        let (_, st) = load_str("").expect("empty doc loads");
+        assert_eq!(st.framing.mode, FramingMode::Packets);
+        assert!(st.framing.fecf);
+        assert_eq!(st.history.capacity, 10_000);
+        assert!(st.history.persist_path.is_none());
+    }
+
+    #[test]
+    fn framing_and_history_tables_load() {
+        let (_, st) = load_str(
+            r#"
+[framing]
+mode = "tm_frames"
+frame_length = 223
+asm = true
+derandomize = true
+fecf = false
+spacecraft_id = 115
+virtual_channels = [0, 1]
+
+[history]
+capacity = 500
+persist_path = "hist.jsonl"
+"#,
+        )
+        .expect("loads");
+        assert_eq!(st.framing.mode, FramingMode::TmFrames);
+        assert_eq!(st.framing.frame_length, Some(223));
+        assert!(st.framing.asm && st.framing.derandomize && !st.framing.fecf);
+        assert_eq!(st.framing.spacecraft_id, Some(115));
+        assert_eq!(st.framing.virtual_channels, Some(vec![0, 1]));
+        assert_eq!(st.history.capacity, 500);
+        assert_eq!(st.history.persist_path, Some(PathBuf::from("hist.jsonl")));
+        // "tm" is accepted as a short spelling.
+        let (_, st) = load_str("[framing]\nmode = \"TM\"").expect("loads");
+        assert_eq!(st.framing.mode, FramingMode::TmFrames);
+    }
+
+    #[test]
+    fn bad_framing_and_history_values_are_clear_errors() {
+        for (doc, field) in [
+            ("[framing]\nmode = \"aos\"", "framing.mode"),
+            ("[framing]\nframe_length = 4", "framing.frame_length"),
+            ("[framing]\nframe_length = 4096", "framing.frame_length"),
+            (
+                "[framing]\nmode = \"tm_frames\"\nasm = true",
+                "framing.frame_length",
+            ),
+            ("[framing]\nspacecraft_id = 1024", "framing.spacecraft_id"),
+            (
+                "[framing]\nvirtual_channels = [8]",
+                "framing.virtual_channels",
+            ),
+            (
+                "[framing]\nvirtual_channels = []",
+                "framing.virtual_channels",
+            ),
+            ("[history]\ncapacity = 9999999", "history.capacity"),
+            (
+                "[history]\ncapacity = 0\npersist_path = \"h.jsonl\"",
+                "history.persist_path",
+            ),
+        ] {
+            let err = load_str(doc).expect_err(doc);
+            assert!(err.to_string().contains(field), "{doc} -> {err}");
+        }
+        assert!(load_str("[framing]\nbogus = 1").is_err());
+        assert!(load_str("[history]\nbogus = 1").is_err());
     }
 }

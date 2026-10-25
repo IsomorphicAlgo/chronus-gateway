@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/IsomorphicAlgo/chronus-gateway/blob/master/crates/gateway/schemas/openmct.realtime.v1.schema.json",
+  "title": "openmct.realtime.v1",
+  "description": "One ChronusGateway telemetry message: a CCSDS Space Packet plus its physics co-validation result. Sent as one WebSocket text message per packet on GET /telemetry/openmct, and returned by the history API. v1 grows only additively: consumers must ignore fields they do not know, and the fields marked 'additive' may be absent in output from older gateways.",
+  "type": "object",
+  "required": ["chronus_schema", "apid", "seq_count", "received_at", "physics_flags", "source", "payload_base64"],
+  "additionalProperties": true,
+  "properties": {
+    "chronus_schema": { "const": "openmct.realtime.v1" },
+    "apid": { "type": "integer", "minimum": 0, "maximum": 2047, "description": "CCSDS Application Process Identifier." },
+    "seq_count": { "type": "integer", "minimum": 0, "maximum": 16383, "description": "CCSDS packet sequence count (14 bits)." },
+    "received_at": { "type": "string", "format": "date-time", "description": "Gateway receive time (UTC). The Open MCT 'utc' domain." },
+    "physics_flags": {
+      "type": "integer", "minimum": 0, "maximum": 255,
+      "description": "Co-validation alarm bits (Methodology D-016): 0 Doppler, 1 below horizon, 2 link budget, 3 pointing, 4 EPS, 5 thermal, 6 body rate (4-6 are HIL lab models), 7 reserved. 0 = nominal."
+    },
+    "source": { "type": "string", "description": "Sender ip:port of the UDP datagram." },
+    "elevation_deg": { "type": ["number", "null"], "minimum": -90, "maximum": 90, "description": "Predicted geometric elevation; null without physics." },
+    "azimuth_deg": { "type": ["number", "null"], "minimum": 0, "maximum": 360, "description": "Predicted azimuth, clockwise from true north; null without physics." },
+    "range_km": { "type": ["number", "null"], "minimum": 0, "description": "Predicted slant range; null without physics." },
+    "range_rate_km_s": { "type": ["number", "null"], "description": "Predicted range rate, positive receding; null without physics." },
+    "apparent_elevation_deg": { "type": ["number", "null"], "description": "Additive (0.2). Refracted elevation the antenna should point at." },
+    "doppler_tolerance_hz": { "type": ["number", "null"], "minimum": 0, "description": "Additive (0.2). Doppler acceptance band applied to this packet." },
+    "physics_flags_v2": {
+      "type": "integer", "minimum": 0, "maximum": 255,
+      "description": "Additive (0.4). Time alarm bits: 0 time-tag skew, 1 time code invalid."
+    },
+    "onboard_time": { "type": "string", "format": "date-time", "description": "Additive (0.4). Spacecraft time decoded from the secondary header; absent when not decoded." },
+    "physics_time": { "type": "string", "format": "date-time", "description": "Additive (0.4). The instant physics was evaluated at." },
+    "rf_matched": { "type": "boolean", "description": "Additive (0.4). Whether receiver measurements were available for this packet." },
+    "vcid": { "type": "integer", "minimum": 0, "maximum": 7, "description": "Additive (0.5). Virtual channel the packet arrived on; absent unless the link carries TM Transfer Frames." },
+    "payload_base64": { "type": "string", "contentEncoding": "base64", "description": "Base64 of the packet data field (secondary header + user data)." }
+  }
+}

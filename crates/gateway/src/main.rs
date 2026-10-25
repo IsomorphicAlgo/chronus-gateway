@@ -12,6 +12,7 @@ use chronus_gateway::diagnose::{
     Diagnosis, Explain, Listener, Severity, check_oem_coverage, check_tle_age, config_warnings,
     explain_bind_error, explain_tracking_error, tle_epoch,
 };
+use chronus_gateway::history::HistoryStore;
 use chronus_gateway::http;
 use chronus_gateway::ingest::{self, IngestStats};
 use chronus_gateway::metrics::GatewayMetrics;
@@ -126,12 +127,43 @@ async fn run() -> Result<(), Failure> {
         }
     };
 
+    // Tranche 2: optional chronus.rf.v1 receiver-metadata side channel.
+    let rf_socket = match station.rf.bind_addr {
+        Some(addr) => {
+            let sock = tokio::net::UdpSocket::bind(addr)
+                .await
+                .map_err(|e| Failure::Startup(explain_bind_error(Listener::Rf, addr, &e)))?;
+            let local = sock.local_addr().map_err(|e| Failure::Runtime(e.into()))?;
+            tracing::info!(
+                rf_local = %local,
+                window_ms = station.rf.window_ms,
+                capacity = station.rf.capacity,
+                "chronus.rf.v1 receiver-metadata channel listening"
+            );
+            Some(sock)
+        }
+        None => None,
+    };
+
     let listener = TcpListener::bind(ingest_cfg.http_bind).await.map_err(|e| {
         Failure::Startup(explain_bind_error(Listener::Http, ingest_cfg.http_bind, &e))
     })?;
     let http_local = listener
         .local_addr()
         .map_err(|e| Failure::Runtime(e.into()))?;
+
+    // Tranche 3: recent-telemetry history, optionally reloaded from / appended to a file.
+    let history =
+        HistoryStore::open(&station.history).map_err(|e| Failure::Startup(e.explain()))?;
+    if let Some(path) = history.persist_path() {
+        tracing::info!(
+            path = %path.display(),
+            reloaded = history.len(),
+            capacity = station.history.capacity,
+            "telemetry history file open"
+        );
+    }
+    let history = Arc::new(history);
 
     let state = Arc::new(
         SharedGateway::new(
@@ -141,10 +173,28 @@ async fn run() -> Result<(), Failure> {
             Arc::clone(&station),
             tracking,
         )
-        .with_listen_addrs(udp_local, http_local),
+        .with_listen_addrs(udp_local, http_local)
+        .with_history(Arc::clone(&history)),
     );
 
     let cancel = CancellationToken::new();
+    // Subscribe the pipeline before ingest starts so no datagram is missed.
+    let pipeline_cancel = cancel.child_token();
+    let pipeline_handle = chronus_gateway::pipeline::spawn(Arc::clone(&state), async move {
+        pipeline_cancel.cancelled().await;
+    });
+    match station.framing.mode {
+        chronus_gateway::FramingMode::TmFrames => tracing::info!(
+            frame_length = ?station.framing.frame_length,
+            asm = station.framing.asm,
+            derandomize = station.framing.derandomize,
+            fecf = station.framing.fecf,
+            spacecraft_id = ?station.framing.spacecraft_id,
+            virtual_channels = ?station.framing.virtual_channels,
+            "CCSDS TM Transfer Frame decoding on"
+        ),
+        _ => tracing::debug!("one CCSDS Space Packet per datagram"),
+    }
     let ingest_cancel = cancel.child_token();
     let ingest_handle = tokio::spawn({
         let ingest_stats = Arc::clone(&state.ingest_stats);
@@ -161,12 +211,30 @@ async fn run() -> Result<(), Failure> {
         }
     });
 
+    let rf_handle = rf_socket.map(|sock| {
+        let store = Arc::clone(&state.rf);
+        let rf_cancel = cancel.child_token();
+        tokio::spawn(async move {
+            chronus_gateway::rf::run_listener(sock, store, rf_cancel.cancelled()).await
+        })
+    });
+
+    if station.time.format != chronus_gateway::TimeFormat::None {
+        tracing::info!(
+            format = ?station.time.format,
+            max_skew_s = station.time.max_skew_s,
+            "spacecraft time decoding on: physics runs at onboard time{}",
+            if station.time.max_skew_s == 0.0 { " (lab mode: skew check off)" } else { "" }
+        );
+    }
+
     tracing::info!(%http_local, "HTTP + WebSocket (GET /telemetry/openmct) listening");
     tracing::info!(
         "\n  Gateway is running.\n  \
          - Send CCSDS telemetry to   udp://{udp_local}\n  \
          - Connect dashboards to     ws://{http_local}/telemetry/openmct\n  \
          - Check health anytime at   http://{http_local}/api/v1/chronus/status\n  \
+         - Recent history at         http://{http_local}/api/v1/chronus/history\n  \
          Press Ctrl+C to stop."
     );
 
@@ -185,6 +253,18 @@ async fn run() -> Result<(), Failure> {
         .await
         .map_err(|e| Failure::Runtime(anyhow::Error::new(e).context("ingest task join")))?
         .map_err(|e| Failure::Runtime(anyhow::Error::new(e).context("ingest loop")))?;
+
+    pipeline_handle
+        .await
+        .map_err(|e| Failure::Runtime(anyhow::Error::new(e).context("pipeline task join")))?;
+    // Flush the history file before exiting.
+    history.close();
+
+    if let Some(h) = rf_handle {
+        h.await
+            .map_err(|e| Failure::Runtime(anyhow::Error::new(e).context("rf task join")))?
+            .map_err(|e| Failure::Runtime(anyhow::Error::new(e).context("rf listener")))?;
+    }
 
     let (frames, bytes, oversized, errors) = state.ingest_stats.snapshot();
     tracing::info!(frames, bytes, oversized, errors, "shutdown complete");

@@ -109,6 +109,14 @@ pub const FLAG_THERMAL_SUBSYSTEM_ANOMALY: u8 = 0x20;
 /// Bit 6 — decoded HIL \|`body_rate_deg_s`\| exceeds configured ceiling (**CV-5** / **T-BODYRATE**).
 pub const FLAG_ADCS_BODY_RATE_ANOMALY: u8 = 0x40;
 
+/// `physics_flags_v2` bit 0 — the packet's onboard time differs from the gateway receive time by
+/// more than `time.max_skew_s` (time-tag anomaly, Tranche 2 / D-047). Physics falls back to receive
+/// time for that frame.
+pub const FLAG_V2_TIME_TAG_SKEW: u8 = 0x01;
+/// `physics_flags_v2` bit 1 — the packet declares a secondary header but its time code could not be
+/// decoded (too short or out of range). Physics falls back to receive time.
+pub const FLAG_V2_TIME_CODE_INVALID: u8 = 0x02;
+
 /// Optional **ground / receiver-chain** measurements accompanying a frame (SDR or synthetic lab).
 ///
 /// Per **D-016**: carrier frequency for Doppler; optional **dBm** receive power for the link-budget
@@ -154,6 +162,21 @@ impl RfMetadata {
             measured_azimuth_deg: None,
             measured_elevation_deg: None,
         }
+    }
+
+    /// `true` when no measurement is present, so every RF-dependent check will be skipped.
+    ///
+    /// ```
+    /// use chronus_gateway::validate::RfMetadata;
+    /// assert!(RfMetadata::new().is_empty());
+    /// assert!(!RfMetadata::new().with_carrier_hz(1.0).is_empty());
+    /// ```
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.measured_carrier_hz.is_none()
+            && self.measured_rx_power_dbm.is_none()
+            && self.measured_azimuth_deg.is_none()
+            && self.measured_elevation_deg.is_none()
     }
 
     /// Sets the measured downlink carrier frequency (Hz) for the Doppler check.
@@ -603,7 +626,7 @@ pub fn apply_physics_validation(
     {
         if let Some(p) = ctx.hil.as_ref()
             && p.allows_apid(frame.apid)
-            && let Ok(hil) = decode_hil_tm_v1(frame.payload())
+            && let Ok(hil) = decode_hil_tm_v1(frame.user_data())
         {
             apply_hil_subsystem_checks(frame, state, hil, p);
         }
@@ -725,6 +748,9 @@ mod tests {
             received_at: Utc::now(),
             source: SocketAddr::from(([127, 0, 0, 1], 1)),
             physics_flags: 0,
+            physics_flags_v2: 0,
+            onboard_time: None,
+            time_field_len: 0,
         }
     }
 

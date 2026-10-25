@@ -40,7 +40,7 @@ mapped to Chronus like this:
 | Your intuition | In Chronus |
 |----------------|------------|
 | **“What the satellite sent in the bits”** | The **UDP payload** after parsing: especially the **CCSDS data field**. If the APID is in the configured **HIL band**, those bytes should match **`chronus.hil.tm.v1`**. Otherwise they can be arbitrary TM payload for parse/distribute (co-validation on those bytes is limited). |
-| **“What the ground measured from the radio”** (frequency, power, where the dish pointed) | The design has a place for that (**`RfMetadata`**: carrier Hz, received power, azimuth/elevation). **Wiring real receivers into those fields is a forward step**; the story in the validation engine is already written, but the live path may not populate them from every UDP frame yet. |
+| **“What the ground measured from the radio”** (frequency, power, where the dish pointed) | Your receiver sidecar sends it on a **second UDP port** as a small JSON message (**`chronus.rf.v1`**: carrier Hz, received power, azimuth/elevation) and the gateway pairs each sample with the telemetry frame nearest in time. Turn it on with the `[rf]` table; see [`RF_SIDE_CHANNEL.md`](RF_SIDE_CHANNEL.md). Without it those checks are simply skipped. |
 | **“Where is the bird, how is it moving, what does geometry say?”** | Comes from **configuration and time**: a **TLE** (two-line element set) plus your station’s location and nominal carrier, so the gateway can **compute** look angles, range-rate, and related checks **without** those numbers being repeated inside every telemetry packet. The **demo simulator** uses a **public ISS reference TLE** only so orbit and Sun geometry are **self-consistent and reproducible** — not because the payload is “ISS flight data.” |
 
 **One sentence takeaway:** Chronus listens for **UDP telemetry frames**, understands **CCSDS TM
@@ -129,6 +129,21 @@ commented out with their defaults.
 | `doppler_tle_age_margin`, `tle_error_km_at_epoch`, `tle_error_growth_km_per_day` | `false`, `1.0`, `2.0` | **TLE-age-aware Doppler.** A TLE's along-track error grows by kilometres per day; near closest approach each kilometre is roughly 25 Hz of Doppler at UHF. When on, the Doppler band (bit 0) widens by exactly the frequency that error implies at that moment of the pass, instead of flagging healthy passes from an older TLE. The band actually used is in each frame's `doppler_tolerance_hz`. |
 | `oem_file` | — | **Operator ephemeris.** A CCSDS OEM (KVN text) from orbit determination or GPS replaces the TLE: frames GCRF/ICRF, EME2000, TEME or ITRF; time systems UTC, TAI, TT or GPS; Lagrange interpolation; no extrapolation outside the file (`CG-322`). Problems are explained as `CG-127` / `CG-320`–`CG-322`. |
 
+### Optional: transfer frames, history and Open MCT (0.5.0)
+
+| Table | Default | What it does |
+|-------|---------|--------------|
+| `[framing]` | one Space Packet per datagram | **TM Transfer Frames.** If your radio software forwards CCSDS frames or CADUs (sync marker `1ACFFC1D`), set `mode = "tm_frames"` and the link's frame length, sync marker, randomizer and CRC settings. The gateway rebuilds packets that span frames, keeps virtual channels apart, and adds `vcid` to each message. Mismatched settings are explained as `CG-513`. Full guide: [`TM_TRANSFER_FRAMES.md`](TM_TRANSFER_FRAMES.md). |
+| `[history]` | 10 000 messages in memory | **Recent history.** Lets a dashboard that connects late, or a reloaded page, catch up: `GET /api/v1/chronus/history?start=&end=&apid=&limit=`. Add `persist_path` to keep it across restarts. |
+
+**Open MCT.** `GET /api/v1/chronus/openmct/dictionary` lists every telemetry point, and
+`/api/v1/chronus/openmct/history/{key}` serves each one's history in Open MCT's own format.
+[`demo/openmct/`](../demo/openmct/) is a ready-made Open MCT page that uses them. JSON Schemas for
+every message format are served at `/api/v1/chronus/schemas`. See [`OPENMCT.md`](OPENMCT.md).
+
+**Telecommand.** The gateway is telemetry-only and never transmits: see
+[`TELECOMMAND.md`](TELECOMMAND.md).
+
 There is **no generated `--help`** on the binary today; treat **`gateway.example.toml`** plus this
 guide as the operator surface for flags.
 
@@ -169,10 +184,10 @@ mission is healthy — it only means **this gateway** did not flag those specifi
 
 | Bit | Value (hex) | Meaning in plain terms | When it is usually skipped |
 |-----|-------------|------------------------|----------------------------|
-| **0** | `0x01` | **Doppler** — “The measured carrier frequency I was given does not match what I expect from the current line-of-sight range rate and your nominal carrier, beyond **T-DOPPLER**.” | Skipped if **no measured carrier** is supplied, or it is not finite. **Today’s default HTTP path supplies none**, so bit **0** stays quiet unless you integrate **`RfMetadata`** from your receiver chain. |
+| **0** | `0x01` | **Doppler** — “The measured carrier frequency I was given does not match what I expect from the current line-of-sight range rate and your nominal carrier, beyond **T-DOPPLER**.” | Skipped if **no measured carrier** reaches the frame (the `[rf]` side channel is off, or no sample arrived within `rf.window_ms`), or it is not finite. |
 | **1** | `0x02` | **Horizon** — “From the TLE and your station, this spacecraft is **below** your configured minimum elevation.” | Needs a working propagator and valid geometry. |
-| **2** | `0x04` | **Link budget (free-space)** — “The measured received power I was given disagrees with a **simple free-space** prediction by more than **T-RSSI**.” | Skipped if **no measured Rx power**, or non-finite, or impossible geometry (e.g. zero range). Same story as bit **0**: **needs `RfMetadata` wiring** to light in production. |
-| **3** | `0x08` | **Pointing** — “The measured azimuth/elevation I was given point more than **T-POINT** away from where I think the dish should aim” (the *apparent*, refracted direction by default). | Skipped unless **both** azimuth **and** elevation are supplied and finite. Again: **default path = skip**. |
+| **2** | `0x04` | **Link budget (free-space)** — “The measured received power I was given disagrees with a **simple free-space** prediction by more than **T-RSSI**.” | Skipped if **no measured Rx power**, or non-finite, or impossible geometry (e.g. zero range). Same story as bit **0**: it needs `chronus.rf.v1` samples. |
+| **3** | `0x08` | **Pointing** — “The measured azimuth/elevation I was given point more than **T-POINT** away from where I think the dish should aim” (the *apparent*, refracted direction by default). | Skipped unless **both** azimuth **and** elevation are supplied and finite. Again: no `chronus.rf.v1` sample means skip. |
 | **4** | `0x10` | **EPS (toy)** — “The **HIL v1** bus voltage does not match the toy Sun-illumination map within **T-EPS**.” | Only in a `--features hil` build, when the frame is **HIL v1** (allowed APID + valid decode) and illumination is usable. |
 | **5** | `0x20` | **Thermal (toy)** — “The **HIL v1** panel temperature is outside the toy thermal band (**T-THERMAL**).” | Same gate as bit **4**. |
 | **6** | `0x40` | **Body rate (toy)** — “The **HIL v1** spin-rate scalar exceeds your configured ceiling (**T-BODYRATE**).” | Skipped if the ceiling is misconfigured or the rate is non-finite. |
@@ -181,6 +196,22 @@ mission is healthy — it only means **this gateway** did not flag those specifi
 If you ever need **more than eight** independent alarms, the project charter says to add a **new
 field** (for example `physics_flags_v2`) in the JSON contract — **not** to silently repurpose bit
 **7**. See **`Methodology.md` D-016** and `docs/EXTENDED_COVALIDATION_PLAN.md` (now in local `PLANS.md`).
+
+### The second field: `physics_flags_v2` (spacecraft time)
+
+When you set `[time] format` (`"cds"` or `"cuc"`), the gateway reads the time the spacecraft stamped
+on each packet and checks the physics **at that moment** instead of when the datagram arrived. If
+the stamp cannot be trusted it falls back to the arrival time and raises a bit in a **separate**
+field, `physics_flags_v2` (it is `0` when time decoding is off):
+
+| Bit | Value | Meaning |
+|-----|-------|---------|
+| **0** | `0x01` | **Time-tag skew** — the onboard time and the gateway clock differ by more than `time.max_skew_s` (default 5 s). Usually a drifted or reset spacecraft clock, or the wrong time format. |
+| **1** | `0x02` | **Time code invalid** — the packet claims a secondary header but its time field is too short or impossible. |
+
+Replaying a recording or running the simulator? Set `max_skew_s = 0.0` so the recorded time is
+trusted as-is. Full details, the `chronus.rf.v1` message format, and ready-to-run examples are in
+[`RF_SIDE_CHANNEL.md`](RF_SIDE_CHANNEL.md).
 
 ### Where the numbers come from
 
@@ -216,7 +247,7 @@ health check: an overall `status` (`ok`, `waiting`, `attention`, `problem`), a o
 | `CG-2xx` | Network | port already in use, port below 1024, IP address not on this computer |
 | `CG-3xx` | Orbit data (TLE / OEM) | TLE too old for Doppler/pointing (> 3 days) or for anything (> 30 days), dated in the future (clock wrong), bad checksum; OEM unreadable, in an unsupported frame, or not covering the current time |
 | `CG-4xx` | Incoming data | packet too short, packet cut off, command packet on the telemetry port |
-| `CG-5xx` | Live health | no data yet, data arriving but not CCSDS, most frames flagged (usually a setup issue), no dashboard connected |
+| `CG-5xx` | Live health | no data yet, data arriving but not CCSDS, most frames flagged (usually a setup issue), no dashboard connected, receiver data missing (`CG-511`/`512`), transfer frames failing their checks (`CG-513`), history file writes failing (`CG-514`) |
 
 The first invalid packet and the first orbit-calculation failure are explained in full in the log;
 after that they are only counted, so the log stays readable.
@@ -236,6 +267,8 @@ the same milestones and tolerances the project tests against:
 | Use the **Vite demo dashboard** (live `physics_flags` + geometry) | [`demo/dashboard/README.md`](../demo/dashboard/README.md), [`docs/DEMO.md`](DEMO.md) Path C |
 | Manual acceptance gates for showcase stages | [`docs/Demo_Test.md`](Demo_Test.md) |
 | Understand **why** a major choice was made (dependencies, seams, deferrals) | [`Methodology.md`](../Methodology.md) |
+| Decode **CCSDS TM Transfer Frames** / CADUs from an SDR front end | [`docs/TM_TRANSFER_FRAMES.md`](TM_TRANSFER_FRAMES.md) |
+| Use **NASA Open MCT** with history, or the published JSON Schemas | [`docs/OPENMCT.md`](OPENMCT.md), [`demo/openmct/README.md`](../demo/openmct/README.md) |
 | Configure a real run (bind addresses, station, TLE path) | [`gateway.example.toml`](../gateway.example.toml), `--config` / `-c`, and `CHRONUS_GATEWAY_CONFIG` (see **First run** above) |
 
 **Status:** **Introduction**, **First run**, and **`physics_flags`** are drafted. Still to add:

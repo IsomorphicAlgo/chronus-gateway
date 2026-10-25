@@ -8,6 +8,91 @@ Versions cover all three workspace crates (`chronus-gateway`, `chronus-hil-sim`,
 
 ## Unreleased
 
+## 0.5.0 — 2026-10-24
+
+Ground-segment completeness (Tranche 3 of the 1.0 plan, **D-048**, **D-049**, **D-050**). The
+public API is **additive** against 0.4.0 (`cargo semver-checks` passes even as a patch). The minor
+bump marks one **behaviour change for embedders** (below) and the new feature surface. Operators
+upgrading from 0.4.0 need no config changes: the defaults are one Space Packet per datagram, as
+before, and an in-memory history.
+
+- **CCSDS TM Transfer Frames (new `frames` module, `[framing]` table).** `mode = "tm_frames"` decodes
+  132.0-B-3 frames: sync-marker (`1ACFFC1D`) search across datagrams, the 131.0-B-4
+  pseudo-randomizer, CRC-16 FECF, spacecraft and virtual-channel filters, master/VC frame-counter
+  gap detection, and packet reassembly across frame boundaries via the First Header Pointer.
+  Idle frames and idle packets are dropped. `TmFrameBuilder` is the inverse (used by tools and
+  tests). Messages gain an additive `vcid` field.
+- **One processing pipeline (new `pipeline` module).** Each packet is parsed and validated
+  **once** and the result is published to history and every WebSocket client. Before, each client
+  did its own processing. Physics now runs once per packet instead of once per client, telemetry
+  is processed with no dashboard connected, and `telemetry_frames_emitted` / `anomaly_frames` / the
+  RF match counters count packets, not packets × clients. **Behaviour change:** a server built from
+  `http::router` must also run `pipeline::spawn(state, shutdown)`; the binary does this.
+- **History (new `history` module, `[history]` table).** A bounded ring of recent messages (default
+  10 000), optionally backed by a JSON-lines file that is reloaded at startup, compacted to stay
+  bounded, and written from its own thread. `GET /api/v1/chronus/history?start=&end=&apid=&limit=`
+  (`chronus.history.v1`) replaces the stub.
+- **Open MCT (new `openmct` module).** `GET /api/v1/chronus/openmct/dictionary` is now generated
+  from one table of telemetry points (replacing the stub), and
+  `GET /api/v1/chronus/openmct/history/{key}` serves each point's history as Open MCT datums. New
+  `demo/openmct/`: NASA Open MCT 4.3.1 with a Chronus plugin (object tree, history, one shared
+  WebSocket, alarm limits) and a headless reload check (`verify_history.py`).
+- **Published JSON Schemas** for `openmct.realtime.v1`, `chronus.rf.v1`, `chronus.history.v1` and
+  the dictionary, in `crates/gateway/schemas/` and served at `/api/v1/chronus/schemas/{name}`.
+- **Telecommand scoped out of 1.x** (`docs/TELECOMMAND.md`). The crate description no longer says
+  "TMTC gateway".
+- **Operator surface.** `/api/v1/chronus/metrics` gains `framing`, `history` and `pipeline`
+  objects. `/status` gains `CG-513` (transfer frames failing their checks, or frame gaps) and
+  `CG-514` (history file problems). New startup codes: `CG-134` (bad `[framing]` / `[history]`
+  setting), `CG-135` (history file can't be opened) and the `CG-136` warning (frames larger than a
+  datagram). `CG-502` and the first-invalid-packet log point at `[framing]` when the data looks
+  like CADUs. `CG-509` no longer says nothing is stored.
+- **`chronus-replay`:** `--tm-frames` (with `--frame-length`, `--scid`, `--vcid`, `--asm`,
+  `--randomize`, `--no-fecf`). New fixtures: `tm_frames_lab.hex` (a lab CADU stream produced by the
+  independent Python encoder `gen_tm_frames.py`, with its `expected.json`) and `iss_pass_lab.jsonl`
+  (a whole pass with a Doppler fault).
+- **Exit criteria met:** the recorded frame stream decodes end to end through the real binary
+  (`crates/gateway/tests/ground_segment_e2e.rs`, also cross-checked against the encoder in
+  `tm_frames_fixture.rs`). History survives a `kill -9` and restart, and Open MCT shows it after a
+  page reload (`demo/openmct/verify_history.py`; screenshots in `docs/assets/`).
+- **Tests:** 316 → 376 workspace tests (286 unit, 40 integration, 50 doctests); 318 when the
+  gateway is tested without `hil`. New dev-dependency: `jsonschema` (MIT, no default features).
+
+## 0.4.0 — 2026-10-11
+
+Live receiver data and spacecraft time (Tranche 2 of the 1.0 plan, **D-047**). **Purely additive**
+against 0.3.0 (`cargo semver-checks` clean) and **off by default**: with no `[rf]` or `[time]`
+table the gateway behaves as in 0.3.0. The minor bump marks the new feature surface.
+
+- **`chronus.rf.v1` receiver side channel (new `rf` module).** A second, optional UDP port
+  (`[rf] bind_addr`) takes one JSON datagram per measurement (carrier Hz, received power dBm,
+  antenna az/el, optional timestamp). Each frame is matched to the sample nearest its receive time
+  within `rf.window_ms`; a bounded store (`rf.capacity`) holds recent samples. This makes the
+  Doppler (bit 0), link-budget (bit 2) and pointing (bit 3) checks work in the shipped binary,
+  where before only embedders could drive them. `RfSampleV1` builds and parses the datagram, and
+  `RfSampleV1::nominal_for` is the "perfect receiver" for simulators and tests.
+- **Spacecraft time (new `time` module).** `[time] format = "cds" | "cuc"` decodes the 6-byte time
+  code at the start of secondary-header packets. Physics runs at the **onboard time**, falling back
+  to receive time. `max_skew_s = 0` is lab/replay mode (recorded or simulated mission time is
+  trusted). The time field is excluded from `TelemetryFrame::user_data()`.
+- **`physics_flags_v2`** (new field): bit 0 time-tag skew, bit 1 time code invalid
+  (`FLAG_V2_TIME_TAG_SKEW`, `FLAG_V2_TIME_CODE_INVALID`). The Open MCT message also gains
+  `onboard_time`, `physics_time` and `rf_matched` (all additive; schema stays `openmct.realtime.v1`).
+- **Operator surface.** `/api/v1/chronus/metrics` gains an `rf` object; `/status` gains `CG-511`
+  (no or unmatched samples) and `CG-512` (invalid datagrams); `CG-129` for bad `[rf]` / `[time]`
+  values; `Listener::Rf` for bind errors. New docs: `docs/RF_SIDE_CHANNEL.md`.
+- **`chronus-replay`:** per-line `rf` objects with `--rf-dest`; described packets (`apid`, `seq`,
+  `data_hex`, `onboard_time` or `"now"`) encoded with a CDS/CUC time field (`--time-format`). New
+  fixture `demo/replay/fixtures/rf_lab.jsonl`.
+- **`chronus-hil-sim`:** `--time-code`, `--epoch`, `--epoch-visible`, a simulated receiver
+  (`--rf-dest`) and scripted receiver faults (`--rf-anomaly doppler|link-budget|pointing`).
+  `run_nexosim_hil(HilRunOptions)` is the new entry point; the old functions are unchanged.
+- **Exit criterion met:** the real `chronus-gateway` binary, fed over UDP, raises all seven bits
+  (`0x7F` in one frame with the `hil` feature), asserted in `crates/gateway/tests/live_rf_e2e.rs`
+  and, through the NeXosim simulator, in `crates/chronus-hil-sim/tests/hil_rf_pipeline.rs`.
+- **Tests:** 253 → 316 workspace tests (241 unit, 33 integration, 42 doctests); 262 when the
+  gateway is tested without `hil`.
+
 ## 0.3.0 — 2026-10-11
 
 API freeze preparation (Tranche 1 of the 1.0 plan, **D-046**): the public shapes that will keep
