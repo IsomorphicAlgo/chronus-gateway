@@ -829,6 +829,160 @@ on the way up.
 **Revisit:** only through the 2.x process in `docs/TELECOMMAND.md`. Multi-spacecraft ephemeris
 routing (plan item 3.5) is likewise deferred to a 1.x minor.
 
+### D-051 — Access control: tokens, origins, client cap, bind policy, UDP allow-lists (Tranche 4; 0.6.0)
+**Decision:**
+
+1. **Bearer tokens** (RFC 6750) guard every HTTP route except `GET /health`. Tokens come from
+   `security.api_tokens_file` (one per line) and `CHRONUS_API_TOKENS`, never from the config
+   itself, so config files can be shared and checked in.
+   - At least 32 characters (`CG-138`); `--generate-token` makes 43 from the OS CSPRNG via
+     `getrandom`, which was already in the dependency tree.
+   - Compared in constant time against every configured token.
+   - Browsers cannot set headers on a WebSocket, so `?access_token=` is accepted as well (RFC 6750
+     §2.3). The HTTP trace span logs only the path, never the query.
+   - Considered and rejected for now: mTLS (heavy for operators, and better done in the proxy)
+     and per-user accounts (a 2.x concern alongside any uplink, D-050).
+2. **The bind policy is enforced, not documented.**
+   - The gateway refuses to start with a non-loopback `http_bind` and no token (`CG-137`).
+     `allow_unauthenticated_remote = true` is the explicit escape hatch for an authenticating
+     proxy.
+   - The Docker demo opts out and now publishes its ports on loopback only.
+3. **WebSocket `Origin` check** against cross-site WebSocket hijacking.
+   - Allowed: pages from this computer, and requests with no `Origin` (non-browser clients, which
+     tokens protect).
+   - Otherwise only `allowed_origins` (`"*"` is allowed but warned about, `CG-141`).
+   - Applied to the WebSocket only, because the HTTP API sends no CORS headers, so browsers
+     already refuse cross-origin reads.
+4. **Client cap** (`max_ws_clients`, default 64).
+   - A slot is reserved before the upgrade and released by a guard. A failed upgrade therefore
+     cannot leak a slot.
+   - `ws_clients_connected` still counts subscribed clients only, which the end-to-end tests rely
+     on.
+5. **UDP source allow-lists** for the telemetry and RF ports.
+   - CIDR lists; IPv4-mapped IPv6 senders are compared as IPv4.
+   - Implemented in-house (about 40 lines plus tests) rather than adding an `ipnet` dependency.
+   - Rejected datagrams are counted and the first is logged. This is a filter, not
+     authentication: UDP has no way to carry a credential.
+   - `ingest::run_filtered` and `rf::run_listener_filtered` are new; the existing functions keep
+     their signatures.
+6. **TLS by reverse proxy, not built in.**
+   - rustls needs a C-compiled crypto backend (ring / aws-lc-rs). The owner's Windows build is
+     already constrained (D-008), and certificate renewal is better left to Caddy or certbot.
+   - `docs/DEPLOYMENT.md` gives Caddy and nginx configurations that pass `Authorization`,
+     `Origin` and the WebSocket upgrade through.
+
+**Why:** the plan's exit for 4.1. Before this, anything that could reach port 8080 could read
+every frame and history, and any page in an operator's browser could open the WebSocket.
+**Validation:**
+- Unit tests: token loading, length limits and redaction, header and query extraction, origin
+  normalization (scheme, host and port must all match; `null` and look-alike hosts refused),
+  CIDR edge cases, the bind policy, and the 401 / `WWW-Authenticate` responses.
+- `tests/security_ops_e2e.rs` runs the real binary and checks: 401 without or with a wrong
+  token, 200 with one, 403 for a foreign origin, 503 at the cap and the slot freed on disconnect,
+  a loopback UDP sender dropped by a `10.0.0.0/8` allow-list, and the matching counters in JSON
+  and Prometheus.
+
+### D-052 — Data freshness: file reload, IERS Earth orientation, optional fetch (Tranche 4; 0.6.0)
+**Decision:**
+
+1. **Reload files; don't fetch by default.**
+   - Every `freshness.reload_interval_s` the gateway compares the modification time and size of
+     the TLE/OEM file and `eop_file`. A change rebuilds the propagator, which is swapped into
+     `TrackingProvider` (a new `replace` method; the cache is cleared and in-flight frames finish
+     on the old one).
+   - A file that fails to load keeps the previous data, is reported once (`CG-516`), and is
+     retried when it changes again.
+   - The gateway itself never opens an outbound connection. A scheduler refreshes the files:
+     `deploy/fetch-data.sh` plus a systemd timer, validating downloads before replacing anything.
+2. **IERS `finals2000A` parser.**
+   - Fixed columns per the IERS format description: date, MJD, pole x/y, UT1−UTC with its I/P
+     flag.
+   - Each row's date is cross-checked against its MJD, so a file in a different layout is
+     rejected rather than misread. Rows past the prediction horizon are skipped.
+   - Values are linearly interpolated to the current instant; across a leap second (a jump of
+     more than 0.5 s) the earlier day's value is used instead of interpolating through it.
+   - Today's values replace the fixed `ut1_minus_utc_s` / `polar_motion_*` settings, and they
+     are re-applied when the UTC day changes.
+   - Outside the file the nearest end is used, and `CG-517` reports it.
+3. **Optional `refresh` feature** wraps Ephemerust's bounded `net::fetch_tle_text`.
+   - Limits: HTTPS, 2 MiB, 10 s connect, 30 s overall, no retries.
+   - Interval at least 2 h (CelesTrak's published expectation); at startup it fetches only what
+     is missing or stale.
+   - `select_tle` keeps one named set, which is written atomically. A downloaded `finals` file
+     must parse before it replaces the old one.
+   - Off by default for the same reason TLS is (D-051). Without it, configured URLs produce a
+     warning (`CG-140`) rather than silently doing nothing.
+4. **Data age on `/status`** (a `data` object, added to the JSON without changing the
+   `HealthReport` type), in the JSON metrics, and as Prometheus gauges in seconds. The TLE-age
+   and OEM-coverage checks that used to run only at startup now run on every `/status`.
+
+**Why:** the plan's exit for 4.2 ("status shows data age for TLE/EOP/OEM"). It also makes the
+Tranche-1 Earth-orientation precision (D-043) maintainable: fixed values typed into a config go
+stale by about a millisecond a day.
+**Validation:**
+- Unit tests: the column layout against the documented positions, MJD ↔ date conversions,
+  interpolation, the leap-second rule, rejection of shifted, mismatched, unordered or
+  out-of-range files and of HTML error pages, a day rollover, broken-file reload (old data kept,
+  reported once, cleared after a fix), and both fetch paths against a loopback HTTP server
+  (`--features refresh`, run in CI).
+- The end-to-end test replaces the TLE file under a running binary and sees the new epoch, then
+  sees `CG-516` for a broken file.
+- `fetch-data.sh` was exercised with local files: a valid download, an error page, a missing
+  source, and an up-to-date copy. It passes `shellcheck`.
+
+**Known limits:**
+- Change detection uses the modification time plus the size. A same-size rewrite within the
+  filesystem's timestamp resolution could be missed; it is picked up on the next real change.
+- No real IERS file could be fetched from the build environment, so the parser is verified
+  against the published column layout plus the internal MJD/date cross-check. Running
+  `--check-config` with a real `finals.daily` prints the values in use, for the owner to compare.
+
+### D-053 — Operations: CLI, Prometheus, JSON logs, packaging (Tranche 4; 0.6.0)
+**Decision:**
+
+1. **`clap` command line for the binary** (it was already a workspace dependency):
+   - `--config` / `CHRONUS_GATEWAY_CONFIG`;
+   - `--check-config`: everything `run` does before opening sockets, then a summary; exit 0 / 2;
+   - `--generate-token`;
+   - `--log-format text|json` / `CHRONUS_LOG_FORMAT`;
+   - `--help` and `--version`.
+
+   SIGTERM is now handled like Ctrl-C, so `docker stop` and `systemctl stop` flush the history
+   file. The library's `load_effective_gateway_config` is unchanged for embedders.
+2. **Prometheus `/metrics`, hand-written** (text format 0.0.4). It is generated from the
+   existing JSON snapshots, so new counters appear automatically; the levels are a short
+   allow-list of gauges. It adds `chronus_health_status` and the data-age gauges, sits behind
+   the token, and adds no dependency.
+3. **JSON logs** via `tracing-subscriber`'s `json` feature.
+4. **Packaging** (`deploy/`):
+   - **Image.** A distroless, non-root image: glibc only, no shell, uid 65532, a volume for
+     history. It refuses to start without a token.
+   - **systemd.** A unit with `--check-config` as `ExecStartPre`, tokens via `LoadCredential=`,
+     `StateDirectory=` and full sandboxing (`systemd-analyze security`: 1.1, "OK"). Alongside it:
+     a sysusers file, a fetch timer and a production config.
+   - **Release workflow.** On a `v*` tag it builds Linux, Windows and macOS archives with SHA-256
+     sums and a smoke test, creates a GitHub Release, and pushes the image to GHCR.
+   - **CI** gains a `refresh` test and clippy run, `shellcheck`, and an image build that checks
+     the no-token refusal.
+   - `deny.toml` now checks all features, and allows `CDLA-Permissive-2.0` (Mozilla's CA list,
+     only in `refresh` builds).
+
+**Why:** the plan's exits for 4.3–4.5 and the hardened-deployment page (`docs/DEPLOYMENT.md`).
+**Validation:**
+- `actionlint` passes on both workflows; `systemd-analyze verify` passes on the three units;
+  `shellcheck` passes.
+- The image's runtime stage was built and run locally on a stand-in base holding the same three
+  libraries distroless/cc provides. Container registries were unreachable from the build
+  environment, so the builder stage is first exercised by the new CI job. The local run checked:
+  - the refusal without a token (`CG-137`, exit 2);
+  - `--check-config` and `--generate-token`;
+  - 401 / 200 on the API;
+  - the history volume, writable as uid 65532;
+  - JSON logs;
+  - a graceful SIGTERM.
+- Open MCT through the Vite proxy (which now injects `CHRONUS_TOKEN`) against a token-protected
+  gateway: 330 rows live, 330 after a reload.
+
 ## Open decisions (to resolve as milestones land)
 
 - **OD-E — Multi-node / rack-scale co-simulation.** Backlog beyond the M7 laptop scope.
@@ -859,6 +1013,11 @@ docs when dependencies change (finalization **B.2**, **D-035**).
 | [`criterion`](https://crates.io/crates/criterion), [`proptest`](https://crates.io/crates/proptest) | Benchmarks + parser property tests (**M6**, **D-030**) | crates.io, MIT/Apache-2.0 |
 | [`tokio-tungstenite`](https://crates.io/crates/tokio-tungstenite), [`tempfile`](https://crates.io/crates/tempfile) | Dev-only: WS integration tests; TOML config tests | crates.io, MIT |
 | [`jsonschema`](https://crates.io/crates/jsonschema) ([Stranger6667](https://github.com/Stranger6667/jsonschema)) | Dev-only: validates gateway output against the published schemas (**D-049**) | crates.io, MIT |
+| [`getrandom`](https://crates.io/crates/getrandom) | OS randomness for `--generate-token` (**D-051**) | crates.io, MIT/Apache-2.0 |
+| [`ureq`](https://crates.io/crates/ureq), [`rustls`](https://crates.io/crates/rustls), [`webpki-roots`](https://crates.io/crates/webpki-roots) (via Ephemerust `network`) | Optional `refresh` feature: HTTPS fetch of TLE / Earth orientation data (**D-052**) | crates.io, MIT/Apache-2.0 (ring: Apache-2.0 AND ISC; webpki-roots: CDLA-Permissive-2.0) |
+| **IERS** Bulletin A / `finals2000A` format | Earth orientation file (**D-052**) | [iers.org](https://www.iers.org/) |
+| **CelesTrak** GP data | Optional TLE source, used per its published fetch guidance (**D-052**) | [celestrak.org](https://celestrak.org/) |
+| [Caddy](https://caddyserver.com/), [nginx](https://nginx.org/), systemd, distroless | Deployment references (**D-051**, **D-053**) — documentation and packaging only | Apache-2.0 / BSD-2-Clause / LGPL-2.1+ / Apache-2.0 |
 | [`cargo-audit`](https://crates.io/crates/cargo-audit), [`cargo-deny`](https://crates.io/crates/cargo-deny) | CI supply-chain gates | crates.io |
 | Vite | Demo dashboard bundler (Showcase **S2**) | [vitejs.dev](https://vitejs.dev/), MIT |
 | [`cargo-mutants`](https://mutants.rs/), [`cargo-hack`](https://github.com/taiki-e/cargo-hack) | Optional secondary testing (**D-029**) | MIT |

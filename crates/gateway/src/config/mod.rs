@@ -132,6 +132,8 @@ impl Default for EphemerisSource {
 /// | [`time`](Self::time) | [`TimeConfig`] | spacecraft time-code decoding and skew policy (Tranche 2) |
 /// | [`framing`](Self::framing) | [`FramingConfig`] | bare Space Packets or CCSDS TM Transfer Frames on the wire (Tranche 3) |
 /// | [`history`](Self::history) | [`HistoryConfig`] | recent-telemetry ring buffer and optional on-disk log (Tranche 3) |
+/// | [`security`](Self::security) | [`SecurityConfig`] | API tokens, WebSocket origins and client cap, UDP source allow-lists (Tranche 4) |
+/// | [`freshness`](Self::freshness) | [`FreshnessConfig`] | ephemeris / Earth-orientation file reload and optional fetch (Tranche 4) |
 ///
 /// All config structs are `#[non_exhaustive]`: start from [`Default`] and assign the fields you
 /// need, so new fields in 1.x do not break callers.
@@ -165,6 +167,10 @@ pub struct StationConfig {
     pub framing: FramingConfig,
     /// Recent-telemetry history kept for `GET /api/v1/chronus/history` and Open MCT.
     pub history: HistoryConfig,
+    /// Who may use the HTTP/WebSocket API and which hosts may send UDP.
+    pub security: SecurityConfig,
+    /// Keeping orbit and Earth-orientation data current while running.
+    pub freshness: FreshnessConfig,
 }
 
 /// Where the ground station is and the carrier it listens on.
@@ -469,6 +475,177 @@ impl Default for HistoryConfig {
         Self {
             capacity: 10_000,
             persist_path: None,
+        }
+    }
+}
+
+/// Minimum length of an API token (characters). `chronus-gateway --generate-token` makes 43.
+pub const MIN_TOKEN_LEN: usize = 32;
+/// Largest accepted [`SecurityConfig::max_ws_clients`].
+pub const MAX_WS_CLIENTS_LIMIT: usize = 10_000;
+
+/// An IPv4 or IPv6 network in CIDR form (`10.0.0.0/24`, `::1/128`, or a bare address).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IpNet {
+    addr: std::net::IpAddr,
+    prefix: u8,
+}
+
+impl IpNet {
+    /// Parses `addr/prefix` or a bare address (a single host).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chronus_gateway::config::IpNet;
+    ///
+    /// let lan: IpNet = "192.168.1.0/24".parse().unwrap();
+    /// assert!(lan.contains("192.168.1.77".parse().unwrap()));
+    /// assert!(!lan.contains("192.168.2.1".parse().unwrap()));
+    /// assert!("10.0.0.0/33".parse::<IpNet>().is_err());
+    /// ```
+    pub fn contains(&self, ip: std::net::IpAddr) -> bool {
+        use std::net::IpAddr;
+        // An IPv4-mapped IPv6 sender (dual-stack socket) is compared as IPv4.
+        let ip = match ip {
+            IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
+            v4 => v4,
+        };
+        match (self.addr, ip) {
+            (IpAddr::V4(net), IpAddr::V4(a)) => {
+                let mask = u32::MAX
+                    .checked_shl(32 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                u32::from(net) & mask == u32::from(a) & mask
+            }
+            (IpAddr::V6(net), IpAddr::V6(a)) => {
+                let mask = u128::MAX
+                    .checked_shl(128 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                u128::from(net) & mask == u128::from(a) & mask
+            }
+            _ => false,
+        }
+    }
+}
+
+impl std::str::FromStr for IpNet {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+        let (addr, prefix) = match s.split_once('/') {
+            Some((a, p)) => (a, Some(p)),
+            None => (s, None),
+        };
+        let addr: std::net::IpAddr = addr
+            .parse()
+            .map_err(|_| format!("`{s}` is not an IP address or CIDR network"))?;
+        let max = if addr.is_ipv4() { 32 } else { 128 };
+        let prefix = match prefix {
+            None => max,
+            Some(p) => p
+                .parse::<u8>()
+                .ok()
+                .filter(|p| *p <= max)
+                .ok_or_else(|| format!("`{s}`: prefix must be 0..={max}"))?,
+        };
+        Ok(Self { addr, prefix })
+    }
+}
+
+impl std::fmt::Display for IpNet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.addr, self.prefix)
+    }
+}
+
+/// Access control for the HTTP/WebSocket API and the UDP ports (see `docs/DEPLOYMENT.md`).
+///
+/// - **API tokens.** With at least one token configured, every route except `GET /health` needs
+///   `Authorization: Bearer <token>` (or `?access_token=<token>`, for browsers opening a
+///   WebSocket). Tokens come from [`api_tokens_file`](Self::api_tokens_file) and the
+///   `CHRONUS_API_TOKENS` environment variable; they are never written in the config itself.
+/// - **Bind policy.** Serving the API on a non-loopback address **without** tokens is refused at
+///   startup unless [`allow_unauthenticated_remote`](Self::allow_unauthenticated_remote) says it
+///   is deliberate (for example behind an authenticating reverse proxy).
+/// - **WebSocket origins and client cap.** Browsers can open WebSockets to any site, so the
+///   `Origin` header is checked: by default only pages served from this computer (or non-browser
+///   clients, which send no `Origin`) may connect; [`allowed_origins`](Self::allowed_origins)
+///   names the dashboards that may. At most [`max_ws_clients`](Self::max_ws_clients) at once.
+/// - **UDP source allow-lists.** UDP cannot carry a token, so the telemetry and receiver ports can
+///   be limited to the networks the front end sends from.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct SecurityConfig {
+    /// File with one API token per line (`#` comments allowed). `None` = no file.
+    pub api_tokens_file: Option<PathBuf>,
+    /// Browser origins (`scheme://host[:port]`) allowed to open the WebSocket, in addition to
+    /// loopback pages. `["*"]` allows any origin (not recommended).
+    pub allowed_origins: Vec<String>,
+    /// Concurrent WebSocket clients allowed. Default **64**.
+    pub max_ws_clients: usize,
+    /// Serve the API on a non-loopback address without tokens (only behind a proxy that
+    /// authenticates). Default `false`.
+    pub allow_unauthenticated_remote: bool,
+    /// Accept telemetry datagrams only from these networks. `None` accepts any sender.
+    pub udp_allowed_sources: Option<Vec<IpNet>>,
+    /// Accept `chronus.rf.v1` datagrams only from these networks. `None` accepts any sender.
+    pub rf_allowed_sources: Option<Vec<IpNet>>,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            api_tokens_file: None,
+            allowed_origins: Vec::new(),
+            max_ws_clients: 64,
+            allow_unauthenticated_remote: false,
+            udp_allowed_sources: None,
+            rf_allowed_sources: None,
+        }
+    }
+}
+
+/// Shortest accepted [`FreshnessConfig::fetch_interval_h`]: CelesTrak publishes about every two
+/// hours and asks clients not to poll faster.
+pub const MIN_FETCH_INTERVAL_H: f64 = 2.0;
+
+/// Keeping ephemeris and Earth-orientation data current (see [`crate::freshness`]).
+///
+/// The gateway never needs the network for this: it **reloads files** when they change, so any
+/// scheduler (cron, a systemd timer, `deploy/fetch-data.sh`) can refresh them. Builds with the
+/// optional `refresh` cargo feature can also fetch them itself from [`tle_url`](Self::tle_url) and
+/// [`eop_url`](Self::eop_url).
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct FreshnessConfig {
+    /// How often to check `tle_file`, `oem_file` and `eop_file` for changes, in seconds. `0`
+    /// turns reloading off. Default **60**.
+    pub reload_interval_s: u64,
+    /// IERS `finals2000A` file (e.g. `finals.daily`): Earth orientation for **today** is taken
+    /// from it, replacing the fixed `ut1_minus_utc_s` / `polar_motion_*` settings.
+    pub eop_file: Option<PathBuf>,
+    /// Which element set to keep when a fetched bulletin holds many (matched against the title
+    /// line, e.g. `"ISS (ZARYA)"`). Default: the title of the configured TLE.
+    pub tle_name: Option<String>,
+    /// `refresh` feature: HTTPS URL of a TLE bulletin; the selected set is written to `tle_file`.
+    pub tle_url: Option<String>,
+    /// `refresh` feature: HTTPS URL of an IERS `finals2000A` file, written to `eop_file`.
+    pub eop_url: Option<String>,
+    /// `refresh` feature: hours between fetches (minimum 2). Default **6**.
+    pub fetch_interval_h: f64,
+}
+
+impl Default for FreshnessConfig {
+    fn default() -> Self {
+        Self {
+            reload_interval_s: 60,
+            eop_file: None,
+            tle_name: None,
+            tle_url: None,
+            eop_url: None,
+            fetch_interval_h: 6.0,
         }
     }
 }
@@ -802,6 +979,65 @@ impl StationConfig {
         self.validate_framing_history()
     }
 
+    fn validate_security_freshness(&self) -> Result<(), ConfigError> {
+        let sec = &self.security;
+        if sec.max_ws_clients == 0 || sec.max_ws_clients > MAX_WS_CLIENTS_LIMIT {
+            return Err(ConfigError::InvalidSetting {
+                field: "security.max_ws_clients",
+                value: sec.max_ws_clients.to_string(),
+                expected: "1..=10000 clients",
+            });
+        }
+        for o in &sec.allowed_origins {
+            if o != "*" && crate::security::normalize_origin(o).is_none() {
+                return Err(ConfigError::InvalidSetting {
+                    field: "security.allowed_origins",
+                    value: format!("\"{o}\""),
+                    expected: "origins like \"https://ops.example.org\" or \"http://10.0.0.5:5174\" (scheme, host, optional port; no path)",
+                });
+            }
+        }
+        let f = &self.freshness;
+        if !f.fetch_interval_h.is_finite() || f.fetch_interval_h < MIN_FETCH_INTERVAL_H {
+            return Err(ConfigError::InvalidSetting {
+                field: "freshness.fetch_interval_h",
+                value: f.fetch_interval_h.to_string(),
+                expected: "at least 2 hours (CelesTrak updates about every two hours and blocks clients that poll faster)",
+            });
+        }
+        for (field, url) in [
+            ("freshness.tle_url", &f.tle_url),
+            ("freshness.eop_url", &f.eop_url),
+        ] {
+            if let Some(u) = url
+                && !(u.starts_with("https://")
+                    || u.starts_with("http://127.")
+                    || u.starts_with("http://localhost"))
+            {
+                return Err(ConfigError::InvalidSetting {
+                    field,
+                    value: format!("\"{u}\""),
+                    expected: "an https:// URL (plain http only for localhost)",
+                });
+            }
+        }
+        if f.tle_url.is_some() && !matches!(self.tracking.ephemeris, EphemerisSource::TleFile(_)) {
+            return Err(ConfigError::InvalidSetting {
+                field: "freshness.tle_url",
+                value: "(set)".into(),
+                expected: "`station.tle_file` to be set: fetched element sets are written there",
+            });
+        }
+        if f.eop_url.is_some() && f.eop_file.is_none() {
+            return Err(ConfigError::InvalidSetting {
+                field: "freshness.eop_url",
+                value: "(set)".into(),
+                expected: "`freshness.eop_file` to be set: fetched Earth orientation data is written there",
+            });
+        }
+        Ok(())
+    }
+
     fn validate_framing_history(&self) -> Result<(), ConfigError> {
         let f = &self.framing;
         if let Some(len) = f.frame_length
@@ -845,6 +1081,7 @@ impl StationConfig {
                 expected: "0..=500000 messages (0 turns history off)",
             });
         }
+        self.validate_security_freshness()?;
         if self.history.persist_path.is_some() && self.history.capacity == 0 {
             return Err(ConfigError::InvalidSetting {
                 field: "history.persist_path",

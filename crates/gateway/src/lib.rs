@@ -11,7 +11,9 @@
 //! optional TOML file configuration ([`config::file`], Milestone 8). See `docs/BUILD_PLAN.md`.
 //! The 1.0 plan added the `chronus.rf.v1` receiver side channel ([`rf`]) and spacecraft time
 //! ([`time`]) in 0.4, then CCSDS TM Transfer Frames ([`frames`]), the single processing
-//! [`pipeline`], recent-telemetry [`history`] and the Open MCT dictionary ([`openmct`]) in 0.5.
+//! [`pipeline`], recent-telemetry [`history`] and the Open MCT dictionary ([`openmct`]) in 0.5;
+//! access control ([`security`]), data freshness ([`freshness`]) and Prometheus metrics
+//! ([`prometheus`]) in 0.6.
 //!
 //! ## Scope: telemetry only
 //!
@@ -44,6 +46,7 @@ pub mod ccsds;
 pub mod config;
 pub mod diagnose;
 pub mod frames;
+pub mod freshness;
 pub mod hil_tm;
 pub mod history;
 pub mod http;
@@ -52,17 +55,20 @@ pub mod metrics;
 pub mod oem;
 pub mod openmct;
 pub mod pipeline;
+pub mod prometheus;
 pub mod propagator;
 pub mod rf;
+pub mod security;
 pub mod state;
 pub mod time;
 pub mod validate;
 
 pub use ccsds::{CcsdsError, TelemetryFrame, encode_synthetic_tm, encode_synthetic_tm_with_time};
 pub use config::{
-    ConfigError, ConfigLoadError, EphemerisSource, FramingConfig, FramingMode, HilConfig,
-    HistoryConfig, IngestConfig, RfConfig, SiteConfig, StationConfig, TimeConfig, ToleranceConfig,
-    TrackingConfig, load_effective_gateway_config, load_gateway_from_path, resolve_config_path,
+    ConfigError, ConfigLoadError, EphemerisSource, FramingConfig, FramingMode, FreshnessConfig,
+    HilConfig, HistoryConfig, IngestConfig, IpNet, RfConfig, SecurityConfig, SiteConfig,
+    StationConfig, TimeConfig, ToleranceConfig, TrackingConfig, load_effective_gateway_config,
+    load_gateway_from_path, resolve_config_path,
 };
 pub use diagnose::{Diagnosis, Explain, HealthReport, Severity, assess_health};
 pub use frames::{FramingSnapshot, TmDeframer, TmFrameBuilder};

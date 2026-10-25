@@ -33,6 +33,12 @@ pub struct SharedGateway {
     pub framing: Arc<FramingStats>,
     /// Processing-pipeline counters.
     pub pipeline: Arc<PipelineStats>,
+    /// API tokens; empty = authentication off (see [`crate::security`]).
+    pub auth: Arc<crate::security::ApiTokens>,
+    /// Access-control counters.
+    pub security: Arc<crate::security::SecurityStats>,
+    /// Which orbit and Earth-orientation data is in use, and how old it is.
+    pub data: Arc<crate::freshness::DataStatus>,
     /// UDP ingest counters.
     pub ingest_stats: Arc<IngestStats>,
     /// Telemetry / WebSocket counters (Milestone 6).
@@ -75,6 +81,9 @@ impl SharedGateway {
             history,
             framing: Arc::new(FramingStats::default()),
             pipeline: Arc::new(PipelineStats::default()),
+            auth: Arc::new(crate::security::ApiTokens::disabled()),
+            security: Arc::new(crate::security::SecurityStats::default()),
+            data: Arc::new(crate::freshness::DataStatus::default()),
             ingest_stats,
             gateway_metrics,
             station,
@@ -103,6 +112,20 @@ impl SharedGateway {
         self
     }
 
+    /// Requires these API tokens on every route except `GET /health`.
+    #[must_use]
+    pub fn with_api_tokens(mut self, tokens: crate::security::ApiTokens) -> Self {
+        self.auth = Arc::new(tokens);
+        self
+    }
+
+    /// Shares a data-status handle (the one the [`crate::freshness::Refresher`] updates).
+    #[must_use]
+    pub fn with_data_status(mut self, data: Arc<crate::freshness::DataStatus>) -> Self {
+        self.data = data;
+        self
+    }
+
     /// Plain-English health assessment of the live counters (see [`crate::diagnose`]).
     pub fn health_report(&self) -> crate::diagnose::HealthReport {
         let ingest = self.ingest_stats.snapshot_struct();
@@ -123,6 +146,15 @@ impl SharedGateway {
             &self.framing.snapshot(self.station.framing.mode),
         ))
         .with_extra_findings(crate::diagnose::assess_history(&self.history.snapshot()))
+        .with_extra_findings(crate::diagnose::assess_security(
+            &self.security.snapshot(self.auth.is_enabled()),
+        ))
+        .with_extra_findings(if self.tracking.is_some() {
+            let now = chrono::Utc::now();
+            crate::freshness::assess_data(&self.data.snapshot(now), now)
+        } else {
+            Vec::new()
+        })
     }
 }
 

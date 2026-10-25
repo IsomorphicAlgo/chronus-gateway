@@ -1,0 +1,45 @@
+# Example configuration for a hardened native install (deploy/chronus-gateway.service).
+# Walkthrough: docs/DEPLOYMENT.md. Every table is documented in gateway.example.toml.
+
+[ingest]
+# Telemetry from the radio front end on the station LAN.
+bind_addr = "0.0.0.0:7301"
+channel_capacity = 1024
+max_datagram_size = 65542
+# The API stays on loopback; a reverse proxy (Caddy / nginx) terminates TLS in front of it.
+http_bind = "127.0.0.1:8080"
+
+[station]
+latitude_deg = 47.9
+longitude_deg = -122.25
+altitude_m = 150.0
+nominal_carrier_hz = 437500000.0
+min_recompute_interval_ms = 10
+doppler_tolerance_hz = 150.0
+minimum_elevation_deg = 0.0
+# Kept current by deploy/fetch-data.sh (or the `refresh` feature); reloaded automatically.
+tle_file = "/var/lib/chronus-gateway/tle.txt"
+
+[rf]
+bind_addr = "0.0.0.0:7302"
+
+[time]
+format = "cds"
+max_skew_s = 5.0
+
+[history]
+capacity = 50000
+persist_path = "/var/lib/chronus-gateway/history.jsonl"
+
+[security]
+# Delivered by systemd (LoadCredential=) so the file is readable only by this service.
+api_tokens_file = "/run/credentials/chronus-gateway.service/api_tokens"
+allowed_origins = ["https://ops.example.org"]
+max_ws_clients = 64
+# Only the SDR host and the rotator controller may send UDP.
+udp_allowed_sources = ["192.168.10.20"]
+rf_allowed_sources = ["192.168.10.20", "192.168.10.21"]
+
+[freshness]
+reload_interval_s = 60
+eop_file = "/var/lib/chronus-gateway/finals.daily"

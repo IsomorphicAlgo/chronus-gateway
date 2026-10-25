@@ -144,8 +144,27 @@ every message format are served at `/api/v1/chronus/schemas`. See [`OPENMCT.md`]
 **Telecommand.** The gateway is telemetry-only and never transmits: see
 [`TELECOMMAND.md`](TELECOMMAND.md).
 
-There is **no generated `--help`** on the binary today; treat **`gateway.example.toml`** plus this
-guide as the operator surface for flags.
+### Running it for real: security, data freshness, monitoring (0.6.0)
+
+`chronus-gateway --help` lists the options. The ones that matter most:
+
+| Command | What it does |
+|---|---|
+| `chronus-gateway --check-config -c gateway.toml` | Loads everything (config, tokens, TLE/OEM, Earth orientation file) and prints what the gateway would run with, plus every warning. Exit **0** = ready, **2** = must be fixed. Opens no sockets. |
+| `chronus-gateway --generate-token` | Prints a random API token for `security.api_tokens_file`. |
+| `--log-format json` | One JSON object per log line (for log collectors). |
+
+Before exposing the gateway beyond your own computer, read
+[`DEPLOYMENT.md`](DEPLOYMENT.md). In short:
+- **API tokens.** Set `[security] api_tokens_file`. The gateway **refuses** to serve the API on
+  a network address without one (`CG-137`).
+- **Origins.** `allowed_origins` names the web dashboards that may open the WebSocket.
+- **UDP allow-lists.** `udp_allowed_sources` / `rf_allowed_sources` limit who may send.
+- **Data freshness.** `[freshness]` reloads the TLE/OEM files and an IERS `finals.daily` when
+  they change. `/status` now has a `data` object with their ages, and `GET /metrics` serves
+  Prometheus.
+- **Running it as a service.** `deploy/` has a hardened Docker image, a systemd unit and a
+  data-fetch timer.
 
 ### Optional: feed synthetic HIL frames (two terminals)
 
@@ -243,11 +262,11 @@ health check: an overall `status` (`ok`, `waiting`, `attention`, `problem`), a o
 
 | Codes | Area | Typical examples |
 |-------|------|------------------|
-| `CG-1xx` | Configuration | latitude/longitude swapped, 10 entered instead of 0.1, missing config, TLE or OEM file, typo in a setting name, carrier entered in MHz instead of Hz, UT1-UTC entered in milliseconds |
+| `CG-1xx` | Configuration | API served to the network without a token (`CG-137`), unusable tokens (`CG-138`) or Earth orientation file (`CG-139`), latitude/longitude swapped, 10 entered instead of 0.1, missing config, TLE or OEM file, typo in a setting name, carrier entered in MHz instead of Hz, UT1-UTC entered in milliseconds |
 | `CG-2xx` | Network | port already in use, port below 1024, IP address not on this computer |
 | `CG-3xx` | Orbit data (TLE / OEM) | TLE too old for Doppler/pointing (> 3 days) or for anything (> 30 days), dated in the future (clock wrong), bad checksum; OEM unreadable, in an unsupported frame, or not covering the current time |
 | `CG-4xx` | Incoming data | packet too short, packet cut off, command packet on the telemetry port |
-| `CG-5xx` | Live health | no data yet, data arriving but not CCSDS, most frames flagged (usually a setup issue), no dashboard connected, receiver data missing (`CG-511`/`512`), transfer frames failing their checks (`CG-513`), history file writes failing (`CG-514`) |
+| `CG-5xx` | Live health | no data yet, data arriving but not CCSDS, most frames flagged (usually a setup issue), no dashboard connected, receiver data missing (`CG-511`/`512`), transfer frames failing their checks (`CG-513`), history file writes failing (`CG-514`), refused tokens / origins / senders (`CG-515`), data files that failed to reload (`CG-516`), an Earth orientation file that has run out (`CG-517`) |
 
 The first invalid packet and the first orbit-calculation failure are explained in full in the log;
 after that they are only counted, so the log stays readable.
@@ -268,6 +287,7 @@ the same milestones and tolerances the project tests against:
 | Manual acceptance gates for showcase stages | [`docs/Demo_Test.md`](Demo_Test.md) |
 | Understand **why** a major choice was made (dependencies, seams, deferrals) | [`Methodology.md`](../Methodology.md) |
 | Decode **CCSDS TM Transfer Frames** / CADUs from an SDR front end | [`docs/TM_TRANSFER_FRAMES.md`](TM_TRANSFER_FRAMES.md) |
+| **Deploy** on a network: tokens, TLS proxy, data refresh, Prometheus, Docker, systemd | [`docs/DEPLOYMENT.md`](DEPLOYMENT.md) |
 | Use **NASA Open MCT** with history, or the published JSON Schemas | [`docs/OPENMCT.md`](OPENMCT.md), [`demo/openmct/README.md`](../demo/openmct/README.md) |
 | Configure a real run (bind addresses, station, TLE path) | [`gateway.example.toml`](../gateway.example.toml), `--config` / `-c`, and `CHRONUS_GATEWAY_CONFIG` (see **First run** above) |
 

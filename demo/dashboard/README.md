@@ -24,6 +24,9 @@ Open the printed local URL (usually `http://127.0.0.1:5173`). Override the WebSo
 
 - **Query:** `http://127.0.0.1:5173/?ws=ws://127.0.0.1:8080/telemetry/openmct`
 - **Env:** create `.env.local` with `VITE_GATEWAY_WS=ws://host:port/telemetry/openmct`
+- **Gateway with API tokens (0.6.0):** add the token to the URL, for example
+  `ws://host:port/telemetry/openmct?access_token=<token>`. The dashboard's origin must also be
+  allowed: pages from this computer always are, and others need `security.allowed_origins`.
 
 **Production build** (static files in `dist/`):
 

@@ -1,6 +1,10 @@
 # cargo-deny configuration (Milestone 6). Run: `cargo deny check` from workspace root.
 # Advisory database is fetched on first run.
 
+# Check every feature combination, including the optional `refresh` (HTTPS client) and `hil`.
+[graph]
+all-features = true
+
 [advisories]
 version = 2
 yanked = "deny"
@@ -26,6 +30,9 @@ allow = [
     "BSL-1.0",
     "0BSD",
     "Unlicense",
+    # webpki-roots (Mozilla's CA certificate list, as data). Only in builds with the optional
+    # `refresh` feature, which fetches TLEs / Earth orientation over HTTPS (Methodology D-052).
+    "CDLA-Permissive-2.0",
 ]
 
 [bans]

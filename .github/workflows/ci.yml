@@ -39,6 +39,11 @@ jobs:
         working-directory: chronus-gateway
         run: cargo test -p chronus-gateway
 
+      # Tranche 4: the optional `refresh` feature (HTTPS fetch of TLE / Earth orientation data).
+      - name: Cargo test (gateway with refresh)
+        working-directory: chronus-gateway
+        run: cargo test -p chronus-gateway --features refresh --lib freshness
+
       # Showcase S1: ensure Compose spec is valid (no full `docker build` here — too slow for PR CI).
       - name: Validate demo Docker Compose spec
         working-directory: chronus-gateway
@@ -64,6 +69,16 @@ jobs:
       - name: Clippy (gateway without hil)
         working-directory: chronus-gateway
         run: cargo clippy -p chronus-gateway --all-targets -- -D warnings
+
+      - name: Clippy (gateway with refresh)
+        working-directory: chronus-gateway
+        run: cargo clippy -p chronus-gateway --features refresh --all-targets -- -D warnings
+
+      - name: Check the deploy/ shell script and systemd units
+        working-directory: chronus-gateway
+        run: |
+          sh -n deploy/fetch-data.sh
+          shellcheck deploy/fetch-data.sh
 
       # Pin a crates.io version that exists (--locked uses the published lockfile). 0.21.3 was never released.
       - name: Install cargo-audit
@@ -100,3 +115,30 @@ jobs:
         with:
           package: chronus-gateway
           baseline-rev: ${{ steps.baseline.outputs.rev }}
+
+  # Tranche 4.5: the production image builds (no push; release.yml publishes on tags).
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build deploy/Dockerfile
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: false
+          tags: chronus-gateway:ci
+          load: true
+
+      - name: The image refuses to serve without a token, then starts with one
+        run: |
+          set -x
+          if docker run --rm chronus-gateway:ci; then echo "expected CG-137" && exit 1; fi
+          token="$(docker run --rm chronus-gateway:ci --generate-token)"
+          docker run --rm -e CHRONUS_API_TOKENS="$token" chronus-gateway:ci --check-config
+

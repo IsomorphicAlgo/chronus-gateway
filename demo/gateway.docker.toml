@@ -8,3 +8,10 @@ bind_addr = "0.0.0.0:7301"
 channel_capacity = 1024
 max_datagram_size = 65542
 http_bind = "0.0.0.0:8080"
+
+# Since 0.6.0 the gateway refuses to serve its API on a non-loopback address without API tokens
+# (CG-137). This demo publishes the port on the host's loopback only (see docker-compose.yml) and
+# carries synthetic data, so it opts out explicitly. A real deployment uses tokens instead:
+# see docs/DEPLOYMENT.md and deploy/gateway.production.toml.
+[security]
+allow_unauthenticated_remote = true

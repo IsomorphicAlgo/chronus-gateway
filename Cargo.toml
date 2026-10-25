@@ -8,7 +8,7 @@ members = ["crates/gateway", "crates/chronus-hil-sim", "crates/chronus-replay", 
 [workspace.package]
 # First real version line (finalization plan D.1): pre-1.0, minor = breaking during 0.x.
 # Bumped per tranche as the finalization plan progresses (see CHANGELOG.md).
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT"
@@ -20,7 +20,7 @@ repository = "https://github.com/IsomorphicAlgo/chronus-gateway"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # HTTP / WebSocket (Milestone 5; OD-B)
 axum = { version = "0.8", features = ["macros", "ws"] }
@@ -28,13 +28,15 @@ tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.7", features = ["trace", "limit"] }
 futures-util = "0.3"
 base64 = { version = "0.23", default-features = false, features = ["std"] }
+# Tranche 4: OS randomness for `--generate-token` (already in the tree via axum's WebSocket).
+getrandom = "0.3"
 
 # Error handling
 anyhow = "1"
 thiserror = "2"
 
 # CLI (Showcase S3 replay tool)
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 
 # Time + serialization
 chrono = { version = "0.4", features = ["serde"] }

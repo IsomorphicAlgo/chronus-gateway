@@ -40,6 +40,10 @@ when `persist_path` is set, and the data is still there.
 
 To use another gateway: `CHRONUS_GATEWAY=http://10.0.0.5:8080 npm run dev`.
 
+If the gateway requires an API token (0.6.0, `docs/DEPLOYMENT.md`), give it to the proxy:
+`CHRONUS_TOKEN=<token> npm run dev`. The proxy adds `Authorization: Bearer` to every request and
+WebSocket, so the token never reaches the browser.
+
 ## Verify
 
 With the gateway and `npm run dev` running (Python Playwright needed:

@@ -435,6 +435,22 @@ pub async fn run_listener(
     store: std::sync::Arc<RfStore>,
     shutdown: impl Future<Output = ()>,
 ) -> std::io::Result<()> {
+    run_listener_filtered(
+        socket,
+        store,
+        crate::security::SourceFilter::allow_all(),
+        shutdown,
+    )
+    .await
+}
+
+/// [`run_listener`] with a sender allow-list (`security.rf_allowed_sources`, Tranche 4).
+pub async fn run_listener_filtered(
+    socket: UdpSocket,
+    store: std::sync::Arc<RfStore>,
+    filter: crate::security::SourceFilter,
+    shutdown: impl Future<Output = ()>,
+) -> std::io::Result<()> {
     let mut buf = vec![0u8; RF_MAX_DATAGRAM];
     tokio::pin!(shutdown);
     loop {
@@ -442,6 +458,7 @@ pub async fn run_listener(
             biased;
             () = &mut shutdown => return Ok(()),
             r = socket.recv_from(&mut buf) => match r {
+                Ok((_, from)) if !filter.allows(from) => {}
                 Ok((n, _from)) => {
                     store.ingest_datagram(&buf[..n], Utc::now());
                 }

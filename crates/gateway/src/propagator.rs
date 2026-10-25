@@ -501,7 +501,7 @@ impl EphemerustPropagator {
 /// propagations (the look-angle recompute throttle, e.g. 100 Hz). Safe to share across the Tokio
 /// worker threads that service concurrent clients.
 pub struct TrackingProvider {
-    propagator: Arc<dyn OrbitalPropagator>,
+    propagator: std::sync::RwLock<Arc<dyn OrbitalPropagator>>,
     min_interval_ms: i64,
     last: Mutex<Option<(DateTime<Utc>, TrackingState)>>,
 }
@@ -529,7 +529,7 @@ impl TrackingProvider {
     /// ```
     pub fn new(propagator: Arc<dyn OrbitalPropagator>, min_interval_ms: u64) -> Self {
         Self {
-            propagator,
+            propagator: std::sync::RwLock::new(propagator),
             min_interval_ms: min_interval_ms as i64,
             last: Mutex::new(None),
         }
@@ -553,14 +553,35 @@ impl TrackingProvider {
                 return Ok(*state);
             }
         }
-        // Compute outside the lock so SGP4 work never serializes other callers.
-        let state = self.propagator.tracking_state(time)?;
+        // Compute outside the cache lock so SGP4 work never serializes other callers; the
+        // propagator handle is cloned out of its lock first (cheap `Arc` clone).
+        let propagator = Arc::clone(
+            &self
+                .propagator
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
+        let state = propagator.tracking_state(time)?;
         let mut cache = self
             .last
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *cache = Some((time, state));
         Ok(state)
+    }
+
+    /// Swaps in a new propagator (fresh TLE, OEM or Earth orientation) and clears the cache.
+    /// Frames being processed finish on the old one; the next request uses the new one.
+    /// Used by [`crate::freshness`] (Tranche 4).
+    pub fn replace(&self, propagator: Arc<dyn OrbitalPropagator>) {
+        *self
+            .propagator
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = propagator;
+        *self
+            .last
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
 }
 

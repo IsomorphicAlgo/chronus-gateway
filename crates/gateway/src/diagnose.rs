@@ -708,6 +708,32 @@ pub fn config_warnings(ingest: &IngestConfig, station: &StationConfig) -> Vec<Di
             .fix("Use the default `ingest.max_datagram_size = 65542` unless you have a reason not to."),
         );
     }
+    if (station.freshness.tle_url.is_some() || station.freshness.eop_url.is_some())
+        && !cfg!(feature = "refresh")
+    {
+        out.push(
+            Diagnosis::new(
+                "CG-140",
+                Severity::Warning,
+                "`freshness.tle_url` / `eop_url` are set, but this build cannot fetch data.",
+                "Fetching is in the optional `refresh` cargo feature, which this binary was built \
+                 without. The files on disk are still reloaded when they change.",
+            )
+            .fix("Rebuild with `cargo build --release -p chronus-gateway --features refresh`.")
+            .fix("Or refresh the files with a scheduler instead: deploy/fetch-data.sh plus cron or a systemd timer."),
+        );
+    }
+    if station.security.allowed_origins.iter().any(|o| o == "*") {
+        out.push(
+            Diagnosis::new(
+                "CG-141",
+                Severity::Warning,
+                "`security.allowed_origins` contains \"*\": any website can open the telemetry WebSocket from a visitor's browser.",
+                "Origin checks stop a malicious page from reading telemetry through an operator's browser.",
+            )
+            .fix("List the dashboards that need access instead, e.g. [\"https://ops.example.org\"]."),
+        );
+    }
     let fr = &station.framing;
     if fr.mode == crate::config::FramingMode::TmFrames
         && !fr.asm
@@ -1671,6 +1697,109 @@ pub fn assess_framing(f: &crate::frames::FramingSnapshot) -> Vec<Diagnosis> {
     out
 }
 
+/// Plain-English findings about rejected access (`CG-515`).
+#[must_use]
+pub fn assess_security(s: &crate::security::SecuritySnapshot) -> Vec<Diagnosis> {
+    let mut out = Vec::new();
+    if s.auth_failures > 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-515",
+                Severity::Warning,
+                format!(
+                    "{} request(s) were refused for a missing or wrong API token.",
+                    s.auth_failures
+                ),
+                "Either a dashboard or scraper is misconfigured, or someone without a token is \
+                 trying the API.",
+            )
+            .fix("Give each client its token as `Authorization: Bearer <token>` (WebSockets from a browser: `?access_token=<token>`).")
+            .fix("If the attempts are not yours, keep the API behind a firewall or VPN (docs/DEPLOYMENT.md)."),
+        );
+    }
+    if s.ws_rejected_origin > 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-515",
+                Severity::Warning,
+                format!(
+                    "{} WebSocket connection(s) from a web page on another site were refused.",
+                    s.ws_rejected_origin
+                ),
+                "Only pages from this computer, or origins listed in `security.allowed_origins`, may \
+                 open the telemetry WebSocket from a browser.",
+            )
+            .fix("If that dashboard is yours, add its origin (e.g. \"https://ops.example.org\") to `security.allowed_origins`."),
+        );
+    }
+    if s.ws_rejected_capacity > 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-515",
+                Severity::Warning,
+                format!(
+                    "{} WebSocket connection(s) were refused because `security.max_ws_clients` were already connected.",
+                    s.ws_rejected_capacity
+                ),
+                "The cap protects the gateway from running out of memory or file handles.",
+            )
+            .fix("Raise `security.max_ws_clients` if that many dashboards are expected; otherwise look for a client that reconnects in a loop."),
+        );
+    }
+    if s.udp_rejected + s.rf_rejected > 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-515",
+                Severity::Info,
+                format!(
+                    "{} telemetry and {} receiver datagram(s) came from senders outside the allowed networks and were dropped.",
+                    s.udp_rejected, s.rf_rejected
+                ),
+                "`security.udp_allowed_sources` / `security.rf_allowed_sources` limit who may send.",
+            )
+            .fix("If a legitimate front end moved, add its address to the allow-list; the log shows the first rejected sender."),
+        );
+    }
+    out
+}
+
+impl Explain for crate::security::TokenError {
+    fn explain(&self) -> Diagnosis {
+        let base = Diagnosis::new(
+            "CG-138",
+            Severity::Error,
+            format!("The API tokens can't be used: {self}."),
+            "Tokens protect the dashboard API; the gateway will not start with a token it can't \
+             read or one short enough to guess.",
+        );
+        match self {
+            crate::security::TokenError::Read { .. } => base
+                .fix("Check `security.api_tokens_file`: the file must exist and be readable by the gateway.")
+                .fix(format!(
+                    "Relative paths are resolved from the folder the gateway runs in ({}).",
+                    current_dir_display()
+                )),
+            _ => base.fix(
+                "Generate a strong token with `chronus-gateway --generate-token` and replace the short one.",
+            ),
+        }
+    }
+}
+
+impl Explain for crate::freshness::FreshnessError {
+    fn explain(&self) -> Diagnosis {
+        Diagnosis::new(
+            "CG-139",
+            Severity::Error,
+            format!("The Earth orientation data can't be used: {self}."),
+            "`freshness.eop_file` must be an IERS finals2000A file such as `finals.daily` \
+             (fixed-width columns: date, MJD, pole x/y, UT1-UTC).",
+        )
+        .fix("Download it again: https://datacenter.iers.org/data/latestVersion/finals.daily.iau2000.txt (deploy/fetch-data.sh does this).")
+        .fix("Or remove `freshness.eop_file` to use the fixed `station.ut1_minus_utc_s` / `polar_motion_*` values.")
+    }
+}
+
 /// Plain-English findings about the history file (`CG-514`).
 #[must_use]
 pub fn assess_history(h: &crate::history::HistorySnapshot) -> Vec<Diagnosis> {
@@ -2610,5 +2739,40 @@ mod tests {
         assert!(
             check_oem_coverage((now - Duration::hours(1), now + Duration::hours(1)), now).is_none()
         );
+    }
+
+    #[test]
+    fn tranche4_errors_and_findings_have_codes_and_fixes() {
+        let short = crate::security::ApiTokens::from_tokens(["short"]).unwrap_err();
+        let d = short.explain();
+        assert_eq!((d.code, d.severity), ("CG-138", Severity::Error));
+        assert!(d.fixes.iter().any(|f| f.contains("--generate-token")));
+        let eop = crate::freshness::FreshnessError::Eop(crate::freshness::EopError::Empty);
+        let d = eop.explain();
+        assert_eq!(d.code, "CG-139");
+        assert!(!d.fixes.is_empty());
+
+        let quiet = crate::security::SecuritySnapshot::default();
+        assert!(assess_security(&quiet).is_empty());
+        let stats = crate::security::SecurityStats::default();
+        stats
+            .ws_rejected_origin
+            .store(2, std::sync::atomic::Ordering::Relaxed);
+        stats
+            .udp_rejected
+            .store(1, std::sync::atomic::Ordering::Relaxed);
+        let f = assess_security(&stats.snapshot(false));
+        assert_eq!(f.len(), 2);
+        assert!(f.iter().all(|d| d.code == "CG-515" && !d.fixes.is_empty()));
+
+        let mut st = StationConfig::default();
+        st.security.allowed_origins = vec!["*".into()];
+        st.freshness.tle_url = Some("https://example.org/tle".into());
+        let codes: Vec<_> = config_warnings(&IngestConfig::default(), &st)
+            .into_iter()
+            .map(|d| d.code)
+            .collect();
+        assert!(codes.contains(&"CG-141"));
+        assert_eq!(codes.contains(&"CG-140"), !cfg!(feature = "refresh"));
     }
 }
