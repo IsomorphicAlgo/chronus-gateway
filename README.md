@@ -34,11 +34,11 @@ Full runbooks: [`docs/DEMO.md`](docs/DEMO.md) (native, Docker, replay, fixtures)
 
 ## What it does
 
-Imagine a satellite circling Earth, constantly whispering raw binary to a ground station. ChronusGateway-RS is the **translator and sanity-checker** for those whispers. It ingests CCSDS packets over UDP, validates them against physics computed in real time, and streams clean JSON to mission-control dashboards, including [NASA Open MCT](https://nasa.github.io/openmct/)–compatible clients.
+Imagine a satellite circling Earth, constantly whispering raw binary to a ground station. ChronusGateway-RS is the **translator and sanity-checker** for those whispers. It ingests CCSDS Space Packets or TM Transfer Frames over UDP, validates them against physics computed in real time, and streams clean JSON to mission-control dashboards, including [NASA Open MCT](https://nasa.github.io/openmct/), with history a dashboard can reload from.
 
 ### 1. Fast translator
 
-An async, non-blocking core (Tokio) handles ingestion, parsing, and WebSocket fan-out so frames never pile up. Each CCSDS Space Packet becomes one `openmct.realtime.v1` JSON message.
+An async, non-blocking core (Tokio) handles ingestion, parsing, and WebSocket fan-out so frames never pile up. It reads one Space Packet per datagram, or the **TM Transfer Frames** a real downlink uses: sync-marker search, derandomization, CRC checks, virtual channels, and packets that span frames ([`docs/TM_TRANSFER_FRAMES.md`](docs/TM_TRANSFER_FRAMES.md)). A single pipeline processes each packet once, and each packet becomes one `openmct.realtime.v1` JSON message.
 
 ### 2. Built-in space map
 
@@ -60,6 +60,14 @@ Instead of trusting every field on the wire, the gateway runs **Physics–Teleme
 | 7 | Reserved | |
 
 Bits 0, 2 and 3 compare physics with what the **receiver** measured, which a CCSDS packet cannot carry. Point a receiver sidecar (or `chronus-replay` / `chronus-hil-sim`) at the gateway's optional **`chronus.rf.v1`** UDP port and they run in the shipped binary; without it they are skipped. With a **spacecraft time code** configured, physics is evaluated at the packet's onboard time and time-tag problems are reported in a separate `physics_flags_v2` field. See [`docs/RF_SIDE_CHANNEL.md`](docs/RF_SIDE_CHANNEL.md).
+
+### 4. Mission control with history
+
+The gateway generates an **Open MCT telemetry dictionary**, keeps **recent history** (in memory, optionally in a file that survives restarts), and serves it in Open MCT's own format. Every message format has a published **JSON Schema**. [`demo/openmct/`](demo/openmct/) is a real NASA Open MCT wired to all of it ([`docs/OPENMCT.md`](docs/OPENMCT.md)):
+
+![NASA Open MCT plotting the elevation of a lab ISS pass, loaded from the gateway's history after the gateway was killed and restarted](docs/assets/openmct-elevation-history.png)
+
+The gateway is **telemetry-only**: it has no uplink path and never transmits ([`docs/TELECOMMAND.md`](docs/TELECOMMAND.md)).
 
 **The shadow check.** A packet claims "full solar power" while the propagator says the spacecraft is in Earth's shadow. The frame is flagged.
 
@@ -102,12 +110,16 @@ The landing page lives in [`site/`](site/) and is deployed to [chronusgateway.co
 ## Architecture
 
 ```
-Raw RF / SDR ──▶ Async UDP ingestion ──▶ CCSDS zero-copy parser ──▶ Physics-Telemetry
- (UDP)            (Tokio)                  (validated frames)         Co-Validation engine
-                                                                             │
-                  OrbitalPropagator trait ◀── range-rate / look-angles ──────┤
-                  (Ephemerust today)                                         ▼
-                                                          Axum WebSocket ──▶ NASA Open MCT
+Raw RF / SDR ──▶ Async UDP ingestion ──▶ Processing pipeline (one task, each packet once)
+ (UDP)            (Tokio)                  TM frame deframer ─▶ CCSDS parser ─▶ Physics-Telemetry
+                                                                                Co-Validation engine
+ chronus.rf.v1 ──▶ receiver-data store ────────────────────────────────────────────▲      │
+                  OrbitalPropagator trait ◀── range-rate / look-angles ───────────────────┤
+                  (Ephemerust: TLE or OEM)                                                ▼
+                                         History ring (+ file) ◀── openmct.realtime.v1 JSON
+                                               │                                          │
+                         HTTP: history, dictionary, schemas        Axum WebSocket fan-out
+                                               └──────────────▶ NASA Open MCT ◀───────────┘
 ```
 
 - **Asynchronous core.** A Tokio runtime drives non-blocking UDP ingestion and a pool of WebSocket connections, scaling to many concurrent telemetry channels and operator screens.
@@ -120,13 +132,13 @@ The reasoning behind these and other choices is recorded in [`Methodology.md`](M
 
 ## Testing
 
-Testing is a first-class deliverable. Counts below are for the full workspace, which builds the gateway with its `hil` feature (the synthetic EPS/thermal/body-rate demo models). **316 tests, all passing**, in a layered suite: inline unit tests, integration tests over loopback UDP and in-process WebSockets, a NeXosim hardware-in-the-loop simulator, runnable doctests, and physics co-validation tests with explicitly documented tolerances.
+Testing is a first-class deliverable. Counts below are for the full workspace, which builds the gateway with its `hil` feature (the synthetic EPS/thermal/body-rate demo models). **376 tests, all passing**, in a layered suite: inline unit tests, integration tests over loopback UDP and in-process WebSockets, a NeXosim hardware-in-the-loop simulator, runnable doctests, and physics co-validation tests with explicitly documented tolerances.
 
 | Layer | Count | Where |
 |-------|------:|-------|
-| Unit tests | **241** | inline `#[cfg(test)]` modules across the workspace |
-| Integration tests | **33** | `crates/gateway/tests/` (UDP ingest, WebSocket distribution, public fixtures, and the **real binary** driven over UDP with receiver data), `crates/chronus-hil-sim/tests/` (HIL soak and fault-injection runs against the real ingest and RF paths), `crates/chronus-demo-server/tests/` (real WebSocket clients) |
-| Doctests | **42** | runnable examples in the public API docs |
+| Unit tests | **286** | inline `#[cfg(test)]` modules across the workspace |
+| Integration tests | **40** | `crates/gateway/tests/` (UDP ingest, WebSocket distribution, public fixtures, JSON Schema validation of real output, a frame stream cross-checked against an independent encoder, and the **real binary** driven over UDP with receiver data and transfer frames, then killed and restarted), `crates/chronus-hil-sim/tests/` (HIL soak and fault-injection runs against the real ingest and RF paths), `crates/chronus-demo-server/tests/` (real WebSocket clients) |
+| Doctests | **50** | runnable examples in the public API docs |
 | Benchmarks | Criterion | [`parse_validate.rs`](crates/gateway/benches/parse_validate.rs): the parse and validate hot paths |
 
 **What the tests assert, not just that they pass:**
@@ -134,13 +146,15 @@ Testing is a first-class deliverable. Counts below are for the full workspace, w
 - **Physics tolerances are explicit.** Doppler, link budget, pointing, and subsystem checks each have documented tolerances, with tests on both sides of the boundary.
 - **Errors are tested for what they tell the operator.** Each `CG-*` diagnostic has tests for its cause and suggested fix. A latitude of -122.3 is recognised as a swapped latitude/longitude, and a port conflict suggests the next free port and the `netstat`/`lsof` command to find the culprit.
 - **The sandbox is checked end to end.** Nominal telemetry raises no alarm over a full orbit; every fault scenario raises exactly its documented `physics_flags` bit; one visitor's fault never reaches another's session; the per-IP cap, `Origin` allow-list and session time limit are enforced over real WebSockets.
-- **Parsers are fuzzed.** Property tests (`proptest`) throw arbitrary bytes at the CCSDS parser.
+- **Parsers are fuzzed.** Property tests (`proptest`) throw arbitrary bytes at the CCSDS parser, and thousands of random datagrams at the frame deframer.
+- **Frame decoding is cross-checked.** A lab CADU stream written by an independent Python encoder must decode, byte for byte, to the packets that encoder says it sent, including the one a deliberately corrupted frame destroys.
+- **Formats are pinned by schema.** Real gateway output is validated against the published JSON Schemas, and malformed documents must fail.
 
 **CI gates** ([`ci.yml`](.github/workflows/ci.yml)) on every push and pull request: `cargo test` (the whole workspace, then the gateway alone without the `hil` feature), `clippy -D warnings` in both configurations, benchmark compilation, a Docker Compose spec check, the demo dashboard build, a `cargo-semver-checks` job that compares the public API against the last release, plus supply-chain checks with `cargo audit` and `cargo deny`.
 
 ```bash
-cargo test --workspace          # everything above (316 tests)
-cargo test -p chronus-gateway   # the production configuration, without the `hil` demo models (262 tests)
+cargo test --workspace          # everything above (376 tests)
+cargo test -p chronus-gateway   # the production configuration, without the `hil` demo models (318 tests)
 cargo bench -p chronus-gateway  # Criterion benchmarks
 ```
 
@@ -156,8 +170,9 @@ chronus-gateway/
 ├── fly.toml                Fly.io config for the public sandbox
 ├── gateway.example.toml    Example config for `chronus-gateway --config`
 ├── crates/
-│   ├── gateway/            The gateway library + binary: ingest, CCSDS parser,
-│   │                       physics co-validation, Axum/WebSocket, diagnostics
+│   ├── gateway/            The gateway library + binary: ingest, TM frames, CCSDS parser,
+│   │                       physics co-validation, history, Axum/WebSocket, diagnostics;
+│   │                       schemas/ holds the published JSON Schemas
 │   ├── chronus-hil-sim/    NeXosim synthetic spacecraft → UDP, with scripted faults
 │   │                       and a simulated receiver (chronus.rf.v1)
 │   ├── chronus-replay/     Replay hex/JSONL CCSDS datagrams (and receiver data) into the gateway
@@ -165,11 +180,13 @@ chronus-gateway/
 ├── demo/
 │   ├── sandbox/            The visitor page served by the hosted sandbox
 │   ├── dashboard/          Vite + TypeScript live view of a running gateway
-│   ├── fixtures/, replay/  ISS + AMSAT-themed and golden CCSDS fixtures
+│   ├── openmct/            NASA Open MCT + Chronus plugin (dictionary, history, realtime)
+│   ├── fixtures/, replay/  ISS + AMSAT-themed, golden, receiver-data and TM-frame fixtures
 │   ├── Dockerfile, docker-compose.yml   Local demo stack
 │   └── Dockerfile.public   Image for the public sandbox
 ├── site/                   Landing page (GitHub Pages → chronusgateway.com)
-├── docs/                   USER_GUIDE, RF_SIDE_CHANNEL, DEMO, PUBLIC_DEMO, HIL, Demo_Test, screenshots
+├── docs/                   USER_GUIDE, RF_SIDE_CHANNEL, TM_TRANSFER_FRAMES, OPENMCT, TELECOMMAND,
+│                           DEMO, PUBLIC_DEMO, HIL, Demo_Test, screenshots
 └── Methodology.md          Decision log: the reasoning behind major choices
 ```
 
@@ -195,6 +212,14 @@ To exercise the Doppler, link-budget and pointing checks, enable the receiver si
 cargo run -p chronus-replay -- --file demo/replay/fixtures/rf_lab.jsonl --rf-dest 127.0.0.1:7302 --delay-ms 200
 ```
 
+To feed CCSDS **TM Transfer Frames** instead of bare packets, set `[framing]` (see [`docs/TM_TRANSFER_FRAMES.md`](docs/TM_TRANSFER_FRAMES.md)) and replay the bundled CADU stream, or wrap any fixture with `--tm-frames`:
+
+```bash
+cargo run -p chronus-replay -- --file demo/replay/fixtures/tm_frames_lab.hex --delay-ms 20
+```
+
+For **NASA Open MCT** with history, run `npm install && npm run dev` in [`demo/openmct/`](demo/openmct/) and open `http://127.0.0.1:5174`.
+
 Add a scripted fault to the simulator to see the CV-4/CV-5 alarms (bits 4–6):
 
 ```bash
@@ -202,7 +227,7 @@ cargo run -p chronus-hil-sim --release -- 127.0.0.1:7301 500 \
   --scripted-anomaly eps-voltage --anomaly-after-frame 40 --anomaly-frame-count 25
 ```
 
-Connect any WebSocket client to `ws://127.0.0.1:8080/telemetry/openmct`, or open the [dashboard](demo/dashboard/). Check health at `http://127.0.0.1:8080/api/v1/chronus/status`. Settings can come from TOML (`--config`, or `CHRONUS_GATEWAY_CONFIG`; the CLI wins when both are set), and `RUST_LOG=debug` turns on verbose tracing. Default bind addresses are loopback-only.
+Connect any WebSocket client to `ws://127.0.0.1:8080/telemetry/openmct`, or open the [dashboard](demo/dashboard/). Check health at `http://127.0.0.1:8080/api/v1/chronus/status` and recent telemetry at `/api/v1/chronus/history`. Settings can come from TOML (`--config`, or `CHRONUS_GATEWAY_CONFIG`; the CLI wins when both are set), and `RUST_LOG=debug` turns on verbose tracing. Default bind addresses are loopback-only.
 
 ---
 
@@ -212,6 +237,9 @@ Connect any WebSocket client to `ws://127.0.0.1:8080/telemetry/openmct`, or open
 |-------|-----|
 | **Operators**: install, run, read `physics_flags` | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) |
 | Receiver data (`chronus.rf.v1`) and spacecraft time | [`docs/RF_SIDE_CHANNEL.md`](docs/RF_SIDE_CHANNEL.md) |
+| CCSDS TM Transfer Frames / CADUs | [`docs/TM_TRANSFER_FRAMES.md`](docs/TM_TRANSFER_FRAMES.md) |
+| Open MCT: dictionary, history, JSON Schemas | [`docs/OPENMCT.md`](docs/OPENMCT.md) |
+| Why there is no telecommand (uplink) | [`docs/TELECOMMAND.md`](docs/TELECOMMAND.md) |
 | Demo runbook: native, Docker, dashboard, replay | [`docs/DEMO.md`](docs/DEMO.md) |
 | Hosting the public sandbox (Fly.io + custom domain) | [`docs/PUBLIC_DEMO.md`](docs/PUBLIC_DEMO.md) |
 | HIL profiling | [`docs/HIL.md`](docs/HIL.md) |
@@ -239,9 +267,9 @@ Full dependency rationale lives in [`Methodology.md`](Methodology.md) § Attribu
 | [`tracing`](https://crates.io/crates/tracing), [`tracing-subscriber`](https://crates.io/crates/tracing-subscriber) | Structured logging |
 | [`serde`](https://crates.io/crates/serde), [`serde_json`](https://crates.io/crates/serde_json), [`chrono`](https://crates.io/crates/chrono), [`toml`](https://crates.io/crates/toml) | JSON telemetry, timestamps, config |
 | [`anyhow`](https://crates.io/crates/anyhow), [`thiserror`](https://crates.io/crates/thiserror), [`clap`](https://crates.io/crates/clap) | Errors and CLIs |
-| [`criterion`](https://crates.io/crates/criterion), [`proptest`](https://crates.io/crates/proptest), [`tokio-tungstenite`](https://crates.io/crates/tokio-tungstenite) | Benchmarks, parser fuzzing, WebSocket tests |
+| [`criterion`](https://crates.io/crates/criterion), [`proptest`](https://crates.io/crates/proptest), [`tokio-tungstenite`](https://crates.io/crates/tokio-tungstenite), [`jsonschema`](https://crates.io/crates/jsonschema) | Benchmarks, parser fuzzing, WebSocket tests, schema validation |
 | [`cargo-audit`](https://crates.io/crates/cargo-audit), [`cargo-deny`](https://crates.io/crates/cargo-deny) | Supply-chain CI |
-| [Vite](https://vitejs.dev/) | Demo dashboard bundler |
+| [Vite](https://vitejs.dev/), [NASA Open MCT](https://github.com/nasa/openmct) 4.3.1 | Demo dashboard bundler; the Open MCT demo (Apache-2.0, unmodified from npm) |
 
 ---
 

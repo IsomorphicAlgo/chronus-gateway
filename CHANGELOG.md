@@ -8,6 +8,56 @@ Versions cover all three workspace crates (`chronus-gateway`, `chronus-hil-sim`,
 
 ## Unreleased
 
+## 0.5.0 — 2026-10-24
+
+Ground-segment completeness (Tranche 3 of the 1.0 plan, **D-048**, **D-049**, **D-050**). The
+public API is **additive** against 0.4.0 (`cargo semver-checks` passes even as a patch). The minor
+bump marks one **behaviour change for embedders** (below) and the new feature surface. Operators
+upgrading from 0.4.0 need no config changes: the defaults are one Space Packet per datagram, as
+before, and an in-memory history.
+
+- **CCSDS TM Transfer Frames (new `frames` module, `[framing]` table).** `mode = "tm_frames"` decodes
+  132.0-B-3 frames: sync-marker (`1ACFFC1D`) search across datagrams, the 131.0-B-4
+  pseudo-randomizer, CRC-16 FECF, spacecraft and virtual-channel filters, master/VC frame-counter
+  gap detection, and packet reassembly across frame boundaries via the First Header Pointer.
+  Idle frames and idle packets are dropped. `TmFrameBuilder` is the inverse (used by tools and
+  tests). Messages gain an additive `vcid` field.
+- **One processing pipeline (new `pipeline` module).** Each packet is parsed and validated
+  **once** and the result is published to history and every WebSocket client. Before, each client
+  did its own processing. Physics now runs once per packet instead of once per client, telemetry
+  is processed with no dashboard connected, and `telemetry_frames_emitted` / `anomaly_frames` / the
+  RF match counters count packets, not packets × clients. **Behaviour change:** a server built from
+  `http::router` must also run `pipeline::spawn(state, shutdown)`; the binary does this.
+- **History (new `history` module, `[history]` table).** A bounded ring of recent messages (default
+  10 000), optionally backed by a JSON-lines file that is reloaded at startup, compacted to stay
+  bounded, and written from its own thread. `GET /api/v1/chronus/history?start=&end=&apid=&limit=`
+  (`chronus.history.v1`) replaces the stub.
+- **Open MCT (new `openmct` module).** `GET /api/v1/chronus/openmct/dictionary` is now generated
+  from one table of telemetry points (replacing the stub), and
+  `GET /api/v1/chronus/openmct/history/{key}` serves each point's history as Open MCT datums. New
+  `demo/openmct/`: NASA Open MCT 4.3.1 with a Chronus plugin (object tree, history, one shared
+  WebSocket, alarm limits) and a headless reload check (`verify_history.py`).
+- **Published JSON Schemas** for `openmct.realtime.v1`, `chronus.rf.v1`, `chronus.history.v1` and
+  the dictionary, in `crates/gateway/schemas/` and served at `/api/v1/chronus/schemas/{name}`.
+- **Telecommand scoped out of 1.x** (`docs/TELECOMMAND.md`). The crate description no longer says
+  "TMTC gateway".
+- **Operator surface.** `/api/v1/chronus/metrics` gains `framing`, `history` and `pipeline`
+  objects. `/status` gains `CG-513` (transfer frames failing their checks, or frame gaps) and
+  `CG-514` (history file problems). New startup codes: `CG-134` (bad `[framing]` / `[history]`
+  setting), `CG-135` (history file can't be opened) and the `CG-136` warning (frames larger than a
+  datagram). `CG-502` and the first-invalid-packet log point at `[framing]` when the data looks
+  like CADUs. `CG-509` no longer says nothing is stored.
+- **`chronus-replay`:** `--tm-frames` (with `--frame-length`, `--scid`, `--vcid`, `--asm`,
+  `--randomize`, `--no-fecf`). New fixtures: `tm_frames_lab.hex` (a lab CADU stream produced by the
+  independent Python encoder `gen_tm_frames.py`, with its `expected.json`) and `iss_pass_lab.jsonl`
+  (a whole pass with a Doppler fault).
+- **Exit criteria met:** the recorded frame stream decodes end to end through the real binary
+  (`crates/gateway/tests/ground_segment_e2e.rs`, also cross-checked against the encoder in
+  `tm_frames_fixture.rs`). History survives a `kill -9` and restart, and Open MCT shows it after a
+  page reload (`demo/openmct/verify_history.py`; screenshots in `docs/assets/`).
+- **Tests:** 316 → 376 workspace tests (286 unit, 40 integration, 50 doctests); 318 when the
+  gateway is tested without `hil`. New dev-dependency: `jsonschema` (MIT, no default features).
+
 ## 0.4.0 — 2026-10-11
 
 Live receiver data and spacecraft time (Tranche 2 of the 1.0 plan, **D-047**). **Purely additive**

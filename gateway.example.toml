@@ -31,6 +31,24 @@ http_bind = "127.0.0.1:8080"
 # max_skew_s = 5.0           # |onboard - receive| beyond this sets physics_flags_v2 bit 0; 0 = off
 # cuc_tai_minus_utc_s = 37   # only used for "cuc"
 
+# CCSDS TM Transfer Frames (Tranche 3, docs/TM_TRANSFER_FRAMES.md). Optional; the default is one
+# Space Packet per datagram. Set these to the link's managed parameters when your front end sends
+# frames or CADUs (after Reed-Solomon / convolutional decoding). Mismatches show up as CG-513.
+# [framing]
+# mode = "tm_frames"         # "packets" (default) or "tm_frames"
+# frame_length = 223         # octets, header through CRC, without the sync marker (needed with asm)
+# asm = true                 # frames are preceded by the sync marker 1ACFFC1D
+# derandomize = true         # undo the CCSDS pseudo-randomizer
+# fecf = true                # last 2 octets are a CRC-16 to check (default true)
+# spacecraft_id = 42         # accept only this spacecraft id (0-1023); unset = any
+# virtual_channels = [0, 1]  # accept only these virtual channels (0-7); unset = all
+
+# Recent-telemetry history (Tranche 3, docs/OPENMCT.md) for GET /api/v1/chronus/history and Open MCT.
+# On by default in memory; add a file so it survives restarts.
+# [history]
+# capacity = 10000           # messages kept (~1 KB each); 0 turns history off
+# persist_path = "history.jsonl"   # optional JSON-lines file, reloaded at startup and kept bounded
+
 [station]
 latitude_deg = 35.0
 longitude_deg = -116.0

@@ -57,6 +57,9 @@ One JSON object per UDP datagram (at most 2 KiB):
 | `rx_power_dbm` | number, optional | measured received power → link-budget check |
 | `az_deg`, `el_deg` | numbers, optional | measured look direction (azimuth clockwise from true north, elevation above the horizon) → pointing check. **Both** are needed |
 
+The JSON Schema is published at `GET /api/v1/chronus/schemas/chronus.rf.v1`
+([`crates/gateway/schemas/chronus.rf.v1.schema.json`](../crates/gateway/schemas/chronus.rf.v1.schema.json)).
+
 Any subset is fine; a check without its measurement is skipped, not failed. Unknown fields are
 ignored, so v1 can grow additively. Datagrams that are not valid JSON, name another schema, or hold
 a non-finite number are counted (`rf.samples_invalid`) and dropped.

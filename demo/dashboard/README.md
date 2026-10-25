@@ -34,4 +34,4 @@ npm run preview   # optional local static preview
 
 ## Open MCT (Track A)
 
-For NASA Open MCT integration, see [`../openmct/README.md`](../openmct/README.md) (placeholder / backlog).
+For NASA Open MCT itself, with history and the generated dictionary, see [`../openmct/README.md`](../openmct/README.md) (0.5.0).

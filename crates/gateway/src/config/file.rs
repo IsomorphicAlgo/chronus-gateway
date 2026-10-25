@@ -11,7 +11,7 @@ use serde::Deserialize;
 use crate::time::TimeFormat;
 
 use super::{
-    ConfigError, EphemerisSource, HilConfig, IngestConfig, SiteConfig, StationConfig,
+    ConfigError, EphemerisSource, FramingMode, HilConfig, IngestConfig, SiteConfig, StationConfig,
     ToleranceConfig, TrackingConfig,
 };
 
@@ -65,6 +65,82 @@ struct GatewayToml {
     rf: Option<RfToml>,
     #[serde(default)]
     time: Option<TimeToml>,
+    #[serde(default)]
+    framing: Option<FramingToml>,
+    #[serde(default)]
+    history: Option<HistoryToml>,
+}
+
+/// Optional `[framing]` table: every key is optional and falls back to `FramingConfig::default`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FramingToml {
+    mode: Option<String>,
+    frame_length: Option<usize>,
+    asm: Option<bool>,
+    derandomize: Option<bool>,
+    fecf: Option<bool>,
+    spacecraft_id: Option<u16>,
+    virtual_channels: Option<Vec<u8>>,
+}
+
+/// Optional `[history]` table: every key is optional and falls back to `HistoryConfig::default`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HistoryToml {
+    capacity: Option<usize>,
+    persist_path: Option<PathBuf>,
+}
+
+/// Applies the optional `[framing]` / `[history]` tables onto an already-built station config.
+fn apply_framing_history(
+    station: &mut StationConfig,
+    framing: Option<FramingToml>,
+    history: Option<HistoryToml>,
+) -> Result<(), ConfigLoadError> {
+    if let Some(f) = framing {
+        if let Some(mode) = f.mode {
+            station.framing.mode = match mode.to_ascii_lowercase().as_str() {
+                "packets" => FramingMode::Packets,
+                "tm" | "tm_frames" => FramingMode::TmFrames,
+                _ => {
+                    return Err(ConfigError::InvalidSetting {
+                        field: "framing.mode",
+                        value: format!("\"{mode}\""),
+                        expected: "\"packets\" or \"tm_frames\"",
+                    }
+                    .into());
+                }
+            };
+        }
+        if f.frame_length.is_some() {
+            station.framing.frame_length = f.frame_length;
+        }
+        if let Some(v) = f.asm {
+            station.framing.asm = v;
+        }
+        if let Some(v) = f.derandomize {
+            station.framing.derandomize = v;
+        }
+        if let Some(v) = f.fecf {
+            station.framing.fecf = v;
+        }
+        if f.spacecraft_id.is_some() {
+            station.framing.spacecraft_id = f.spacecraft_id;
+        }
+        if f.virtual_channels.is_some() {
+            station.framing.virtual_channels = f.virtual_channels;
+        }
+    }
+    if let Some(h) = history {
+        if let Some(v) = h.capacity {
+            station.history.capacity = v;
+        }
+        if h.persist_path.is_some() {
+            station.history.persist_path = h.persist_path;
+        }
+    }
+    Ok(())
 }
 
 /// Optional `[rf]` table: every key is optional and falls back to `RfConfig::default`.
@@ -316,6 +392,8 @@ impl TryFrom<StationToml> for StationConfig {
             },
             rf: def.rf,
             time: def.time,
+            framing: def.framing,
+            history: def.history,
         })
     }
 }
@@ -339,6 +417,7 @@ pub fn load_gateway_from_path(
         None => StationConfig::default(),
     };
     apply_rf_time(&mut station, doc.rf, doc.time)?;
+    apply_framing_history(&mut station, doc.framing, doc.history)?;
     ingest.validate()?;
     station.validate()?;
     if !matches!(station.tracking.ephemeris, EphemerisSource::OemFile(_)) {
@@ -777,5 +856,79 @@ max_skew_s = 0.0
     fn unknown_keys_in_rf_and_time_are_rejected() {
         assert!(load_str("[rf]\nbogus = 1").is_err());
         assert!(load_str("[time]\nbogus = 1").is_err());
+    }
+
+    // ---- Tranche 3: [framing] and [history] tables -------------------------------------------
+
+    #[test]
+    fn framing_and_history_default_to_packets_and_memory_only() {
+        let (_, st) = load_str("").expect("empty doc loads");
+        assert_eq!(st.framing.mode, FramingMode::Packets);
+        assert!(st.framing.fecf);
+        assert_eq!(st.history.capacity, 10_000);
+        assert!(st.history.persist_path.is_none());
+    }
+
+    #[test]
+    fn framing_and_history_tables_load() {
+        let (_, st) = load_str(
+            r#"
+[framing]
+mode = "tm_frames"
+frame_length = 223
+asm = true
+derandomize = true
+fecf = false
+spacecraft_id = 115
+virtual_channels = [0, 1]
+
+[history]
+capacity = 500
+persist_path = "hist.jsonl"
+"#,
+        )
+        .expect("loads");
+        assert_eq!(st.framing.mode, FramingMode::TmFrames);
+        assert_eq!(st.framing.frame_length, Some(223));
+        assert!(st.framing.asm && st.framing.derandomize && !st.framing.fecf);
+        assert_eq!(st.framing.spacecraft_id, Some(115));
+        assert_eq!(st.framing.virtual_channels, Some(vec![0, 1]));
+        assert_eq!(st.history.capacity, 500);
+        assert_eq!(st.history.persist_path, Some(PathBuf::from("hist.jsonl")));
+        // "tm" is accepted as a short spelling.
+        let (_, st) = load_str("[framing]\nmode = \"TM\"").expect("loads");
+        assert_eq!(st.framing.mode, FramingMode::TmFrames);
+    }
+
+    #[test]
+    fn bad_framing_and_history_values_are_clear_errors() {
+        for (doc, field) in [
+            ("[framing]\nmode = \"aos\"", "framing.mode"),
+            ("[framing]\nframe_length = 4", "framing.frame_length"),
+            ("[framing]\nframe_length = 4096", "framing.frame_length"),
+            (
+                "[framing]\nmode = \"tm_frames\"\nasm = true",
+                "framing.frame_length",
+            ),
+            ("[framing]\nspacecraft_id = 1024", "framing.spacecraft_id"),
+            (
+                "[framing]\nvirtual_channels = [8]",
+                "framing.virtual_channels",
+            ),
+            (
+                "[framing]\nvirtual_channels = []",
+                "framing.virtual_channels",
+            ),
+            ("[history]\ncapacity = 9999999", "history.capacity"),
+            (
+                "[history]\ncapacity = 0\npersist_path = \"h.jsonl\"",
+                "history.persist_path",
+            ),
+        ] {
+            let err = load_str(doc).expect_err(doc);
+            assert!(err.to_string().contains(field), "{doc} -> {err}");
+        }
+        assert!(load_str("[framing]\nbogus = 1").is_err());
+        assert!(load_str("[history]\nbogus = 1").is_err());
     }
 }

@@ -20,7 +20,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Reuses the gateway's own chronus.rf.v1 sample type and time-code encoders (no wire-format copies).
-chronus-gateway = { path = "../gateway", version = "0.4.0" }
+chronus-gateway = { path = "../gateway", version = "0.5.0" }
 chrono.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "time", "fs"] }
 anyhow.workspace = true

@@ -24,7 +24,7 @@ serde.workspace = true
 chrono.workspace = true
 ephemerust.workspace = true
 # Version alongside path so `cargo package`/`publish` resolve the registry dependency.
-chronus-gateway = { path = "../gateway", version = "0.4.0", features = ["hil"] }
+chronus-gateway = { path = "../gateway", version = "0.5.0", features = ["hil"] }
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

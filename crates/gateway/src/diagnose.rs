@@ -434,6 +434,20 @@ impl Explain for ConfigError {
             .fix(format!(
                 "Set `{field}` to an accepted value, or delete the line to use the default."
             )),
+            ConfigError::InvalidSetting {
+                field,
+                value,
+                expected,
+            } => Diagnosis::new(
+                "CG-134",
+                E,
+                format!("Setting `{field}` = {value} is not usable."),
+                format!("Expected {expected}."),
+            )
+            .fix(format!(
+                "Set `{field}` to an accepted value, or delete the line to use the default."
+            ))
+            .fix("`docs/TM_TRANSFER_FRAMES.md` and `gateway.example.toml` describe every framing and history setting."),
             ConfigError::OemRead { path, source } => {
                 let cwd = current_dir_display();
                 Diagnosis::new(
@@ -694,7 +708,60 @@ pub fn config_warnings(ingest: &IngestConfig, station: &StationConfig) -> Vec<Di
             .fix("Use the default `ingest.max_datagram_size = 65542` unless you have a reason not to."),
         );
     }
+    let fr = &station.framing;
+    if fr.mode == crate::config::FramingMode::TmFrames
+        && !fr.asm
+        && fr
+            .frame_length
+            .is_some_and(|l| l > ingest.max_datagram_size)
+    {
+        out.push(
+            Diagnosis::new(
+                "CG-136",
+                Severity::Warning,
+                format!(
+                    "Transfer frames of {} bytes cannot fit in a {}-byte datagram.",
+                    fr.frame_length.unwrap_or_default(),
+                    ingest.max_datagram_size
+                ),
+                "Without a sync marker each datagram must hold whole frames, so every frame \
+                 would be cut off and rejected.",
+            )
+            .fix("Raise `ingest.max_datagram_size`, or set `framing.asm = true` if the stream has sync markers."),
+        );
+    }
     out
+}
+
+impl Explain for crate::history::HistoryError {
+    fn explain(&self) -> Diagnosis {
+        match self {
+            crate::history::HistoryError::Io { path, source } => Diagnosis::new(
+                "CG-135",
+                Severity::Error,
+                format!(
+                    "The history file {} can't be used: {source}.",
+                    path.display()
+                ),
+                "`history.persist_path` must point to a file the gateway can read and write; \
+                 its folder must already exist.",
+            )
+            .fix("Create the folder, or point `history.persist_path` somewhere writable.")
+            .fix("Remove `history.persist_path` to keep history in memory only.")
+            .fix(format!(
+                "Relative paths are resolved from the folder the gateway runs in ({}).",
+                current_dir_display()
+            )),
+            #[allow(unreachable_patterns)]
+            other => Diagnosis::new(
+                "CG-135",
+                Severity::Error,
+                format!("The history file can't be used: {other}."),
+                "`history.persist_path` could not be opened.",
+            )
+            .fix("Remove `history.persist_path` to keep history in memory only."),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1299,6 +1366,7 @@ pub fn assess_health(inputs: &HealthInputs<'_>) -> HealthReport {
                  sending to this port.",
             )
             .fix("Configure the sender for CCSDS Space Packets (telemetry, one packet per UDP message).")
+            .fix("If the sender emits TM Transfer Frames or CADUs (sync marker 1ACFFC1D), set `[framing] mode = \"tm_frames\"` (docs/TM_TRANSFER_FRAMES.md).")
             .fix("Check the gateway log for the first rejected packet; it explains exactly what was wrong."),
         );
     } else if parse_errors > 0 && parse_errors * 10 > parse_errors + emitted {
@@ -1399,7 +1467,9 @@ pub fn assess_health(inputs: &HealthInputs<'_>) -> HealthReport {
                 "CG-509",
                 Severity::Info,
                 "Telemetry is arriving, but no dashboard is connected to view it.",
-                "Telemetry is streamed live only to connected dashboards; nothing is stored.",
+                "Telemetry is still processed and the most recent messages are kept in history \
+                 (unless `history.capacity = 0`), so a dashboard that connects later can catch up \
+                 from `GET /api/v1/chronus/history`.",
             )
             .fix(format!(
                 "Connect Open MCT or another WebSocket client to {ws}."
@@ -1507,6 +1577,132 @@ pub fn assess_rf(rf: &crate::rf::RfSnapshot, frames_received: u64) -> Vec<Diagno
             )
             .fix("Omit `t` from samples so the gateway stamps them on arrival, or sync the clocks (NTP).")
             .fix("Raise `rf.window_ms`, or send RF samples at least as often as telemetry."),
+        );
+    }
+    out
+}
+
+/// Plain-English findings about TM Transfer Frame deframing (`CG-513`); none in packet mode.
+#[must_use]
+pub fn assess_framing(f: &crate::frames::FramingSnapshot) -> Vec<Diagnosis> {
+    let mut out = Vec::new();
+    if f.mode != "tm_frames" || f.datagrams == 0 {
+        return out;
+    }
+    let settings = "framing.frame_length, framing.fecf, framing.asm and framing.derandomize";
+    if f.frames_ok == 0 {
+        let rejected = f.frames_crc_error + f.frames_invalid;
+        let (headline, why) = if rejected > 0 {
+            (
+                format!(
+                    "Transfer frames are arriving, but none are usable ({} failed the CRC, {} were malformed).",
+                    f.frames_crc_error, f.frames_invalid
+                ),
+                format!(
+                    "Every frame is checked against the link's managed parameters ({settings}); \
+                     when all of them fail, one of those settings does not match the spacecraft, \
+                     or the frames still carry Reed-Solomon parity or randomization."
+                ),
+            )
+        } else if f.frames_other_spacecraft + f.frames_vc_filtered > 0 {
+            (
+                format!(
+                    "Every frame was filtered out ({} from another spacecraft, {} on an excluded virtual channel).",
+                    f.frames_other_spacecraft, f.frames_vc_filtered
+                ),
+                "`framing.spacecraft_id` or `framing.virtual_channels` excludes all of the \
+                 frames that arrive."
+                    .to_string(),
+            )
+        } else {
+            (
+                "Data is arriving, but no transfer frame has been found in it yet.".to_string(),
+                format!(
+                    "With `framing.asm = true` the gateway waits for the sync marker 1ACFFC1D; \
+                     {} byte(s) were searched without finding a complete frame.",
+                    f.bytes_discarded
+                ),
+            )
+        };
+        out.push(
+            Diagnosis::new("CG-513", Severity::Error, headline, why)
+                .fix("Check the frame length: it counts the frame header through the CRC, without the 4-byte sync marker.")
+                .fix("If the front end already removed the sync marker, set `framing.asm = false`; if frames have no CRC, set `framing.fecf = false`.")
+                .fix("Feed frames after Reed-Solomon decoding (gr-satellites and most SDR decoders do this), and set `framing.derandomize` to match.")
+                .fix("Unset `framing.spacecraft_id` / `framing.virtual_channels` to accept everything while testing."),
+        );
+        return out;
+    }
+    let total = f.frames_ok + f.frames_crc_error + f.frames_invalid;
+    if (f.frames_crc_error + f.frames_invalid) * 10 > total {
+        out.push(
+            Diagnosis::new(
+                "CG-513",
+                Severity::Warning,
+                format!(
+                    "{} of {total} transfer frames were rejected ({} CRC errors).",
+                    f.frames_crc_error + f.frames_invalid,
+                    f.frames_crc_error
+                ),
+                "More than 10% of frames are damaged: the radio link is marginal, or frames are \
+                 being cut off on the way to the gateway.",
+            )
+            .fix("Check signal quality and the front end's decoder statistics.")
+            .fix("Make sure `ingest.max_datagram_size` is larger than one frame."),
+        );
+    }
+    if f.vc_frame_gaps > 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-513",
+                Severity::Info,
+                format!(
+                    "{} gap(s) in the virtual-channel frame counters: frames were lost before reaching the gateway.",
+                    f.vc_frame_gaps
+                ),
+                format!(
+                    "A packet that spans a lost frame cannot be rebuilt; {} partial packet(s) were dropped.",
+                    f.packets_dropped
+                ),
+            )
+            .fix("Occasional gaps are normal at the edges of a pass; frequent gaps point to a weak link or UDP loss."),
+        );
+    }
+    out
+}
+
+/// Plain-English findings about the history file (`CG-514`).
+#[must_use]
+pub fn assess_history(h: &crate::history::HistorySnapshot) -> Vec<Diagnosis> {
+    let mut out = Vec::new();
+    if h.persist_errors > 0 || h.persist_dropped > 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-514",
+                Severity::Warning,
+                format!(
+                    "{} message(s) could not be written to the history file ({} errors, {} skipped because the disk was too slow).",
+                    h.persist_errors + h.persist_dropped,
+                    h.persist_errors,
+                    h.persist_dropped
+                ),
+                "History is still kept in memory, but those messages will be missing after a restart.",
+            )
+            .fix("Check free disk space and permissions on `history.persist_path`; the gateway log has the first error."),
+        );
+    }
+    if h.load_skipped > 0 {
+        out.push(
+            Diagnosis::new(
+                "CG-514",
+                Severity::Info,
+                format!(
+                    "{} line(s) of the history file could not be reloaded at startup and were skipped.",
+                    h.load_skipped
+                ),
+                "They were not valid telemetry messages (a damaged file, or one written by another program).",
+            )
+            .fix("Nothing to do: the file has been rewritten without them."),
         );
     }
     out

@@ -709,6 +709,126 @@ paired with its samples by time alone, which is why senders pace and put the sam
 **Still open from D-046:** `TelemetryFrame` gained fields (its fields are crate-private to construct
 but public to read) and the decision to mark it `#[non_exhaustive]` stands for 0.5-0.6.
 
+### D-048 — CCSDS TM Transfer Frames and the single processing pipeline (Tranche 3; 0.5.0)
+**Decision:** Accept real downlink framing, and process every packet exactly once:
+
+1. **TM Transfer Frames (CCSDS 132.0-B-3) behind `[framing] mode = "tm_frames"`.** New `frames`
+   module: primary header, secondary header and OCF (skipped, not interpreted), CRC-16 FECF
+   (CCITT, `0x1021`, preset `0xFFFF`), master and per-virtual-channel frame counters, and packet
+   extraction across frame boundaries driven by the First Header Pointer. Idle frames (`0x7FE`) and
+   idle packets (APID `0x7FF`) are dropped. The coding-layer pieces a CADU stream needs are also
+   there (CCSDS 131.0-B-4): the `1ACFFC1D` sync marker, searched as a byte stream so frames may be
+   split across datagrams and junk is skipped, and the pseudo-randomizer
+   `h(x)=x⁸+x⁷+x⁵+x³+1`. FEC decoding (RS, convolutional, LDPC) is **out of scope**: SDR decoders
+   such as gr-satellites already emit decoded frames, and putting a soft-decision decoder in a
+   network gateway would add a lot of code for no operator benefit. The settings are the link's
+   managed parameters (`frame_length`, `asm`, `derandomize`, `fecf`, `spacecraft_id`,
+   `virtual_channels`), validated at startup (`CG-134`, plus the `CG-136` warning when frames
+   cannot fit a datagram).
+2. **Reassembly is conservative.** A VC frame-counter gap, a pointer past the data field, or a
+   pointer that disagrees with the packet lengths already in hand all drop the **partial** packet
+   (counted as `packets_dropped`) and re-sync on the next pointer. A packet whose header version
+   is not `000` means the stream is not on a packet boundary, and gets the same treatment. Memory
+   per VC is bounded by one maximum packet (64 KiB) plus one frame; in ASM mode the stream buffer
+   is bounded by one frame plus one datagram. After a CRC failure the marker search resumes one byte
+   past the failed marker rather than past the frame, so a frame that was cut short cannot swallow
+   the next good one.
+3. **One pipeline task instead of per-client processing.** Before, each WebSocket client parsed
+   and validated every datagram itself. Reassembly is stateful and history must record each
+   message once, so neither fits that model. The new `pipeline` task subscribes to the ingest
+   broadcast, deframes (in TM mode), runs parse → spacecraft time → receiver data → physics → JSON
+   once per packet, records the result in history, and publishes it on `telemetry_tx`. WebSocket
+   clients now only relay. Side effects: physics runs once per packet instead of once per client,
+   telemetry is processed even with no dashboard connected, and `telemetry_frames_emitted`, the
+   anomaly counters and the RF match counters are per packet. **Behaviour change for embedders:**
+   a server built from `http::router` must also run `pipeline::spawn`. The public types are
+   unchanged (new fields only on `#[non_exhaustive]` structs), so semver tooling does not see it;
+   it is documented in the CHANGELOG instead.
+4. **`vcid` in the realtime message** (additive). `chronus-replay --tm-frames` wraps any fixture in
+   frames (flushed per line so receiver samples still line up in time).
+
+**Why:** Tranche 3's first gap: a real front end delivers frames, not one packet per datagram.
+Without this, any recording from an SDR toolchain had to be re-packetized by hand before the gateway
+could read it.
+**Validation:** a **cross-implementation check**, in the style of the Skyfield/ERFA cross-checks.
+`demo/replay/fixtures/gen_tm_frames.py` is an independent Python encoder (table-driven CRC, its own
+LFSR, its own frame builder, no shared code) that wrote `tm_frames_lab.hex`: 14 randomized CADUs
+on three VCs, with OCF and secondary headers, packets spanning up to four frames, a header split
+across a boundary, idle frames and packets, one bit error, junk, two CADUs in one datagram and one
+CADU split over two. The Rust deframer must reproduce its `tm_frames_lab.expected.json` byte for
+byte in delivery order, with exactly one CRC error, one VC gap and one dropped packet
+(`tests/tm_frames_fixture.rs`). Unit tests use the standard check values (CRC `0x29B1` for
+`"123456789"`, PN sequence `FF 48 0E C0 9A 0D 70 BC`, period 255) and cover interleaved VCs, lost
+frames, bad pointers, filters, ASM re-sync and 2 000 random datagrams without a panic.
+`tests/ground_segment_e2e.rs` streams the fixture over UDP into the real binary and checks the
+WebSocket, the history API, metrics and `/status`.
+**Known limits:** no FEC; AOS/USLP and VCA-SDU are not decoded; the sync marker must match
+exactly; frames from a stream with packet-order or segment-length variations are not handled.
+
+### D-049 — Open MCT history, dictionary and published JSON Schemas (Tranche 3; 0.5.0)
+**Decision:**
+
+1. **History is a bounded ring buffer with an optional JSON-lines file** (`[history] capacity`,
+   default 10 000, maximum 500 000; `persist_path`). Each entry keeps the exact JSON text that was
+   streamed plus the numeric values of the dictionary points, extracted once. The file is
+   appended by a dedicated thread fed through a bounded channel (`try_send`, so a slow disk never
+   blocks the pipeline; drops are counted), flushed after each batch, reloaded at startup (newest
+   `capacity` lines, bounded line length, corrupt lines skipped and counted), and compacted back
+   to `capacity` lines when it reaches twice that. JSON lines rather than a database: zero new
+   dependencies, readable with `tail`, and the ring is the index. Querying is a linear scan of the ring,
+   which is adequate at these sizes; an index can come later if profiling asks for one.
+2. **`GET /api/v1/chronus/history`** (`chronus.history.v1`) filters on ground receipt time
+   (milliseconds or RFC 3339, so Open MCT's own bounds can be passed through), APID and limit. When
+   more match than the limit, the **newest** are returned with `truncated: true`, because a
+   dashboard cares about the recent past. The response splices the stored JSON in rather than
+   re-encoding it.
+3. **One table of telemetry points (`openmct::POINTS`)** generates the dictionary
+   (`chronus.openmct.dictionary.v1`, tutorial-style `measurements` with `range` and `domain`
+   hints), the per-point history (`/openmct/history/{key}`, Open MCT datums) and, through the
+   dictionary's `chronus_field`, the plugin's realtime projection. Adding a point is one row. The
+   domain is **ground receipt time**, because Open MCT's realtime conductor follows the local
+   clock, and a recording validated at its 2020 mission time would otherwise fall outside every
+   window. The mission time is still in each message (`physics_time`, `onboard_time`).
+4. **JSON Schemas (draft 2020-12) ship inside the crate** (`crates/gateway/schemas/`, embedded
+   with `include_str!` so `cargo package` carries them) and are served at
+   `/api/v1/chronus/schemas/{name}`. Fields added after a schema's first release are optional, so
+   the schemas also describe older gateways. `jsonschema` (dev-dependency,
+   `default-features = false`, no network resolution) validates real output against them.
+5. **A real Open MCT, not a mock-up** (`demo/openmct/`): the prebuilt NASA Open MCT 4.3.1 from npm,
+   served by Vite with a same-origin proxy (the gateway deliberately sends no CORS headers; that
+   policy belongs to Tranche 4), plus a small plugin: object provider from the dictionary,
+   historical provider, one shared WebSocket for every subscription, and red limits on the alarm
+   bitfields.
+
+**Why:** the exit criterion "Open MCT shows history after a page reload". A dashboard that loses
+everything on reload is a demo, not a ground-segment tool.
+**Validation:** unit tests on the ring (bounds, eviction, filters, newest-first truncation,
+reload with corrupt and oversized lines, compaction) and the HTTP routes (bad parameters get a
+`400` with a fix). `tests/schemas.rs` meta-validates each schema and validates real output, with
+negative cases. `tests/ground_segment_e2e.rs` kills the real binary (`SIGKILL`, no graceful
+shutdown), restarts it on the same file, and gets identical history back. Manually,
+`demo/openmct/verify_history.py` (Playwright, headless Chromium) against Open MCT 4.3.1 showed
+75 rows loaded from history, 90 after a live replay, and 90 again after a page reload, including
+after a `kill -9` and restart of the gateway (screenshots in `docs/assets/`).
+**Known limits:** the history domain is receipt time only; no server-side decimation for very
+long ranges (the newest 10 000 points per request); history is per gateway process (no shared
+store); the Open MCT demo needs Node 24 for `npm install` (Open MCT's declared engine).
+
+### D-050 — Telecommand is out of scope for 1.x (Tranche 3; 0.5.0)
+**Decision:** The gateway stays **telemetry-only** through 1.x: no uplink path, TC packets on the
+telemetry port are rejected (`CG-404`), and the HTTP/WebSocket API stays read-only. Wording that
+implied otherwise is gone: the crate description and the crate docs now say "CCSDS telemetry
+gateway (the telemetry half of TMTC)". `docs/TELECOMMAND.md` records why and sketches a separate
+2.x `chronus-uplink` track (safety case and owner sign-off first; command dictionary, COP-1 / CLTU,
+authentication, two-person approval and an audit log before any exposure).
+**Why:** commanding needs authentication, interlocks, a command database, the TC protocol stack
+and a safety case. A partial version would be worse than none, and it would move the project
+toward controlled-technology territory that `AGENTS.md` requires the owner to sign off
+explicitly. Keeping 1.x downlink-only makes the security story simple: there is nothing to exploit
+on the way up.
+**Revisit:** only through the 2.x process in `docs/TELECOMMAND.md`. Multi-spacecraft ephemeris
+routing (plan item 3.5) is likewise deferred to a 1.x minor.
+
 ## Open decisions (to resolve as milestones land)
 
 - **OD-E — Multi-node / rack-scale co-simulation.** Backlog beyond the M7 laptop scope.
@@ -738,11 +858,14 @@ docs when dependencies change (finalization **B.2**, **D-035**).
 | [`base64`](https://crates.io/crates/base64), [`futures-util`](https://crates.io/crates/futures-util) | WebSocket JSON encoding | crates.io, MIT/Apache-2.0 |
 | [`criterion`](https://crates.io/crates/criterion), [`proptest`](https://crates.io/crates/proptest) | Benchmarks + parser property tests (**M6**, **D-030**) | crates.io, MIT/Apache-2.0 |
 | [`tokio-tungstenite`](https://crates.io/crates/tokio-tungstenite), [`tempfile`](https://crates.io/crates/tempfile) | Dev-only: WS integration tests; TOML config tests | crates.io, MIT |
+| [`jsonschema`](https://crates.io/crates/jsonschema) ([Stranger6667](https://github.com/Stranger6667/jsonschema)) | Dev-only: validates gateway output against the published schemas (**D-049**) | crates.io, MIT |
 | [`cargo-audit`](https://crates.io/crates/cargo-audit), [`cargo-deny`](https://crates.io/crates/cargo-deny) | CI supply-chain gates | crates.io |
 | Vite | Demo dashboard bundler (Showcase **S2**) | [vitejs.dev](https://vitejs.dev/), MIT |
 | [`cargo-mutants`](https://mutants.rs/), [`cargo-hack`](https://github.com/taiki-e/cargo-hack) | Optional secondary testing (**D-029**) | MIT |
 | **CCSDS** Blue Books | Wire formats and protocols | [public.ccsds.org](https://public.ccsds.org/) |
-| **NASA Open MCT** | Distribution UX reference | [nasa.github.io/openmct](https://nasa.github.io/openmct/), Apache-2.0 |
+| **NASA Open MCT** | Distribution UX reference; prebuilt 4.3.1 from npm runs the `demo/openmct/` page (**D-049**), unmodified | [nasa.github.io/openmct](https://nasa.github.io/openmct/), Apache-2.0 |
+| [Playwright](https://playwright.dev/) (Python) | Headless check `demo/openmct/verify_history.py` (demo tooling, not a dependency) | Apache-2.0 |
+| **CCSDS 132.0-B-3** (TM Space Data Link Protocol), **131.0-B-4** (TM Synchronization and Channel Coding) | Transfer frames, ASM, pseudo-randomizer (**D-048**) | [public.ccsds.org](https://public.ccsds.org/) |
 | `sat-rs`, `nyx-space` | Design analysis only (not dependencies) | GitHub; see **D-001** |
 | [astropy](https://www.astropy.org/) / [pyerfa](https://github.com/liberfa/pyerfa) (ERFA = IAU SOFA), [python-sgp4](https://pypi.org/project/sgp4/) | Generated the OEM test fixtures and their ITRS truth (`crates/gateway/tests/data/`; **D-045**) — test data only, not dependencies | BSD-3-Clause |
 | **CCSDS 502.0-B-3** (Orbit Data Messages) | OEM format (**D-045**) | [public.ccsds.org](https://public.ccsds.org/) |
@@ -751,4 +874,4 @@ docs when dependencies change (finalization **B.2**, **D-035**).
 
 ---
 
-*Last updated: 2026-10-11.*
+*Last updated: 2026-10-24.*

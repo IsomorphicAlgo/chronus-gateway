@@ -43,7 +43,7 @@ pub struct IngestConfig {
 impl Default for IngestConfig {
     fn default() -> Self {
         Self {
-            // 7301 is an arbitrary unprivileged default for the TMTC downlink port.
+            // 7301 is an arbitrary unprivileged default for the telemetry downlink port.
             bind_addr: SocketAddr::from(([127, 0, 0, 1], 7301)),
             channel_capacity: 1024,
             // CCSDS space packets are at most 65536 + 6 bytes; a 64 KiB ceiling covers any single
@@ -130,6 +130,8 @@ impl Default for EphemerisSource {
 /// | [`hil`](Self::hil) | [`HilConfig`] | synthetic HIL telemetry demo models (lab use) |
 /// | [`rf`](Self::rf) | [`RfConfig`] | the `chronus.rf.v1` receiver side channel (Tranche 2) |
 /// | [`time`](Self::time) | [`TimeConfig`] | spacecraft time-code decoding and skew policy (Tranche 2) |
+/// | [`framing`](Self::framing) | [`FramingConfig`] | bare Space Packets or CCSDS TM Transfer Frames on the wire (Tranche 3) |
+/// | [`history`](Self::history) | [`HistoryConfig`] | recent-telemetry ring buffer and optional on-disk log (Tranche 3) |
 ///
 /// All config structs are `#[non_exhaustive]`: start from [`Default`] and assign the fields you
 /// need, so new fields in 1.x do not break callers.
@@ -159,6 +161,10 @@ pub struct StationConfig {
     pub rf: RfConfig,
     /// Spacecraft time-code decoding; disabled unless a format is chosen.
     pub time: TimeConfig,
+    /// What a telemetry datagram carries: one Space Packet (default) or TM Transfer Frames.
+    pub framing: FramingConfig,
+    /// Recent-telemetry history kept for `GET /api/v1/chronus/history` and Open MCT.
+    pub history: HistoryConfig,
 }
 
 /// Where the ground station is and the carrier it listens on.
@@ -390,6 +396,83 @@ impl Default for TimeConfig {
     }
 }
 
+/// What one telemetry datagram carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum FramingMode {
+    /// One CCSDS Space Packet per UDP datagram (the behaviour before 0.5.0).
+    #[default]
+    Packets,
+    /// CCSDS TM Transfer Frames (132.0-B-3), deframed and reassembled by [`crate::frames`].
+    TmFrames,
+}
+
+/// Largest accepted [`FramingConfig::frame_length`] (the TM frame maximum).
+pub const FRAME_LENGTH_LIMIT: usize = crate::frames::TM_FRAME_MAX_LEN;
+
+/// How telemetry datagrams are framed (see [`crate::frames`] and `docs/TM_TRANSFER_FRAMES.md`).
+///
+/// The defaults keep the pre-0.5 behaviour: one Space Packet per datagram. The TM settings are
+/// the link's **managed parameters**: they must match how the spacecraft and the front end were
+/// set up, and a mismatch shows up as CRC errors on `/status` (`CG-513`).
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct FramingConfig {
+    /// Packets (default) or TM Transfer Frames.
+    pub mode: FramingMode,
+    /// Frame length in octets, primary header through FECF, **excluding** the sync marker.
+    /// Required with [`asm`](Self::asm); otherwise `None` means "one frame per datagram".
+    pub frame_length: Option<usize>,
+    /// Frames are preceded by the Attached Sync Marker `1ACFFC1D` (a CADU stream). The gateway then
+    /// searches for the marker, so frames may be split across datagrams.
+    pub asm: bool,
+    /// Frames were XORed with the CCSDS pseudo-random sequence; undo it before parsing.
+    pub derandomize: bool,
+    /// Frames end with a 2-octet Frame Error Control Field (CRC-16), which is checked. Default `true`.
+    pub fecf: bool,
+    /// Accept only frames from this spacecraft identifier (10 bits). `None` accepts any.
+    pub spacecraft_id: Option<u16>,
+    /// Accept only these virtual channels (0–7). `None` accepts all eight.
+    pub virtual_channels: Option<Vec<u8>>,
+}
+
+impl Default for FramingConfig {
+    fn default() -> Self {
+        Self {
+            mode: FramingMode::Packets,
+            frame_length: None,
+            asm: false,
+            derandomize: false,
+            fecf: true,
+            spacecraft_id: None,
+            virtual_channels: None,
+        }
+    }
+}
+
+/// Largest accepted [`HistoryConfig::capacity`] (≈ 0.5 GB of telemetry at ~1 KB per message).
+pub const HISTORY_CAPACITY_LIMIT: usize = 500_000;
+
+/// The recent-telemetry history behind `GET /api/v1/chronus/history` (see [`crate::history`]).
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct HistoryConfig {
+    /// Messages kept in memory, oldest dropped first. `0` turns history off. Default **10 000**.
+    pub capacity: usize,
+    /// Optional JSON-lines file: every message is appended, and the newest `capacity` lines are
+    /// reloaded at startup so history survives a restart. `None` keeps history in memory only.
+    pub persist_path: Option<PathBuf>,
+}
+
+impl Default for HistoryConfig {
+    fn default() -> Self {
+        Self {
+            capacity: 10_000,
+            persist_path: None,
+        }
+    }
+}
+
 /// Errors produced while validating or resolving [`StationConfig`].
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -489,6 +572,16 @@ pub enum ConfigError {
     #[error("setting `{field}` = {value} is invalid ({expected})")]
     InvalidRfTime {
         /// Dotted setting name, e.g. `rf.window_ms`.
+        field: &'static str,
+        /// The offending value, rendered.
+        value: String,
+        /// What would be accepted.
+        expected: &'static str,
+    },
+    /// A `[framing]` or `[history]` setting is out of range or inconsistent.
+    #[error("setting `{field}` = {value} is invalid ({expected})")]
+    InvalidSetting {
+        /// Dotted setting name, e.g. `framing.frame_length`.
         field: &'static str,
         /// The offending value, rendered.
         value: String,
@@ -704,6 +797,59 @@ impl StationConfig {
                 field: "time.cuc_tai_minus_utc_s",
                 value: self.time.cuc_tai_minus_utc_s.to_string(),
                 expected: "0..=100 seconds (37 today)",
+            });
+        }
+        self.validate_framing_history()
+    }
+
+    fn validate_framing_history(&self) -> Result<(), ConfigError> {
+        let f = &self.framing;
+        if let Some(len) = f.frame_length
+            && !(crate::frames::TM_FRAME_MIN_LEN..=FRAME_LENGTH_LIMIT).contains(&len)
+        {
+            return Err(ConfigError::InvalidSetting {
+                field: "framing.frame_length",
+                value: len.to_string(),
+                expected: "8..=2048 octets (header through FECF, without the sync marker)",
+            });
+        }
+        if f.mode == FramingMode::TmFrames && f.asm && f.frame_length.is_none() {
+            return Err(ConfigError::InvalidSetting {
+                field: "framing.frame_length",
+                value: "(not set)".into(),
+                expected: "a frame length when `framing.asm = true`: the sync marker search needs it",
+            });
+        }
+        if let Some(id) = f.spacecraft_id
+            && id > 0x3FF
+        {
+            return Err(ConfigError::InvalidSetting {
+                field: "framing.spacecraft_id",
+                value: id.to_string(),
+                expected: "0..=1023 (10 bits)",
+            });
+        }
+        if let Some(vcs) = &f.virtual_channels
+            && (vcs.is_empty() || vcs.iter().any(|&v| v > 7))
+        {
+            return Err(ConfigError::InvalidSetting {
+                field: "framing.virtual_channels",
+                value: format!("{vcs:?}"),
+                expected: "a non-empty list of virtual channel ids 0..=7",
+            });
+        }
+        if self.history.capacity > HISTORY_CAPACITY_LIMIT {
+            return Err(ConfigError::InvalidSetting {
+                field: "history.capacity",
+                value: self.history.capacity.to_string(),
+                expected: "0..=500000 messages (0 turns history off)",
+            });
+        }
+        if self.history.persist_path.is_some() && self.history.capacity == 0 {
+            return Err(ConfigError::InvalidSetting {
+                field: "history.persist_path",
+                value: "(set)".into(),
+                expected: "history.capacity > 0: a history file needs an in-memory history",
             });
         }
         Ok(())

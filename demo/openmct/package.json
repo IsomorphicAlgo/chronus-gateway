@@ -1,0 +1,20 @@
+{
+  "name": "chronus-openmct",
+  "private": true,
+  "type": "module",
+  "description": "NASA Open MCT wired to ChronusGateway: telemetry dictionary, history and realtime (Showcase S2 Track A, Tranche 3).",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "openmct": "4.3.1"
+  },
+  "devDependencies": {
+    "vite": "^6.0.7"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/IsomorphicAlgo/chronus-gateway/blob/master/crates/gateway/schemas/chronus.openmct.dictionary.v1.schema.json",
+  "title": "chronus.openmct.dictionary.v1",
+  "description": "Response of GET /api/v1/chronus/openmct/dictionary: the telemetry points an Open MCT plugin should create. Each measurement is one numeric field ('chronus_field') of openmct.realtime.v1, with an Open MCT 'value' range and a 'utc' domain.",
+  "type": "object",
+  "required": ["chronus_schema", "name", "key", "measurements"],
+  "additionalProperties": true,
+  "properties": {
+    "chronus_schema": { "const": "chronus.openmct.dictionary.v1" },
+    "name": { "type": "string", "description": "Display name: the TLE title when available, else ChronusGateway." },
+    "key": { "type": "string" },
+    "measurements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "name", "chronus_field", "values"],
+        "properties": {
+          "key": { "type": "string", "pattern": "^chronus\\." },
+          "name": { "type": "string" },
+          "chronus_field": { "type": "string", "description": "Field of openmct.realtime.v1 the value comes from." },
+          "values": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["key", "name", "format", "hints"],
+              "properties": {
+                "key": { "type": "string" },
+                "name": { "type": "string" },
+                "format": { "enum": ["integer", "float", "utc"] },
+                "units": { "type": "string" },
+                "source": { "type": "string" },
+                "hints": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "flag_bits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["field", "bit", "meaning"],
+        "properties": {
+          "field": { "enum": ["physics_flags", "physics_flags_v2"] },
+          "bit": { "type": "integer", "minimum": 0, "maximum": 7 },
+          "meaning": { "type": "string" }
+        }
+      }
+    }
+  }
+}

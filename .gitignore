@@ -23,6 +23,10 @@ demo/dashboard/node_modules/
 demo/dashboard/dist/
 demo/dashboard/.env.local
 
+# Open MCT demo (Tranche 3 — Node / Vite)
+demo/openmct/node_modules/
+demo/openmct/dist/
+
 # Personal Files (owner-local notes; not for publication)
 
 Personal/

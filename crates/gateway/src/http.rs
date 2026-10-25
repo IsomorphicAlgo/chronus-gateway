@@ -8,21 +8,30 @@
 //! - `GET /api/v1/chronus/metrics` — combined UDP ingest + gateway counters (Milestone 6).
 //! - `GET /api/v1/chronus/status` — plain-English health report: overall status, a one-line
 //!   headline, and findings with *why* and *how to fix* (see [`crate::diagnose`]).
-//! - `GET /api/v1/chronus/history` — stub (empty); future persistence / query API.
-//! - `GET /api/v1/chronus/openmct/dictionary` — stub dictionary of telemetry point identifiers.
+//! - `GET /api/v1/chronus/history?start=&end=&apid=&limit=` — recent `openmct.realtime.v1`
+//!   messages from the history ring ([`crate::history`], schema `chronus.history.v1`).
+//! - `GET /api/v1/chronus/openmct/dictionary` — the Open MCT telemetry dictionary generated from
+//!   [`crate::openmct::POINTS`].
+//! - `GET /api/v1/chronus/openmct/history/{key}?start=&end=` — one point's history as Open MCT
+//!   datums (`[{"id","timestamp","value"}]`).
+//! - `GET /api/v1/chronus/schemas` and `/schemas/{name}` — the published JSON Schemas.
+//!
+//! Since 0.5.0 the WebSocket relays messages produced once per packet by the
+//! [`pipeline`](crate::pipeline); a server built from [`router`] must also run
+//! [`crate::pipeline::spawn`].
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::extract::{Path, Query, State};
+use axum::http::{StatusCode, header};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use base64::Engine;
 use chrono::Utc;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tower_http::trace::TraceLayer;
 
 use crate::ccsds;
@@ -79,6 +88,10 @@ pub struct OpenMctRealtimeMessageV1 {
     /// Whether receiver measurements (`chronus.rf.v1` or caller-supplied) were available for the
     /// Doppler / link-budget / pointing checks on this frame. Additive field.
     pub rf_matched: bool,
+    /// Virtual channel the packet arrived on, when the link carries TM Transfer Frames
+    /// (`framing.mode = "tm_frames"`). Additive field (0.5.0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vcid: Option<u8>,
     /// Base64 of the CCSDS packet data field (secondary header + user data).
     pub payload_base64: String,
 }
@@ -89,24 +102,35 @@ struct HealthResponse {
 }
 
 #[derive(Debug, Serialize)]
-struct HistoryStubResponse {
-    note: &'static str,
-    packets: Vec<serde_json::Value>,
-}
-
-#[derive(Debug, Serialize)]
-struct DictionaryStubResponse {
-    note: &'static str,
-    points: Vec<&'static str>,
-}
-
-#[derive(Debug, Serialize)]
 struct CombinedMetricsResponse {
     pub ingest: crate::ingest::IngestSnapshot,
     pub gateway: GatewayMetricsSnapshot,
     pub rf: crate::rf::RfSnapshot,
+    pub framing: crate::frames::FramingSnapshot,
+    pub history: crate::history::HistorySnapshot,
+    pub pipeline: crate::pipeline::PipelineSnapshot,
     pub avg_processing_latency_ms: Option<f64>,
 }
+
+/// The published JSON Schemas: `(name, document)`.
+pub const SCHEMAS: &[(&str, &str)] = &[
+    (
+        "openmct.realtime.v1",
+        include_str!("../schemas/openmct.realtime.v1.schema.json"),
+    ),
+    (
+        "chronus.rf.v1",
+        include_str!("../schemas/chronus.rf.v1.schema.json"),
+    ),
+    (
+        "chronus.history.v1",
+        include_str!("../schemas/chronus.history.v1.schema.json"),
+    ),
+    (
+        "chronus.openmct.dictionary.v1",
+        include_str!("../schemas/chronus.openmct.dictionary.v1.schema.json"),
+    ),
+];
 
 /// Builds the Axum [`Router`] with shared [`SharedGateway`] state.
 pub fn router(state: Arc<SharedGateway>) -> Router {
@@ -114,8 +138,11 @@ pub fn router(state: Arc<SharedGateway>) -> Router {
         .route("/health", get(health))
         .route("/api/v1/chronus/metrics", get(metrics))
         .route("/api/v1/chronus/status", get(status))
-        .route("/api/v1/chronus/history", get(history_stub))
-        .route("/api/v1/chronus/openmct/dictionary", get(dictionary_stub))
+        .route("/api/v1/chronus/history", get(history))
+        .route("/api/v1/chronus/openmct/dictionary", get(dictionary))
+        .route("/api/v1/chronus/openmct/history/{key}", get(point_history))
+        .route("/api/v1/chronus/schemas", get(schema_list))
+        .route("/api/v1/chronus/schemas/{name}", get(schema))
         .route("/telemetry/openmct", get(openmct_ws))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
@@ -133,6 +160,9 @@ async fn metrics(State(state): State<Arc<SharedGateway>>) -> Json<CombinedMetric
         ingest,
         gateway,
         rf: state.rf.snapshot(),
+        framing: state.framing.snapshot(state.station.framing.mode),
+        history: state.history.snapshot(),
+        pipeline: state.pipeline.snapshot(),
         avg_processing_latency_ms: avg,
     })
 }
@@ -141,27 +171,218 @@ async fn status(State(state): State<Arc<SharedGateway>>) -> Json<crate::diagnose
     Json(state.health_report())
 }
 
-async fn history_stub() -> (StatusCode, Json<HistoryStubResponse>) {
-    (
-        StatusCode::OK,
-        Json(HistoryStubResponse {
-            note: "stub: persistent history not implemented; use real-time WebSocket stream",
-            packets: Vec::new(),
-        }),
-    )
+/// Query string of the history endpoints. Times are RFC 3339 or milliseconds since the Unix epoch
+/// (what Open MCT sends).
+#[derive(Debug, Default, Deserialize)]
+struct HistoryParams {
+    start: Option<String>,
+    end: Option<String>,
+    apid: Option<String>,
+    limit: Option<String>,
 }
 
-async fn dictionary_stub() -> Json<DictionaryStubResponse> {
-    Json(DictionaryStubResponse {
-        note: "stub: expand with Open MCT telemetry keys when the official dictionary is wired",
-        points: vec![
-            "chronus.tm.apid",
-            "chronus.tm.seq",
-            "chronus.tm.physics_flags",
-            "chronus.physics.elevation_deg",
-            "chronus.physics.azimuth_deg",
-        ],
+/// A JSON error body with the same plain-English shape as `/status` findings.
+fn bad_request(status: StatusCode, problem: String, fix: &str) -> Response {
+    (
+        status,
+        Json(serde_json::json!({"error": problem, "fix": fix})),
+    )
+        .into_response()
+}
+
+/// Query-parameter errors are ready-made `400` responses (boxed: a `Response` is large).
+type ParamError = Box<Response>;
+
+fn bad_param(status: StatusCode, problem: String, fix: &str) -> ParamError {
+    Box::new(bad_request(status, problem, fix))
+}
+
+fn parse_time_param(name: &str, raw: Option<&str>) -> Result<Option<i64>, ParamError> {
+    let Some(raw) = raw.map(str::trim).filter(|r| !r.is_empty()) else {
+        return Ok(None);
+    };
+    if let Ok(ms) = raw.parse::<i64>() {
+        return Ok(Some(ms));
+    }
+    // Open MCT may send fractional milliseconds.
+    if let Ok(ms) = raw.parse::<f64>()
+        && ms.is_finite()
+        && ms.abs() < 1.0e15
+    {
+        return Ok(Some(ms as i64));
+    }
+    chrono::DateTime::parse_from_rfc3339(raw)
+        .map(|t| Some(t.timestamp_millis()))
+        .map_err(|_| {
+            bad_param(
+                StatusCode::BAD_REQUEST,
+                format!("`{name}={raw}` is not a time."),
+                "Use milliseconds since 1970-01-01 (e.g. 1792843200000) or RFC 3339 (e.g. 2026-10-24T12:00:00Z).",
+            )
+        })
+}
+
+fn parse_query(p: &HistoryParams) -> Result<crate::history::HistoryQuery, ParamError> {
+    let start = parse_time_param("start", p.start.as_deref())?;
+    let end = parse_time_param("end", p.end.as_deref())?;
+    if let (Some(s), Some(e)) = (start, end)
+        && s > e
+    {
+        return Err(bad_param(
+            StatusCode::BAD_REQUEST,
+            "`start` is after `end`.".into(),
+            "Swap the two times.",
+        ));
+    }
+    let apid = match p.apid.as_deref().map(str::trim).filter(|a| !a.is_empty()) {
+        None => None,
+        Some(a) => {
+            let parsed = a
+                .strip_prefix("0x")
+                .or_else(|| a.strip_prefix("0X"))
+                .map_or_else(
+                    || a.parse::<u16>().ok(),
+                    |h| u16::from_str_radix(h, 16).ok(),
+                );
+            match parsed.filter(|&v| v <= crate::hil_tm::CCSDS_APID_MAX) {
+                Some(v) => Some(v),
+                None => {
+                    return Err(bad_param(
+                        StatusCode::BAD_REQUEST,
+                        format!("`apid={a}` is not an APID."),
+                        "Use a number from 0 to 2047 (decimal or 0x-prefixed hex).",
+                    ));
+                }
+            }
+        }
+    };
+    let limit = match p.limit.as_deref().map(str::trim).filter(|l| !l.is_empty()) {
+        None => 0,
+        Some(l) => l.parse::<usize>().map_err(|_| {
+            bad_param(
+                StatusCode::BAD_REQUEST,
+                format!("`limit={l}` is not a count."),
+                "Use a whole number; at most 10000 messages are returned per request.",
+            )
+        })?,
+    };
+    Ok(crate::history::HistoryQuery::new()
+        .between(start, end)
+        .with_apid(apid)
+        .with_limit(limit))
+}
+
+async fn history(
+    State(state): State<Arc<SharedGateway>>,
+    Query(params): Query<HistoryParams>,
+) -> Response {
+    let q = match parse_query(&params) {
+        Ok(q) => q,
+        Err(r) => return *r,
+    };
+    let page = state.history.query(&q);
+    // The messages are already JSON text: splice them in instead of re-encoding.
+    let mut body =
+        String::with_capacity(256 + page.entries.iter().map(|e| e.json.len() + 1).sum::<usize>());
+    let head = serde_json::json!({
+        "chronus_schema": crate::history::HISTORY_SCHEMA_V1,
+        "start": q.start_ms,
+        "end": q.end_ms,
+        "apid": q.apid,
+        "count": page.entries.len(),
+        "truncated": page.truncated,
+        "capacity": state.history.snapshot().capacity,
     })
+    .to_string();
+    body.push_str(&head[..head.len() - 1]);
+    body.push_str(",\"messages\":[");
+    for (i, e) in page.entries.iter().enumerate() {
+        if i > 0 {
+            body.push(',');
+        }
+        body.push_str(&e.json);
+    }
+    body.push_str("]}");
+    ([(header::CONTENT_TYPE, "application/json")], body).into_response()
+}
+
+async fn dictionary(State(state): State<Arc<SharedGateway>>) -> Json<serde_json::Value> {
+    Json(crate::openmct::dictionary(&state.station))
+}
+
+/// One Open MCT datum.
+#[derive(Debug, Serialize)]
+struct Datum<'a> {
+    id: &'a str,
+    timestamp: i64,
+    value: f64,
+}
+
+async fn point_history(
+    State(state): State<Arc<SharedGateway>>,
+    Path(key): Path<String>,
+    Query(params): Query<HistoryParams>,
+) -> Response {
+    let Some(index) = crate::openmct::point_index(&key) else {
+        let known: Vec<&str> = crate::openmct::POINTS.iter().map(|p| p.key).collect();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": format!("There is no telemetry point `{key}`."),
+                "fix": "Use one of the keys from GET /api/v1/chronus/openmct/dictionary.",
+                "points": known,
+            })),
+        )
+            .into_response();
+    };
+    let mut q = match parse_query(&params) {
+        Ok(q) => q,
+        Err(r) => return *r,
+    };
+    if q.limit == 0 {
+        q = q.with_limit(crate::history::MAX_QUERY_LIMIT);
+    }
+    let page = state.history.query(&q.with_point(Some(index)));
+    let key = crate::openmct::POINTS[index].key;
+    let data: Vec<Datum<'_>> = page
+        .entries
+        .iter()
+        .filter_map(|e| {
+            Some(Datum {
+                id: key,
+                timestamp: e.received_at_ms,
+                value: e.values.get(index).copied().flatten()?,
+            })
+        })
+        .collect();
+    Json(data).into_response()
+}
+
+async fn schema_list() -> Json<serde_json::Value> {
+    let names: Vec<serde_json::Value> = SCHEMAS
+        .iter()
+        .map(|(name, _)| {
+            serde_json::json!({"name": name, "url": format!("/api/v1/chronus/schemas/{name}")})
+        })
+        .collect();
+    Json(serde_json::json!({"schemas": names}))
+}
+
+async fn schema(Path(name): Path<String>) -> Response {
+    let name = name
+        .strip_suffix(".schema.json")
+        .or_else(|| name.strip_suffix(".json"))
+        .unwrap_or(&name);
+    match SCHEMAS.iter().find(|(n, _)| *n == name) {
+        Some((_, doc)) => {
+            ([(header::CONTENT_TYPE, "application/schema+json")], *doc).into_response()
+        }
+        None => bad_request(
+            StatusCode::NOT_FOUND,
+            format!("There is no schema `{name}`."),
+            "GET /api/v1/chronus/schemas lists the published schemas.",
+        ),
+    }
 }
 
 async fn openmct_ws(
@@ -176,23 +397,25 @@ async fn handle_openmct_socket(mut socket: WebSocket, state: Arc<SharedGateway>)
         .gateway_metrics
         .ws_clients_connected
         .fetch_add(1, Ordering::Relaxed);
-    let mut rx = state.frame_tx.subscribe();
+    // The pipeline processes each packet once; clients only relay the published JSON.
+    let mut rx = state.telemetry_tx.subscribe();
 
     loop {
         tokio::select! {
             biased;
             recv = rx.recv() => {
                 match recv {
-                    Ok(frame) => {
-                        if let Some(json) = process_frame(&state, &frame) {
-                            // axum 0.8: `Message::Text` carries `Utf8Bytes` (cheap byte-buffer text).
-                            if socket.send(Message::Text(json.into())).await.is_err() {
-                                break;
-                            }
-                            state.gateway_metrics.ws_messages_sent.fetch_add(1, Ordering::Relaxed);
+                    Ok(json) => {
+                        // axum 0.8: `Message::Text` carries `Utf8Bytes` (cheap byte-buffer text).
+                        if socket.send(Message::Text(json.as_ref().into())).await.is_err() {
+                            break;
                         }
+                        state.gateway_metrics.ws_messages_sent.fetch_add(1, Ordering::Relaxed);
                     }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        state.pipeline.ws_messages_dropped.fetch_add(n, Ordering::Relaxed);
+                        continue;
+                    }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }
@@ -228,7 +451,17 @@ async fn handle_openmct_socket(mut socket: WebSocket, state: Arc<SharedGateway>)
 /// ([`SharedGateway::rf`]): the sample nearest the frame's receive time, within the configured
 /// window. With the side channel disabled, the RF-dependent checks are skipped.
 pub fn process_frame(state: &SharedGateway, frame: &RawFrame) -> Option<String> {
-    process_inner(state, frame, None)
+    process_inner(state, frame, None, None)
+}
+
+/// [`process_frame`] for a packet extracted from virtual channel `vcid` of a TM frame stream
+/// (used by the [`pipeline`](crate::pipeline)).
+pub(crate) fn process_packet(
+    state: &SharedGateway,
+    frame: &RawFrame,
+    vcid: Option<u8>,
+) -> Option<String> {
+    process_inner(state, frame, None, vcid)
 }
 
 /// Like [`process_frame`], with receiver-chain measurements (`rf`) supplied alongside the frame so
@@ -241,13 +474,14 @@ pub fn process_frame_with_rf(
     frame: &RawFrame,
     rf: RfMetadata,
 ) -> Option<String> {
-    process_inner(state, frame, Some(rf))
+    process_inner(state, frame, Some(rf), None)
 }
 
 fn process_inner(
     state: &SharedGateway,
     frame: &RawFrame,
     explicit_rf: Option<RfMetadata>,
+    vcid: Option<u8>,
 ) -> Option<String> {
     let mut tm = match ccsds::parse_telemetry(frame) {
         Ok(tm) => tm,
@@ -263,6 +497,13 @@ fn process_inner(
                     frame.source,
                     crate::diagnose::Explain::explain(&e)
                 );
+                if frame.bytes.starts_with(&crate::frames::ASM) {
+                    tracing::warn!(
+                        "that datagram starts with the CCSDS sync marker 1ACFFC1D: the sender emits \
+                         TM Transfer Frames. Set [framing] mode = \"tm_frames\" and asm = true \
+                         (docs/TM_TRANSFER_FRAMES.md)."
+                    );
+                }
             } else {
                 tracing::debug!(error = %e, "invalid packet dropped");
             }
@@ -350,6 +591,7 @@ fn process_inner(
         onboard_time: tm.onboard_time,
         physics_time,
         rf_matched: !rf.is_empty(),
+        vcid,
         payload_base64: payload_b64,
     };
 
@@ -493,12 +735,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stub_routes_respond() {
+    async fn empty_history_and_dictionary_respond() {
         let (code, v) = get_json(router(gateway()), "/api/v1/chronus/history").await;
         assert_eq!(code, StatusCode::OK);
-        assert!(v["packets"].as_array().unwrap().is_empty());
+        assert_eq!(v["chronus_schema"], "chronus.history.v1");
+        assert!(v["messages"].as_array().unwrap().is_empty());
+        assert_eq!(v["capacity"], 10_000);
         let (_, v) = get_json(router(gateway()), "/api/v1/chronus/openmct/dictionary").await;
-        assert!(v["points"].as_array().unwrap().len() >= 5);
+        assert_eq!(
+            v["measurements"].as_array().unwrap().len(),
+            crate::openmct::POINTS.len()
+        );
     }
 
     #[tokio::test]
@@ -614,5 +861,146 @@ mod tests {
         let (_, v) = get_json(router(Arc::clone(&g)), "/api/v1/chronus/metrics").await;
         assert_eq!(v["rf"]["enabled"], true);
         assert_eq!(v["rf"]["samples_received"], 1);
+    }
+
+    // ---- Tranche 3: history, dictionary, schemas -------------------------------------------
+
+    fn record(g: &SharedGateway, apid: u16, at: chrono::DateTime<Utc>) {
+        let frame = RawFrame {
+            bytes: Arc::from(ccsds::encode_synthetic_tm(apid, 1, b"x").as_slice()),
+            received_at: at,
+            source: SocketAddr::from(([127, 0, 0, 1], 1)),
+        };
+        crate::pipeline::handle_datagram(g, None, &frame);
+    }
+
+    #[tokio::test]
+    async fn history_route_filters_and_returns_raw_messages() {
+        let g = gateway_with(|_| {});
+        let t0 = chrono::DateTime::parse_from_rfc3339("2026-10-24T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        for i in 0..6 {
+            record(
+                &g,
+                0x100 + (i % 2),
+                t0 + chrono::Duration::seconds(i.into()),
+            );
+        }
+        let (code, v) = get_json(router(Arc::clone(&g)), "/api/v1/chronus/history").await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(v["count"], 6);
+        assert_eq!(v["messages"][0]["chronus_schema"], "openmct.realtime.v1");
+        assert!(
+            v["messages"][0]["elevation_deg"].is_f64(),
+            "physics included"
+        );
+
+        let start = t0.timestamp_millis() + 2000;
+        let (_, v) = get_json(
+            router(Arc::clone(&g)),
+            &format!("/api/v1/chronus/history?start={start}&end=2026-10-24T12:00:04Z&apid=0x100"),
+        )
+        .await;
+        assert_eq!(v["count"], 2, "{v}");
+        assert!(
+            v["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|m| m["apid"] == 0x100)
+        );
+
+        let (_, v) = get_json(router(Arc::clone(&g)), "/api/v1/chronus/history?limit=2").await;
+        assert_eq!(
+            (v["count"].as_u64(), v["truncated"].as_bool()),
+            (Some(2), Some(true))
+        );
+    }
+
+    #[tokio::test]
+    async fn history_route_explains_bad_parameters() {
+        for q in [
+            "start=yesterday",
+            "apid=4096",
+            "apid=0xZZ",
+            "limit=-1",
+            "start=2026-10-24T12:00:05Z&end=2026-10-24T12:00:00Z",
+        ] {
+            let (code, v) =
+                get_json(router(gateway()), &format!("/api/v1/chronus/history?{q}")).await;
+            assert_eq!(code, StatusCode::BAD_REQUEST, "{q}");
+            assert!(v["error"].is_string() && v["fix"].is_string(), "{q}: {v}");
+        }
+    }
+
+    #[tokio::test]
+    async fn point_history_returns_openmct_datums() {
+        let g = gateway_with(|_| {});
+        let t0 = Utc::now();
+        for i in 0..3 {
+            record(&g, 7, t0 + chrono::Duration::milliseconds(i * 10));
+        }
+        let (code, v) = get_json(
+            router(Arc::clone(&g)),
+            "/api/v1/chronus/openmct/history/chronus.physics.elevation_deg",
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK);
+        let rows = v.as_array().unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0]["id"], "chronus.physics.elevation_deg");
+        assert_eq!(rows[0]["timestamp"], t0.timestamp_millis());
+        assert!(rows[0]["value"].is_f64());
+
+        // Without a TLE there is no elevation: the point simply has no data.
+        let bare = gateway();
+        record(&bare, 7, t0);
+        let (_, v) = get_json(
+            router(Arc::clone(&bare)),
+            "/api/v1/chronus/openmct/history/chronus.physics.elevation_deg",
+        )
+        .await;
+        assert!(v.as_array().unwrap().is_empty());
+        let (_, v) = get_json(
+            router(bare),
+            "/api/v1/chronus/openmct/history/chronus.tm.apid",
+        )
+        .await;
+        assert_eq!(v[0]["value"], 7.0);
+
+        let (code, v) = get_json(router(gateway()), "/api/v1/chronus/openmct/history/nope").await;
+        assert_eq!(code, StatusCode::NOT_FOUND);
+        assert!(v["points"].as_array().unwrap().len() >= 10);
+    }
+
+    #[tokio::test]
+    async fn schemas_are_listed_and_served() {
+        let (code, v) = get_json(router(gateway()), "/api/v1/chronus/schemas").await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(v["schemas"].as_array().unwrap().len(), SCHEMAS.len());
+        for (name, _) in SCHEMAS {
+            for suffix in ["", ".json", ".schema.json"] {
+                let (code, doc) = get_json(
+                    router(gateway()),
+                    &format!("/api/v1/chronus/schemas/{name}{suffix}"),
+                )
+                .await;
+                assert_eq!(code, StatusCode::OK);
+                assert!(doc["$schema"].is_string(), "{name}");
+            }
+        }
+        let (code, _) = get_json(router(gateway()), "/api/v1/chronus/schemas/nope").await;
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn metrics_route_exposes_framing_history_and_pipeline() {
+        let g = gateway();
+        record(&g, 1, Utc::now());
+        let (_, v) = get_json(router(Arc::clone(&g)), "/api/v1/chronus/metrics").await;
+        assert_eq!(v["framing"]["mode"], "packets");
+        assert_eq!(v["history"]["len"], 1);
+        assert_eq!(v["pipeline"]["messages_published"], 1);
     }
 }

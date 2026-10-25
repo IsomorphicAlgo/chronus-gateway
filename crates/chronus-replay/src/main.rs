@@ -13,6 +13,13 @@
 //! just **before** its packet, which is how the gateway's Doppler, link-budget and pointing checks
 //! are driven from a recording.
 //!
+//! With **`--tm-frames`** every packet is wrapped in CCSDS TM Transfer Frames before sending
+//! (Tranche 3): frames of `--frame-length` octets from spacecraft `--scid` on virtual channel
+//! `--vcid`, with a CRC (unless `--no-fecf`), optionally preceded by the sync marker (`--asm`) and
+//! randomized (`--randomize`). Each line's packet is flushed into its own frame(s), padded with an
+//! idle packet, so receiver samples still line up in time. Fixtures that already hold frames or
+//! CADUs (for example `tm_frames_lab.hex`) are replayed as-is, without `--tm-frames`.
+//!
 //! **Credit:** [`clap`](https://crates.io/crates/clap), [`tokio`](https://crates.io/crates/tokio), [`anyhow`](https://crates.io/crates/anyhow), [`serde_json`](https://crates.io/crates/serde_json) — see repository `README.md` § Acknowledgements.
 
 #![forbid(unsafe_code)]
@@ -24,6 +31,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use chronus_gateway::ccsds::encode_synthetic_tm_with_time;
+use chronus_gateway::frames::{TmFrameBuilder, ccsds_randomize, to_cadu};
 use chronus_gateway::rf::RfSampleV1;
 use chronus_gateway::time::{TimeFormat, encode_time};
 use clap::{Parser, ValueEnum};
@@ -78,6 +86,94 @@ struct Cli {
     /// TAI−UTC seconds for CUC encoding (must match the gateway's `time.cuc_tai_minus_utc_s`).
     #[arg(long, default_value_t = 37)]
     tai_minus_utc_s: i32,
+
+    /// Wrap packets in CCSDS TM Transfer Frames (gateway: `[framing] mode = "tm_frames"`).
+    #[arg(long)]
+    tm_frames: bool,
+
+    /// Transfer frame length in octets, header through CRC (with `--tm-frames`).
+    #[arg(long, default_value_t = 223)]
+    frame_length: usize,
+
+    /// Spacecraft identifier written in the frame headers (0..=1023, with `--tm-frames`).
+    #[arg(long, default_value_t = 0x2A)]
+    scid: u16,
+
+    /// Virtual channel the packets travel on (0..=7, with `--tm-frames`).
+    #[arg(long, default_value_t = 0)]
+    vcid: u8,
+
+    /// Prefix each frame with the sync marker 1ACFFC1D (gateway: `framing.asm = true`).
+    #[arg(long)]
+    asm: bool,
+
+    /// XOR frames with the CCSDS pseudo-random sequence (gateway: `framing.derandomize = true`).
+    #[arg(long)]
+    randomize: bool,
+
+    /// Leave the 2-octet frame CRC off (gateway: `framing.fecf = false`).
+    #[arg(long)]
+    no_fecf: bool,
+}
+
+/// Frame-wrapping options taken from the command line.
+#[derive(Debug, Clone, Copy)]
+struct FrameOpts {
+    vcid: u8,
+    asm: bool,
+    randomize: bool,
+}
+
+impl Cli {
+    /// A frame builder when `--tm-frames` is set, after checking the frame options.
+    fn framer(&self) -> Result<Option<(TmFrameBuilder, FrameOpts)>> {
+        if !self.tm_frames {
+            return Ok(None);
+        }
+        if !(chronus_gateway::frames::TM_FRAME_MIN_LEN + 2
+            ..=chronus_gateway::frames::TM_FRAME_MAX_LEN)
+            .contains(&self.frame_length)
+        {
+            bail!(
+                "--frame-length must be 10..=2048 octets, got {}",
+                self.frame_length
+            );
+        }
+        if self.scid > 0x3FF {
+            bail!("--scid must be 0..=1023, got {}", self.scid);
+        }
+        if self.vcid > 7 {
+            bail!("--vcid must be 0..=7, got {}", self.vcid);
+        }
+        let b = TmFrameBuilder::new(self.scid, self.frame_length).with_fecf(!self.no_fecf);
+        Ok(Some((
+            b,
+            FrameOpts {
+                vcid: self.vcid,
+                asm: self.asm,
+                randomize: self.randomize,
+            },
+        )))
+    }
+}
+
+/// Wraps one packet into its own frame(s) and returns the datagrams to send.
+fn frame_packet(builder: &mut TmFrameBuilder, opts: FrameOpts, packet: &[u8]) -> Vec<Vec<u8>> {
+    let mut frames = builder.pack(opts.vcid, &[packet]);
+    frames.extend(builder.flush(opts.vcid));
+    frames
+        .into_iter()
+        .map(|mut f| {
+            if opts.asm {
+                to_cadu(&f, opts.randomize)
+            } else {
+                if opts.randomize {
+                    ccsds_randomize(&mut f);
+                }
+                f
+            }
+        })
+        .collect()
 }
 
 /// When a described packet's time field is stamped.
@@ -281,6 +377,9 @@ async fn main() -> Result<()> {
         TimeFormatCli::Cuc => TimeFormat::Cuc,
     };
 
+    let mut framer = cli.framer()?;
+    let mut sent = 0usize;
+
     let sock = UdpSocket::bind("0.0.0.0:0")
         .await
         .context("bind ephemeral UDP")?;
@@ -303,9 +402,16 @@ async fn main() -> Result<()> {
                 }
             }
             let pkt = item.packet.materialize(format, cli.tai_minus_utc_s)?;
-            sock.send_to(&pkt, cli.dest)
-                .await
-                .with_context(|| format!("send datagram {}", i + 1))?;
+            let datagrams = match framer.as_mut() {
+                Some((builder, opts)) => frame_packet(builder, *opts, &pkt),
+                None => vec![pkt],
+            };
+            for dg in &datagrams {
+                sock.send_to(dg, cli.dest)
+                    .await
+                    .with_context(|| format!("send datagram {}", i + 1))?;
+                sent += 1;
+            }
             if cli.delay_ms > 0 {
                 sleep(delay).await;
             }
@@ -313,9 +419,10 @@ async fn main() -> Result<()> {
     }
 
     eprintln!(
-        "chronus-replay: sent {} datagram(s) × {} repeat(s) → {}{}",
+        "chronus-replay: sent {} line(s) × {} repeat(s) as {sent} datagram(s){} → {}{}",
         items.len(),
         cli.repeat,
+        if cli.tm_frames { " of TM frames" } else { "" },
         cli.dest,
         match cli.rf_dest {
             Some(d) => format!(" (+{rf_sent} rf sample(s) → {d})"),
@@ -449,5 +556,108 @@ mod tests {
             let pkt = item.packet.materialize(TimeFormat::Cds, 37).unwrap();
             assert_eq!(pkt.len(), 6 + 6 + 5, "header + CDS + HELLO");
         }
+    }
+
+    // ---- Tranche 3: --tm-frames ------------------------------------------------------------
+
+    fn cli(args: &[&str]) -> Cli {
+        let mut v = vec!["chronus-replay", "-f", "x"];
+        v.extend_from_slice(args);
+        Cli::parse_from(v)
+    }
+
+    #[test]
+    fn tm_frames_wrap_is_decoded_back_by_the_gateway_deframer() {
+        use chronus_gateway::config::{FramingConfig, FramingMode};
+        use chronus_gateway::frames::{FramingStats, TmDeframer};
+        let c = cli(&[
+            "--tm-frames",
+            "--frame-length",
+            "64",
+            "--asm",
+            "--randomize",
+            "--vcid",
+            "2",
+        ]);
+        let (mut builder, opts) = c.framer().unwrap().expect("framing on");
+        let packets: Vec<Vec<u8>> = (0..4)
+            .map(|i| {
+                chronus_gateway::encode_synthetic_tm(0x100, i, &vec![i as u8; 10 + 30 * i as usize])
+            })
+            .collect();
+        let mut fc = FramingConfig::default();
+        fc.mode = FramingMode::TmFrames;
+        fc.frame_length = Some(64);
+        fc.asm = true;
+        fc.derandomize = true;
+        let mut d = TmDeframer::new(&fc, std::sync::Arc::new(FramingStats::default()));
+        let mut got = Vec::new();
+        for p in &packets {
+            let dgs = frame_packet(&mut builder, opts, p);
+            assert!(
+                dgs.iter()
+                    .all(|dg| dg.len() == 68 && dg.starts_with(&chronus_gateway::frames::ASM))
+            );
+            for dg in dgs {
+                d.push(&dg, |x| got.push((x.vcid, x.bytes.to_vec())));
+            }
+        }
+        let want: Vec<_> = packets.into_iter().map(|p| (2u8, p)).collect();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn tm_frame_options_are_checked() {
+        assert!(cli(&[]).framer().unwrap().is_none());
+        assert!(
+            cli(&["--tm-frames", "--frame-length", "4"])
+                .framer()
+                .is_err()
+        );
+        assert!(cli(&["--tm-frames", "--scid", "2000"]).framer().is_err());
+        assert!(cli(&["--tm-frames", "--vcid", "9"]).framer().is_err());
+        let (mut b, opts) = cli(&["--tm-frames", "--no-fecf"])
+            .framer()
+            .unwrap()
+            .unwrap();
+        let dgs = frame_packet(
+            &mut b,
+            opts,
+            &chronus_gateway::encode_synthetic_tm(1, 1, b"x"),
+        );
+        assert_eq!(dgs.len(), 1);
+        assert_eq!(dgs[0].len(), 223);
+        assert!(chronus_gateway::frames::parse_tm_frame(&dgs[0], false).is_ok());
+    }
+
+    #[test]
+    fn shipped_tm_frames_fixture_loads_as_raw_datagrams() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../demo/replay/fixtures/tm_frames_lab.hex"
+        );
+        let items = load_items(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert!(items.len() >= 10);
+        assert!(
+            items
+                .iter()
+                .all(|i| matches!(&i.packet, PacketSpec::Raw(b) if b.len() >= 100))
+        );
+    }
+
+    #[test]
+    fn shipped_iss_pass_fixture_parses_with_a_doppler_fault_block() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../demo/replay/fixtures/iss_pass_lab.jsonl"
+        );
+        let items = load_items(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(items.len(), 330);
+        assert_eq!(items.iter().filter(|i| i.rf.is_some()).count(), 25);
+        assert!(
+            items
+                .iter()
+                .all(|i| matches!(i.packet, PacketSpec::Timed { .. }))
+        );
     }
 }

@@ -129,6 +129,21 @@ commented out with their defaults.
 | `doppler_tle_age_margin`, `tle_error_km_at_epoch`, `tle_error_growth_km_per_day` | `false`, `1.0`, `2.0` | **TLE-age-aware Doppler.** A TLE's along-track error grows by kilometres per day; near closest approach each kilometre is roughly 25 Hz of Doppler at UHF. When on, the Doppler band (bit 0) widens by exactly the frequency that error implies at that moment of the pass, instead of flagging healthy passes from an older TLE. The band actually used is in each frame's `doppler_tolerance_hz`. |
 | `oem_file` | — | **Operator ephemeris.** A CCSDS OEM (KVN text) from orbit determination or GPS replaces the TLE: frames GCRF/ICRF, EME2000, TEME or ITRF; time systems UTC, TAI, TT or GPS; Lagrange interpolation; no extrapolation outside the file (`CG-322`). Problems are explained as `CG-127` / `CG-320`–`CG-322`. |
 
+### Optional: transfer frames, history and Open MCT (0.5.0)
+
+| Table | Default | What it does |
+|-------|---------|--------------|
+| `[framing]` | one Space Packet per datagram | **TM Transfer Frames.** If your radio software forwards CCSDS frames or CADUs (sync marker `1ACFFC1D`), set `mode = "tm_frames"` and the link's frame length, sync marker, randomizer and CRC settings. The gateway rebuilds packets that span frames, keeps virtual channels apart, and adds `vcid` to each message. Mismatched settings are explained as `CG-513`. Full guide: [`TM_TRANSFER_FRAMES.md`](TM_TRANSFER_FRAMES.md). |
+| `[history]` | 10 000 messages in memory | **Recent history.** Lets a dashboard that connects late, or a reloaded page, catch up: `GET /api/v1/chronus/history?start=&end=&apid=&limit=`. Add `persist_path` to keep it across restarts. |
+
+**Open MCT.** `GET /api/v1/chronus/openmct/dictionary` lists every telemetry point, and
+`/api/v1/chronus/openmct/history/{key}` serves each one's history in Open MCT's own format.
+[`demo/openmct/`](../demo/openmct/) is a ready-made Open MCT page that uses them. JSON Schemas for
+every message format are served at `/api/v1/chronus/schemas`. See [`OPENMCT.md`](OPENMCT.md).
+
+**Telecommand.** The gateway is telemetry-only and never transmits: see
+[`TELECOMMAND.md`](TELECOMMAND.md).
+
 There is **no generated `--help`** on the binary today; treat **`gateway.example.toml`** plus this
 guide as the operator surface for flags.
 
@@ -232,7 +247,7 @@ health check: an overall `status` (`ok`, `waiting`, `attention`, `problem`), a o
 | `CG-2xx` | Network | port already in use, port below 1024, IP address not on this computer |
 | `CG-3xx` | Orbit data (TLE / OEM) | TLE too old for Doppler/pointing (> 3 days) or for anything (> 30 days), dated in the future (clock wrong), bad checksum; OEM unreadable, in an unsupported frame, or not covering the current time |
 | `CG-4xx` | Incoming data | packet too short, packet cut off, command packet on the telemetry port |
-| `CG-5xx` | Live health | no data yet, data arriving but not CCSDS, most frames flagged (usually a setup issue), no dashboard connected |
+| `CG-5xx` | Live health | no data yet, data arriving but not CCSDS, most frames flagged (usually a setup issue), no dashboard connected, receiver data missing (`CG-511`/`512`), transfer frames failing their checks (`CG-513`), history file writes failing (`CG-514`) |
 
 The first invalid packet and the first orbit-calculation failure are explained in full in the log;
 after that they are only counted, so the log stays readable.
@@ -252,6 +267,8 @@ the same milestones and tolerances the project tests against:
 | Use the **Vite demo dashboard** (live `physics_flags` + geometry) | [`demo/dashboard/README.md`](../demo/dashboard/README.md), [`docs/DEMO.md`](DEMO.md) Path C |
 | Manual acceptance gates for showcase stages | [`docs/Demo_Test.md`](Demo_Test.md) |
 | Understand **why** a major choice was made (dependencies, seams, deferrals) | [`Methodology.md`](../Methodology.md) |
+| Decode **CCSDS TM Transfer Frames** / CADUs from an SDR front end | [`docs/TM_TRANSFER_FRAMES.md`](TM_TRANSFER_FRAMES.md) |
+| Use **NASA Open MCT** with history, or the published JSON Schemas | [`docs/OPENMCT.md`](OPENMCT.md), [`demo/openmct/README.md`](../demo/openmct/README.md) |
 | Configure a real run (bind addresses, station, TLE path) | [`gateway.example.toml`](../gateway.example.toml), `--config` / `-c`, and `CHRONUS_GATEWAY_CONFIG` (see **First run** above) |
 
 **Status:** **Introduction**, **First run**, and **`physics_flags`** are drafted. Still to add:
