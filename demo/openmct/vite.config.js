@@ -4,6 +4,9 @@
 import { defineConfig } from 'vite';
 
 const gateway = process.env.CHRONUS_GATEWAY ?? 'http://127.0.0.1:8080';
+// Since 0.6.0 a gateway may require an API token. The proxy adds it, so it never reaches the browser.
+const token = process.env.CHRONUS_TOKEN;
+const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
 export default defineConfig({
   // Open MCT's dist (openmct.js, its CSS, fonts, workers) is served from the site root as-is.
@@ -12,16 +15,16 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5174,
     proxy: {
-      '/api': { target: gateway, changeOrigin: true },
-      '/telemetry': { target: gateway.replace(/^http/, 'ws'), ws: true, changeOrigin: true }
+      '/api': { target: gateway, changeOrigin: true, headers },
+      '/telemetry': { target: gateway.replace(/^http/, 'ws'), ws: true, changeOrigin: true, headers }
     }
   },
   preview: {
     host: '127.0.0.1',
     port: 4174,
     proxy: {
-      '/api': { target: gateway, changeOrigin: true },
-      '/telemetry': { target: gateway.replace(/^http/, 'ws'), ws: true, changeOrigin: true }
+      '/api': { target: gateway, changeOrigin: true, headers },
+      '/telemetry': { target: gateway.replace(/^http/, 'ws'), ws: true, changeOrigin: true, headers }
     }
   }
 });

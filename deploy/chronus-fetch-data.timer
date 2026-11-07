@@ -1,0 +1,13 @@
+# Every six hours, spread out so many stations don't hit CelesTrak at once. CelesTrak publishes
+# about every two hours and blocks clients that poll faster; never set this below 2 h.
+[Unit]
+Description=Refresh ChronusGateway-RS orbit and Earth orientation data every six hours
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=6h
+RandomizedDelaySec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

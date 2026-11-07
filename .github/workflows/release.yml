@@ -1,0 +1,150 @@
+# Release packaging (Tranche 4.5, Methodology D-053). Push a tag like `v0.6.0` to build:
+#
+#   - binaries for Linux (x86_64), Windows (x86_64) and macOS (Apple silicon): chronus-gateway,
+#     chronus-replay and chronus-hil-sim, with README, LICENSE, CHANGELOG, the example configs and
+#     the deploy/ folder, plus SHA-256 sums;
+#   - a GitHub Release holding those archives;
+#   - the production container image (deploy/Dockerfile) at ghcr.io/<owner>/chronus-gateway.
+#
+# `workflow_dispatch` builds the archives and the image without publishing anything (a dry run).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+          - os: macos-14
+            target: aarch64-apple-darwin
+            archive: tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89"
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        shell: bash
+        run: |
+          cargo build --release --locked --target "${{ matrix.target }}" \
+            -p chronus-gateway -p chronus-replay -p chronus-hil-sim
+
+      - name: Package
+        id: package
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [ "$GITHUB_REF_TYPE" = "tag" ] || version="dev-${GITHUB_SHA::7}"
+          name="chronus-gateway-${version}-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          ext=""; [ "${{ runner.os }}" = "Windows" ] && ext=".exe"
+          for bin in chronus-gateway chronus-replay chronus-hil-sim; do
+            cp "target/${{ matrix.target }}/release/${bin}${ext}" "dist/$name/"
+          done
+          cp README.md LICENSE CHANGELOG.md gateway.example.toml "dist/$name/"
+          cp -r deploy "dist/$name/"
+          cd dist
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            7z a -tzip "$name.zip" "$name" > /dev/null
+            sha256sum "$name.zip" > "$name.zip.sha256"
+          else
+            tar -czf "$name.tar.gz" "$name"
+            shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          ext=""; [ "${{ runner.os }}" = "Windows" ] && ext=".exe"
+          "dist/${{ steps.package.outputs.name }}/chronus-gateway${ext}" --version
+          "dist/${{ steps.package.outputs.name }}/chronus-gateway${ext}" --check-config
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download archives
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: See CHANGELOG.md for what changed. Verify downloads with the matching .sha256 file.
+
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.ref_type == 'tag'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image name
+        id: meta
+        shell: bash
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/chronus-gateway" >> "$GITHUB_OUTPUT"
+
+      - name: Build (and push on tags)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: ${{ github.ref_type == 'tag' }}
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ github.ref_type == 'tag' && github.ref_name || 'dry-run' }}
+            ${{ steps.meta.outputs.image }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.description=CCSDS telemetry gateway with physics co-validation

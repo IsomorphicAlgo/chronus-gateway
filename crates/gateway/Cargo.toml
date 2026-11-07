@@ -25,6 +25,11 @@ exclude = ["demo", "showcase", "PLANS.md"]
 # the 1.x stability promise. Methodology.md D-046.
 default = []
 hil = []
+# Lets the gateway fetch TLEs (CelesTrak) and IERS Earth orientation data itself
+# (`freshness.tle_url` / `eop_url`; Methodology D-052). Off by default: it pulls in an HTTPS client
+# (ureq + rustls with a C-compiled crypto backend), and the gateway otherwise never opens an
+# outbound connection. Without it, refresh the files with deploy/fetch-data.sh.
+refresh = ["ephemerust/network"]
 
 [dependencies]
 tokio.workspace = true
@@ -44,6 +49,9 @@ tower.workspace = true
 tower-http.workspace = true
 futures-util.workspace = true
 base64.workspace = true
+getrandom.workspace = true
+# The binary's command line (`--help`, `--check-config`, `--generate-token`; Tranche 4).
+clap.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

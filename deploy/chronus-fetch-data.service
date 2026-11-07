@@ -1,0 +1,25 @@
+# Refreshes the TLE and IERS Earth orientation files; the gateway reloads them by itself
+# (freshness.reload_interval_s). Not needed when the gateway is built with the `refresh` feature.
+[Unit]
+Description=Fetch TLE and Earth orientation data for ChronusGateway-RS
+Documentation=https://github.com/IsomorphicAlgo/chronus-gateway/blob/master/docs/DEPLOYMENT.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=chronus
+Group=chronus
+StateDirectory=chronus-gateway
+Environment=CHRONUS_DATA_DIR=/var/lib/chronus-gateway
+# NORAD catalog number of the tracked spacecraft (25544 = ISS).
+Environment=CHRONUS_CATNR=25544
+ExecStart=/usr/local/bin/chronus-fetch-data
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+CapabilityBoundingSet=
+SystemCallFilter=@system-service

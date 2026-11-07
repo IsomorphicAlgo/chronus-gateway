@@ -124,6 +124,27 @@ pub async fn run(
     stats: Arc<IngestStats>,
     shutdown: impl Future<Output = ()>,
 ) -> std::io::Result<()> {
+    run_filtered(
+        socket,
+        tx,
+        config,
+        stats,
+        crate::security::SourceFilter::allow_all(),
+        shutdown,
+    )
+    .await
+}
+
+/// [`run`] with a sender allow-list (`security.udp_allowed_sources`, Tranche 4): datagrams from
+/// other addresses are dropped before they are counted or forwarded.
+pub async fn run_filtered(
+    socket: UdpSocket,
+    tx: broadcast::Sender<RawFrame>,
+    config: IngestConfig,
+    stats: Arc<IngestStats>,
+    filter: crate::security::SourceFilter,
+    shutdown: impl Future<Output = ()>,
+) -> std::io::Result<()> {
     let mut buf = vec![0u8; config.max_datagram_size];
     tokio::pin!(shutdown);
 
@@ -145,6 +166,7 @@ pub async fn run(
 
             result = socket.recv_from(&mut buf) => {
                 match result {
+                    Ok((_, source)) if !filter.allows(source) => {}
                     Ok((len, source)) => {
                         // `len <= buf.len()` always; on Unix an oversized datagram is truncated
                         // to the buffer here (M2's CCSDS length check will reject partials).
@@ -299,5 +321,49 @@ mod tests {
         .await
         .expect("shutdown should win the biased select");
         assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn filtered_run_drops_senders_outside_the_allow_list() {
+        let cfg = loopback_config();
+        let sock = bind(&cfg).await.expect("bind");
+        let target = sock.local_addr().expect("addr");
+        let (tx, mut rx) = broadcast::channel(cfg.channel_capacity);
+        let stats = Arc::new(IngestStats::default());
+        let sec = Arc::new(crate::security::SecurityStats::default());
+        // Only 10.0.0.0/8 may send; the loopback test sender is outside it.
+        let filter = crate::security::SourceFilter::new(
+            Some(vec!["10.0.0.0/8".parse().unwrap()]),
+            Arc::clone(&sec),
+            crate::security::UdpPort::Telemetry,
+        );
+        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+        let task = tokio::spawn(run_filtered(
+            sock,
+            tx,
+            cfg,
+            Arc::clone(&stats),
+            filter,
+            async {
+                let _ = stop_rx.await;
+            },
+        ));
+        let sender = UdpSocket::bind("127.0.0.1:0").await.expect("sender");
+        sender.send_to(b"spoof", target).await.expect("send");
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while sec.snapshot(false).udp_rejected < 1 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("rejection counted");
+        assert!(rx.try_recv().is_err());
+        assert_eq!(
+            stats.snapshot().0,
+            0,
+            "rejected datagrams are not counted as received"
+        );
+        stop_tx.send(()).expect("stop");
+        task.await.expect("join").expect("clean shutdown");
     }
 }

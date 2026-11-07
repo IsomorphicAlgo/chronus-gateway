@@ -15,6 +15,11 @@
 //! - `GET /api/v1/chronus/openmct/history/{key}?start=&end=` — one point's history as Open MCT
 //!   datums (`[{"id","timestamp","value"}]`).
 //! - `GET /api/v1/chronus/schemas` and `/schemas/{name}` — the published JSON Schemas.
+//! - `GET /metrics` — the same counters in the Prometheus text format ([`crate::prometheus`]).
+//!
+//! Since 0.6.0, when API tokens are configured every route except `/health` requires
+//! `Authorization: Bearer <token>` (or `?access_token=`), and the WebSocket also checks the
+//! browser `Origin` and the client cap ([`crate::security`]).
 //!
 //! Since 0.5.0 the WebSocket relays messages produced once per packet by the
 //! [`pipeline`](crate::pipeline); a server built from [`router`] must also run
@@ -109,6 +114,8 @@ struct CombinedMetricsResponse {
     pub framing: crate::frames::FramingSnapshot,
     pub history: crate::history::HistorySnapshot,
     pub pipeline: crate::pipeline::PipelineSnapshot,
+    pub security: crate::security::SecuritySnapshot,
+    pub data: crate::freshness::DataSnapshot,
     pub avg_processing_latency_ms: Option<f64>,
 }
 
@@ -134,8 +141,8 @@ pub const SCHEMAS: &[(&str, &str)] = &[
 
 /// Builds the Axum [`Router`] with shared [`SharedGateway`] state.
 pub fn router(state: Arc<SharedGateway>) -> Router {
-    Router::new()
-        .route("/health", get(health))
+    let protected = Router::new()
+        .route("/metrics", get(prometheus_metrics))
         .route("/api/v1/chronus/metrics", get(metrics))
         .route("/api/v1/chronus/status", get(status))
         .route("/api/v1/chronus/history", get(history))
@@ -144,8 +151,67 @@ pub fn router(state: Arc<SharedGateway>) -> Router {
         .route("/api/v1/chronus/schemas", get(schema_list))
         .route("/api/v1/chronus/schemas/{name}", get(schema))
         .route("/telemetry/openmct", get(openmct_ws))
+        .route_layer(axum::middleware::from_fn_with_state(
+            Arc::clone(&state),
+            require_token,
+        ));
+    Router::new()
+        .route("/health", get(health))
+        .merge(protected)
         .with_state(state)
-        .layer(TraceLayer::new_for_http())
+        // Log the path only: a query string may carry `access_token`.
+        .layer(
+            TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
+                tracing::debug_span!("http", method = %req.method(), path = %req.uri().path())
+            }),
+        )
+}
+
+/// Rejects requests without a valid API token when tokens are configured (RFC 6750 bearer).
+async fn require_token(
+    State(state): State<Arc<SharedGateway>>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if !state.auth.is_enabled() {
+        return next.run(req).await;
+    }
+    let header = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok());
+    let ok = crate::security::presented_token(header, req.uri().query())
+        .is_some_and(|t| state.auth.verify(t));
+    if ok {
+        return next.run(req).await;
+    }
+    let prior = state.security.auth_failures.fetch_add(1, Ordering::Relaxed);
+    if prior == 0 {
+        tracing::warn!(
+            path = req.uri().path(),
+            "request refused: missing or wrong API token (further refusals are only counted)"
+        );
+    }
+    (
+        StatusCode::UNAUTHORIZED,
+        [(header::WWW_AUTHENTICATE, "Bearer realm=\"chronus\"")],
+        Json(serde_json::json!({
+            "error": "This API needs a token.",
+            "fix": "Send `Authorization: Bearer <token>`; a browser WebSocket can use `?access_token=<token>`. Tokens are configured with security.api_tokens_file or CHRONUS_API_TOKENS.",
+        })),
+    )
+        .into_response()
+}
+
+async fn prometheus_metrics(State(state): State<Arc<SharedGateway>>) -> Response {
+    (
+        [(
+            header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
+        crate::prometheus::render(&state),
+    )
+        .into_response()
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -163,12 +229,24 @@ async fn metrics(State(state): State<Arc<SharedGateway>>) -> Json<CombinedMetric
         framing: state.framing.snapshot(state.station.framing.mode),
         history: state.history.snapshot(),
         pipeline: state.pipeline.snapshot(),
+        security: state.security.snapshot(state.auth.is_enabled()),
+        data: state.data.snapshot(Utc::now()),
         avg_processing_latency_ms: avg,
     })
 }
 
-async fn status(State(state): State<Arc<SharedGateway>>) -> Json<crate::diagnose::HealthReport> {
-    Json(state.health_report())
+async fn status(State(state): State<Arc<SharedGateway>>) -> Json<serde_json::Value> {
+    let mut v = serde_json::to_value(state.health_report()).unwrap_or_default();
+    // Data age (Tranche 4): what orbit and Earth-orientation data the physics is using.
+    if let Some(obj) = v.as_object_mut()
+        && state.tracking.is_some()
+    {
+        obj.insert(
+            "data".into(),
+            serde_json::to_value(state.data.snapshot(Utc::now())).unwrap_or_default(),
+        );
+    }
+    Json(v)
 }
 
 /// Query string of the history endpoints. Times are RFC 3339 or milliseconds since the Unix epoch
@@ -385,11 +463,54 @@ async fn schema(Path(name): Path<String>) -> Response {
     }
 }
 
+/// Releases a WebSocket slot when dropped (also when the upgrade never completes).
+struct WsSlot(Arc<SharedGateway>);
+
+impl Drop for WsSlot {
+    fn drop(&mut self) {
+        self.0.security.ws_slots.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 async fn openmct_ws(
     ws: WebSocketUpgrade,
     State(state): State<Arc<SharedGateway>>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_openmct_socket(socket, state))
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let origin = headers.get(header::ORIGIN).and_then(|h| h.to_str().ok());
+    if !crate::security::origin_allowed(origin, &state.station.security.allowed_origins) {
+        state
+            .security
+            .ws_rejected_origin
+            .fetch_add(1, Ordering::Relaxed);
+        return bad_request(
+            StatusCode::FORBIDDEN,
+            format!(
+                "WebSocket connections from {} are not allowed.",
+                origin.unwrap_or("?")
+            ),
+            "Add the dashboard's origin to `security.allowed_origins`.",
+        );
+    }
+    let max = state.station.security.max_ws_clients as u64;
+    let in_use = state.security.ws_slots.fetch_add(1, Ordering::Relaxed);
+    let slot = WsSlot(Arc::clone(&state));
+    if in_use >= max {
+        drop(slot);
+        state
+            .security
+            .ws_rejected_capacity
+            .fetch_add(1, Ordering::Relaxed);
+        return bad_request(
+            StatusCode::SERVICE_UNAVAILABLE,
+            format!("All {max} WebSocket client slots are in use."),
+            "Try again later, or raise `security.max_ws_clients`.",
+        );
+    }
+    ws.on_upgrade(move |socket| async move {
+        let _slot = slot;
+        handle_openmct_socket(socket, state).await;
+    })
 }
 
 async fn handle_openmct_socket(mut socket: WebSocket, state: Arc<SharedGateway>) {
@@ -1002,5 +1123,117 @@ mod tests {
         assert_eq!(v["framing"]["mode"], "packets");
         assert_eq!(v["history"]["len"], 1);
         assert_eq!(v["pipeline"]["messages_published"], 1);
+    }
+
+    // ---- Tranche 4: tokens, Prometheus, data age ----------------------------------------------
+
+    const TOKEN: &str = "test-token-0123456789abcdef0123456789";
+
+    async fn get_with(
+        app: Router,
+        uri: &str,
+        auth: Option<&str>,
+    ) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+        let mut req = Request::builder().uri(uri);
+        if let Some(a) = auth {
+            req = req.header("authorization", a);
+        }
+        let res = app.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        let (status, headers) = (res.status(), res.headers().clone());
+        let body = to_bytes(res.into_body(), 1 << 20).await.unwrap().to_vec();
+        (status, headers, body)
+    }
+
+    fn secured() -> Arc<SharedGateway> {
+        let (tx, _rx) = broadcast::channel(4);
+        Arc::new(
+            SharedGateway::new(
+                tx,
+                Arc::new(IngestStats::default()),
+                Arc::new(GatewayMetrics::default()),
+                Arc::new(StationConfig::default()),
+                None,
+            )
+            .with_api_tokens(crate::security::ApiTokens::from_tokens([TOKEN]).unwrap()),
+        )
+    }
+
+    #[tokio::test]
+    async fn tokens_guard_every_route_but_health() {
+        let g = secured();
+        let (code, _, _) = get_with(router(Arc::clone(&g)), "/health", None).await;
+        assert_eq!(
+            code,
+            StatusCode::OK,
+            "liveness stays open for orchestrators"
+        );
+        for uri in [
+            "/api/v1/chronus/metrics",
+            "/api/v1/chronus/status",
+            "/api/v1/chronus/history",
+            "/api/v1/chronus/openmct/dictionary",
+            "/metrics",
+            "/telemetry/openmct",
+        ] {
+            let (code, headers, body) = get_with(router(Arc::clone(&g)), uri, None).await;
+            assert_eq!(code, StatusCode::UNAUTHORIZED, "{uri}");
+            assert!(
+                headers["www-authenticate"]
+                    .to_str()
+                    .unwrap()
+                    .starts_with("Bearer")
+            );
+            let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert!(v["fix"].as_str().unwrap().contains("Bearer"));
+        }
+        let bearer = format!("Bearer {TOKEN}");
+        let (code, _, _) = get_with(
+            router(Arc::clone(&g)),
+            "/api/v1/chronus/metrics",
+            Some(&bearer),
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK);
+        let (code, _, _) = get_with(
+            router(Arc::clone(&g)),
+            &format!("/api/v1/chronus/history?limit=1&access_token={TOKEN}"),
+            None,
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK, "query token for browser WebSockets");
+        let (code, _, _) = get_with(router(Arc::clone(&g)), "/metrics", Some("Bearer nope")).await;
+        assert_eq!(code, StatusCode::UNAUTHORIZED);
+        assert_eq!(g.security.snapshot(true).auth_failures, 7);
+        let report = g.health_report();
+        assert!(report.findings.iter().any(|f| f.code == "CG-515"));
+    }
+
+    #[tokio::test]
+    async fn prometheus_endpoint_serves_text_exposition() {
+        let g = gateway();
+        let (code, headers, body) = get_with(router(g), "/metrics", None).await;
+        assert_eq!(code, StatusCode::OK);
+        assert!(
+            headers["content-type"]
+                .to_str()
+                .unwrap()
+                .starts_with("text/plain; version=0.0.4")
+        );
+        let text = String::from_utf8(body).unwrap();
+        assert!(text.contains("# TYPE chronus_health_status gauge"));
+        assert!(text.contains("chronus_ingest_frames_received_total 0"));
+    }
+
+    #[tokio::test]
+    async fn status_and_metrics_report_data_age_with_physics() {
+        let g = gateway_with(|_| {});
+        let (_, v) = get_json(router(Arc::clone(&g)), "/api/v1/chronus/status").await;
+        assert!(v.get("data").is_some(), "{v}");
+        let (_, v) = get_json(router(Arc::clone(&g)), "/api/v1/chronus/metrics").await;
+        assert!(v["security"]["auth_enabled"].is_boolean());
+        assert!(v.get("data").is_some());
+        // No physics: no data block on /status.
+        let (_, v) = get_json(router(gateway()), "/api/v1/chronus/status").await;
+        assert!(v.get("data").is_none());
     }
 }

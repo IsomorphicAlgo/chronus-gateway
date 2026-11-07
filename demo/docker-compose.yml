@@ -12,8 +12,8 @@ services:
       context: ..
       dockerfile: demo/Dockerfile
     ports:
-      - "8080:8080"
-      - "7301:7301/udp"
+      - "127.0.0.1:8080:8080"     # loopback only: the demo has no API tokens
+      - "127.0.0.1:7301:7301/udp"
     environment:
       CHRONUS_GATEWAY_CONFIG: /etc/chronus/gateway.toml
     volumes:

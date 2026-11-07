@@ -49,6 +49,28 @@ http_bind = "127.0.0.1:8080"
 # capacity = 10000           # messages kept (~1 KB each); 0 turns history off
 # persist_path = "history.jsonl"   # optional JSON-lines file, reloaded at startup and kept bounded
 
+# Access control (Tranche 4, docs/DEPLOYMENT.md). With any token configured, every route except
+# GET /health needs `Authorization: Bearer <token>` (browser WebSockets: `?access_token=`).
+# Serving the API on a non-loopback address WITHOUT a token is refused at startup (CG-137).
+# [security]
+# api_tokens_file = "/etc/chronus/api_tokens"   # one token per line; `chronus-gateway --generate-token`
+#                                                # (or the CHRONUS_API_TOKENS environment variable)
+# allowed_origins = ["https://ops.example.org"] # web pages (besides this computer's) allowed to open the WebSocket
+# max_ws_clients = 64                           # concurrent WebSocket clients
+# allow_unauthenticated_remote = false          # true only behind a proxy that authenticates
+# udp_allowed_sources = ["192.168.10.20"]       # who may send telemetry (IPs or CIDR)
+# rf_allowed_sources = ["192.168.10.0/24"]      # who may send chronus.rf.v1
+
+# Data freshness (Tranche 4). TLE / OEM / Earth-orientation files are reloaded when they change.
+# [freshness]
+# reload_interval_s = 60                        # 0 = never reload
+# eop_file = "finals.daily"                     # IERS finals2000A (fixed-width or the .csv): today's UT1-UTC and polar motion
+# Only with `--features refresh` builds (otherwise use deploy/fetch-data.sh on a timer):
+# tle_url = "https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=tle"   # needs station.tle_file
+# tle_name = "ISS (ZARYA)"                      # which set to keep from a multi-satellite bulletin
+# eop_url = "https://datacenter.iers.org/data/latestVersion/finals.daily.iau2000.txt"  # needs eop_file
+# fetch_interval_h = 6.0                        # minimum 2 (CelesTrak's guidance)
+
 [station]
 latitude_deg = 35.0
 longitude_deg = -116.0

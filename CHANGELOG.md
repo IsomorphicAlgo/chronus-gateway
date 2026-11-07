@@ -8,6 +8,76 @@ Versions cover all three workspace crates (`chronus-gateway`, `chronus-hil-sim`,
 
 ## Unreleased
 
+## 0.6.0 — 2026-10-24
+
+Security and operations (Tranche 4 of the 1.0 plan, **D-051**, **D-052**, **D-053**).
+
+**Compatibility**
+- **Library API:** additive against 0.5.0 (`cargo semver-checks` passes as a minor release).
+- **One operator-visible change:** serving the API on a non-loopback address with no API token
+  now **refuses to start** (`CG-137`). Add a token, or set
+  `security.allow_unauthenticated_remote = true` if a proxy in front of the gateway already
+  authenticates.
+- **Everything else is opt-in.** Defaults stay loopback-only with no token.
+
+**Access control** (new `security` module, `[security]` table)
+- **API tokens.** Bearer tokens on every route except `GET /health`; browser WebSockets can use
+  `?access_token=`. Tokens come from `api_tokens_file` or `CHRONUS_API_TOKENS`, must be at least
+  32 characters, are compared in constant time, and are never logged.
+- **WebSocket limits.** An `Origin` check (pages from this computer, plus `allowed_origins`) and a
+  client cap (`max_ws_clients`, default 64).
+- **UDP allow-lists.** `udp_allowed_sources` / `rf_allowed_sources` (CIDR) for the telemetry and
+  receiver ports, through the new `ingest::run_filtered` and `rf::run_listener_filtered`.
+- **TLS** is left to a reverse proxy; Caddy and nginx configurations are in
+  `docs/DEPLOYMENT.md`.
+
+**Data freshness** (new `freshness` module, `[freshness]` table)
+- **Reload while running.** `tle_file`, `oem_file` and the new `eop_file` are reloaded when they
+  change. The propagator is swapped without dropping frames (`TrackingProvider::replace`), and a
+  broken file keeps the old data and is reported.
+- **Earth orientation from the IERS.** `eop_file` is an IERS `finals2000A` file: fixed-width
+  (`finals.daily`) or the IERS data centre's CSV (`finals2000A.daily.csv`). Today's UT1−UTC and
+  polar motion are interpolated from it and re-applied every UTC day. It is checked against a real
+  IERS file (`demo/fixtures/iers/`).
+- **Optional fetching.** The `refresh` cargo feature (off by default; it pulls in an HTTPS stack)
+  lets the gateway fetch `tle_url` / `eop_url` itself: at most every 2 h, no retries, downloads
+  validated before they replace a file. Without it, `deploy/fetch-data.sh` and a systemd timer do
+  the same.
+- **Data age everywhere.** `/status` and `/api/v1/chronus/metrics` gain a `data` object: TLE
+  epoch and age, OEM coverage, Earth-orientation source, values and coverage, reload and fetch
+  results.
+
+**Operations**
+- **A real command line** (`clap`): `--help`, `--version`, `--config`, `--check-config` (dry run:
+  exit 0 ready, 2 must fix), `--generate-token`, `--log-format text|json`.
+- **Graceful stop.** SIGTERM now stops the gateway cleanly, so `docker stop` and `systemctl stop`
+  flush the history file.
+- **`GET /metrics`** in the Prometheus text format: every counter, `chronus_health_status`, and
+  the data ages in seconds.
+- **Packaging** in `deploy/`:
+  - a distroless non-root container image that refuses to run without a token;
+  - a hardened systemd unit (`systemd-analyze security` 1.1, "OK") with a sysusers file, a
+    fetch timer and a production config;
+  - `.github/workflows/release.yml`, which builds Linux, Windows and macOS archives with SHA-256
+    sums, creates a GitHub Release, and pushes the image to GHCR.
+- **CI** gains the `refresh` feature tests and clippy run, `shellcheck`, and an image build.
+  `deny.toml` now checks all features.
+- **Demos:** `demo/openmct` reads `CHRONUS_TOKEN` and its proxy adds the token. The Docker demo
+  publishes on loopback and opts out of the bind policy.
+
+**Diagnostics**
+- **Startup:** `CG-137` (unauthenticated network bind), `CG-138` (unusable tokens), `CG-139`
+  (unusable Earth orientation file), `CG-140` (fetch URLs in a build without `refresh`),
+  `CG-141` (`allowed_origins = ["*"]`), `CG-142` (`--check-config` found errors).
+- **Runtime:** `CG-515` (refused tokens, origins, clients or senders), `CG-516` (reload or fetch
+  failed), `CG-517` (Earth orientation file ran out). The TLE-age and OEM-coverage checks now run
+  live, not only at startup.
+
+**Docs:** new `docs/DEPLOYMENT.md` (the hardened-deployment page).
+
+**Tests:** 376 → 413 workspace tests (315 unit, 43 integration, 55 doctests); 355 for the gateway
+without `hil`, 357 with `refresh`. New dependency: `getrandom` (already in the tree via axum).
+
 ## 0.5.0 — 2026-10-24
 
 Ground-segment completeness (Tranche 3 of the 1.0 plan, **D-048**, **D-049**, **D-050**). The

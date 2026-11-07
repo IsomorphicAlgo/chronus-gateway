@@ -69,6 +69,110 @@ struct GatewayToml {
     framing: Option<FramingToml>,
     #[serde(default)]
     history: Option<HistoryToml>,
+    #[serde(default)]
+    security: Option<SecurityToml>,
+    #[serde(default)]
+    freshness: Option<FreshnessToml>,
+}
+
+/// Optional `[security]` table: every key is optional and falls back to `SecurityConfig::default`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SecurityToml {
+    api_tokens_file: Option<PathBuf>,
+    allowed_origins: Option<Vec<String>>,
+    max_ws_clients: Option<usize>,
+    allow_unauthenticated_remote: Option<bool>,
+    udp_allowed_sources: Option<Vec<String>>,
+    rf_allowed_sources: Option<Vec<String>>,
+}
+
+/// Optional `[freshness]` table: every key is optional and falls back to `FreshnessConfig::default`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FreshnessToml {
+    reload_interval_s: Option<u64>,
+    eop_file: Option<PathBuf>,
+    tle_name: Option<String>,
+    tle_url: Option<String>,
+    eop_url: Option<String>,
+    fetch_interval_h: Option<f64>,
+}
+
+fn parse_nets(
+    field: &'static str,
+    list: Option<Vec<String>>,
+) -> Result<Option<Vec<super::IpNet>>, ConfigLoadError> {
+    list.map(|items| {
+        items
+            .iter()
+            .map(|s| {
+                s.parse::<super::IpNet>().map_err(|why| {
+                    ConfigLoadError::from(ConfigError::InvalidSetting {
+                        field,
+                        value: format!("\"{s}\""),
+                        expected: if why.contains("prefix") {
+                            "a CIDR prefix within the address size (/0-/32 for IPv4, /0-/128 for IPv6)"
+                        } else {
+                            "IP addresses or CIDR networks, e.g. \"10.0.0.0/24\" or \"127.0.0.1\""
+                        },
+                    })
+                })
+            })
+            .collect()
+    })
+    .transpose()
+}
+
+/// Applies the optional `[security]` / `[freshness]` tables.
+fn apply_security_freshness(
+    station: &mut StationConfig,
+    security: Option<SecurityToml>,
+    freshness: Option<FreshnessToml>,
+) -> Result<(), ConfigLoadError> {
+    if let Some(t) = security {
+        let sec = &mut station.security;
+        if t.api_tokens_file.is_some() {
+            sec.api_tokens_file = t.api_tokens_file;
+        }
+        if let Some(v) = t.allowed_origins {
+            sec.allowed_origins = v;
+        }
+        if let Some(v) = t.max_ws_clients {
+            sec.max_ws_clients = v;
+        }
+        if let Some(v) = t.allow_unauthenticated_remote {
+            sec.allow_unauthenticated_remote = v;
+        }
+        if let Some(v) = parse_nets("security.udp_allowed_sources", t.udp_allowed_sources)? {
+            sec.udp_allowed_sources = Some(v);
+        }
+        if let Some(v) = parse_nets("security.rf_allowed_sources", t.rf_allowed_sources)? {
+            sec.rf_allowed_sources = Some(v);
+        }
+    }
+    if let Some(t) = freshness {
+        let f = &mut station.freshness;
+        if let Some(v) = t.reload_interval_s {
+            f.reload_interval_s = v;
+        }
+        if t.eop_file.is_some() {
+            f.eop_file = t.eop_file;
+        }
+        if t.tle_name.is_some() {
+            f.tle_name = t.tle_name;
+        }
+        if t.tle_url.is_some() {
+            f.tle_url = t.tle_url;
+        }
+        if t.eop_url.is_some() {
+            f.eop_url = t.eop_url;
+        }
+        if let Some(v) = t.fetch_interval_h {
+            f.fetch_interval_h = v;
+        }
+    }
+    Ok(())
 }
 
 /// Optional `[framing]` table: every key is optional and falls back to `FramingConfig::default`.
@@ -394,6 +498,8 @@ impl TryFrom<StationToml> for StationConfig {
             time: def.time,
             framing: def.framing,
             history: def.history,
+            security: def.security,
+            freshness: def.freshness,
         })
     }
 }
@@ -418,6 +524,7 @@ pub fn load_gateway_from_path(
     };
     apply_rf_time(&mut station, doc.rf, doc.time)?;
     apply_framing_history(&mut station, doc.framing, doc.history)?;
+    apply_security_freshness(&mut station, doc.security, doc.freshness)?;
     ingest.validate()?;
     station.validate()?;
     if !matches!(station.tracking.ephemeris, EphemerisSource::OemFile(_)) {
@@ -930,5 +1037,87 @@ persist_path = "hist.jsonl"
         }
         assert!(load_str("[framing]\nbogus = 1").is_err());
         assert!(load_str("[history]\nbogus = 1").is_err());
+    }
+
+    // ---- Tranche 4: [security] and [freshness] tables ----------------------------------------
+
+    #[test]
+    fn security_and_freshness_tables_load() {
+        let (_, st) = load_str(
+            r#"
+[security]
+api_tokens_file = "tokens.txt"
+allowed_origins = ["https://ops.example.org", "http://10.0.0.5:5174"]
+max_ws_clients = 8
+allow_unauthenticated_remote = true
+udp_allowed_sources = ["10.0.0.0/24", "127.0.0.1"]
+rf_allowed_sources = ["::1"]
+
+[freshness]
+reload_interval_s = 30
+eop_file = "finals.daily"
+tle_name = "ISS (ZARYA)"
+fetch_interval_h = 12.0
+"#,
+        )
+        .expect("loads");
+        assert_eq!(
+            st.security.api_tokens_file,
+            Some(PathBuf::from("tokens.txt"))
+        );
+        assert_eq!(st.security.allowed_origins.len(), 2);
+        assert_eq!(st.security.max_ws_clients, 8);
+        assert!(st.security.allow_unauthenticated_remote);
+        let udp = st.security.udp_allowed_sources.as_ref().unwrap();
+        assert!(udp[0].contains("10.0.0.9".parse().unwrap()));
+        assert!(udp[1].contains("127.0.0.1".parse().unwrap()));
+        assert!(!udp[1].contains("127.0.0.2".parse().unwrap()));
+        assert_eq!(st.freshness.reload_interval_s, 30);
+        assert_eq!(st.freshness.eop_file, Some(PathBuf::from("finals.daily")));
+        assert_eq!(st.freshness.fetch_interval_h, 12.0);
+    }
+
+    #[test]
+    fn bad_security_and_freshness_values_are_clear_errors() {
+        for (doc, field) in [
+            ("[security]\nmax_ws_clients = 0", "security.max_ws_clients"),
+            (
+                "[security]\nallowed_origins = [\"ops.example.org\"]",
+                "security.allowed_origins",
+            ),
+            (
+                "[security]\nallowed_origins = [\"https://x.org/path\"]",
+                "security.allowed_origins",
+            ),
+            (
+                "[security]\nudp_allowed_sources = [\"10.0.0.0/40\"]",
+                "security.udp_allowed_sources",
+            ),
+            (
+                "[security]\nrf_allowed_sources = [\"lan\"]",
+                "security.rf_allowed_sources",
+            ),
+            (
+                "[freshness]\nfetch_interval_h = 0.5",
+                "freshness.fetch_interval_h",
+            ),
+            (
+                "[freshness]\ntle_url = \"http://celestrak.org/x\"",
+                "freshness.tle_url",
+            ),
+            (
+                "[freshness]\ntle_url = \"https://celestrak.org/x\"",
+                "freshness.tle_url",
+            ),
+            (
+                "[freshness]\neop_url = \"https://x.org/finals\"",
+                "freshness.eop_url",
+            ),
+        ] {
+            let err = load_str(doc).expect_err(doc);
+            assert!(err.to_string().contains(field), "{doc} -> {err}");
+        }
+        assert!(load_str("[security]\nbogus = 1").is_err());
+        assert!(load_str("[freshness]\nbogus = 1").is_err());
     }
 }

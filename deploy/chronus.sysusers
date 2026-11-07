@@ -1,0 +1,2 @@
+# systemd-sysusers: the account the gateway and the data-fetch timer run as.
+u chronus - "ChronusGateway-RS" /var/lib/chronus-gateway -

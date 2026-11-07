@@ -1,0 +1,22 @@
+# Configuration baked into deploy/Dockerfile (override by mounting your own at
+# /etc/chronus/gateway.toml). Inside a container the gateway listens on all interfaces, so an
+# API token is REQUIRED: pass CHRONUS_API_TOKENS, or mount a tokens file and set api_tokens_file.
+# Without one the gateway refuses to start (CG-137).
+
+[ingest]
+bind_addr = "0.0.0.0:7301"
+channel_capacity = 1024
+max_datagram_size = 65542
+http_bind = "0.0.0.0:8080"
+
+[history]
+capacity = 10000
+persist_path = "/var/lib/chronus/history.jsonl"
+
+[security]
+# api_tokens_file = "/run/secrets/chronus_api_tokens"   # Docker / Kubernetes secret
+# allowed_origins = ["https://ops.example.org"]
+max_ws_clients = 64
+
+[freshness]
+reload_interval_s = 60
