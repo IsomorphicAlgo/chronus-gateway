@@ -19,14 +19,14 @@ AGENT="chronus-gateway-fetch/1 (+https://github.com/IsomorphicAlgo/chronus-gatew
 status=0
 
 # A TLE: a line starting "1 NNNNNC " and one starting "2 NNNNN " (the gateway checks the rest).
-# shellcheck disable=SC2329 # called indirectly, as fetch's CHECK argument
+# shellcheck disable=SC2317,SC2329 # called indirectly, as fetch's CHECK argument
 looks_like_tle() {
     grep -Eq '^1 [0-9 ]{5}[A-Z ] ' "$1" && grep -Eq '^2 [0-9 ]{5} ' "$1"
 }
 
 # finals2000A, fixed-width (YYMMDD, blank, MJD with ".00", blank, I/P flag) or the IERS CSV form
 # (header "MJD;Year;Month;Day;...").
-# shellcheck disable=SC2329 # called indirectly, as fetch's CHECK argument
+# shellcheck disable=SC2317,SC2329 # called indirectly, as fetch's CHECK argument
 looks_like_finals() {
     grep -Eq '^[0-9 ]{6} [0-9 ]{5}\.00 [IP ]' "$1" || grep -q '^MJD;Year;Month;Day;' "$1"
 }
