@@ -64,7 +64,7 @@ http_bind = "127.0.0.1:8080"
 # Data freshness (Tranche 4). TLE / OEM / Earth-orientation files are reloaded when they change.
 # [freshness]
 # reload_interval_s = 60                        # 0 = never reload
-# eop_file = "finals.daily"                     # IERS finals2000A: today's UT1-UTC and polar motion
+# eop_file = "finals.daily"                     # IERS finals2000A (fixed-width or the .csv): today's UT1-UTC and polar motion
 # Only with `--features refresh` builds (otherwise use deploy/fetch-data.sh on a timer):
 # tle_url = "https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=tle"   # needs station.tle_file
 # tle_name = "ISS (ZARYA)"                      # which set to keep from a multi-satellite bulletin

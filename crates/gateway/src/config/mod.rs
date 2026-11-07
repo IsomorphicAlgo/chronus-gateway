@@ -623,8 +623,9 @@ pub struct FreshnessConfig {
     /// How often to check `tle_file`, `oem_file` and `eop_file` for changes, in seconds. `0`
     /// turns reloading off. Default **60**.
     pub reload_interval_s: u64,
-    /// IERS `finals2000A` file (e.g. `finals.daily`): Earth orientation for **today** is taken
-    /// from it, replacing the fixed `ut1_minus_utc_s` / `polar_motion_*` settings.
+    /// IERS `finals2000A` file, fixed-width (`finals.daily`) or the IERS data centre's CSV
+    /// (`finals2000A.daily.csv`): Earth orientation for **today** is taken from it, replacing the
+    /// fixed `ut1_minus_utc_s` / `polar_motion_*` settings.
     pub eop_file: Option<PathBuf>,
     /// Which element set to keep when a fetched bulletin holds many (matched against the title
     /// line, e.g. `"ISS (ZARYA)"`). Default: the title of the configured TLE.

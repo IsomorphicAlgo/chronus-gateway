@@ -21,6 +21,11 @@ captures, or export-controlled parameters.
 
 ## Fixture inventory
 
+### IERS Earth orientation (`iers/`)
+
+A real IERS `finals2000A.daily` CSV, used for testing the gateway's Earth orientation reloading (Tranche 4). Source and credit are in [`iers/README.md`](iers/README.md).
+
+
 ### ISS track (`iss/`)
 
 | File | Role | SHA-256 (file) |

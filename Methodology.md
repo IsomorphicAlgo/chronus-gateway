@@ -933,9 +933,16 @@ stale by about a millisecond a day.
 **Known limits:**
 - Change detection uses the modification time plus the size. A same-size rewrite within the
   filesystem's timestamp resolution could be missed; it is picked up on the next real change.
-- No real IERS file could be fetched from the build environment, so the parser is verified
-  against the published column layout plus the internal MJD/date cross-check. Running
-  `--check-config` with a real `finals.daily` prints the values in use, for the owner to compare.
+- No real IERS file could be fetched from the build environment, so the fixed-width parser
+  follows the published column layout plus the internal MJD/date cross-check.
+- **Real-data check (2026-11-07).** The owner supplied the IERS data centre's
+  `finals2000A.daily.csv` (`demo/fixtures/iers/`), which led to a second, CSV reader. It finds
+  columns by name and finds the UT1 flag as the `Type` column before `UT1-UTC`.
+  - Tests check hand-copied values from the real file, and that the same rows re-expressed in the
+    fixed-width layout parse identically.
+  - `--check-config` on the real file printed UT1−UTC −0.0631669 s and pole 0.128846″ /
+    0.320593″ at 21:17 UTC. Interpolating the file's 11-07 and 11-08 rows by hand gives the same
+    values.
 
 ### D-053 — Operations: CLI, Prometheus, JSON logs, packaging (Tranche 4; 0.6.0)
 **Decision:**
@@ -1015,7 +1022,7 @@ docs when dependencies change (finalization **B.2**, **D-035**).
 | [`jsonschema`](https://crates.io/crates/jsonschema) ([Stranger6667](https://github.com/Stranger6667/jsonschema)) | Dev-only: validates gateway output against the published schemas (**D-049**) | crates.io, MIT |
 | [`getrandom`](https://crates.io/crates/getrandom) | OS randomness for `--generate-token` (**D-051**) | crates.io, MIT/Apache-2.0 |
 | [`ureq`](https://crates.io/crates/ureq), [`rustls`](https://crates.io/crates/rustls), [`webpki-roots`](https://crates.io/crates/webpki-roots) (via Ephemerust `network`) | Optional `refresh` feature: HTTPS fetch of TLE / Earth orientation data (**D-052**) | crates.io, MIT/Apache-2.0 (ring: Apache-2.0 AND ISC; webpki-roots: CDLA-Permissive-2.0) |
-| **IERS** Bulletin A / `finals2000A` format | Earth orientation file (**D-052**) | [iers.org](https://www.iers.org/) |
+| **IERS** Bulletin A / `finals2000A` format | Earth orientation file (**D-052**); real `finals2000A.daily.csv` test fixture (IERS Rapid Service / Prediction Centre, USNO) in `demo/fixtures/iers/` | [iers.org](https://www.iers.org/) |
 | **CelesTrak** GP data | Optional TLE source, used per its published fetch guidance (**D-052**) | [celestrak.org](https://celestrak.org/) |
 | [Caddy](https://caddyserver.com/), [nginx](https://nginx.org/), systemd, distroless | Deployment references (**D-051**, **D-053**) — documentation and packaging only | Apache-2.0 / BSD-2-Clause / LGPL-2.1+ / Apache-2.0 |
 | [`cargo-audit`](https://crates.io/crates/cargo-audit), [`cargo-deny`](https://crates.io/crates/cargo-deny) | CI supply-chain gates | crates.io |

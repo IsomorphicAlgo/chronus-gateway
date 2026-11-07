@@ -1792,8 +1792,8 @@ impl Explain for crate::freshness::FreshnessError {
             "CG-139",
             Severity::Error,
             format!("The Earth orientation data can't be used: {self}."),
-            "`freshness.eop_file` must be an IERS finals2000A file such as `finals.daily` \
-             (fixed-width columns: date, MJD, pole x/y, UT1-UTC).",
+            "`freshness.eop_file` must be an IERS finals2000A file: the fixed-width text \
+             (`finals.daily`) or the IERS data centre's CSV (`finals2000A.daily.csv`).",
         )
         .fix("Download it again: https://datacenter.iers.org/data/latestVersion/finals.daily.iau2000.txt (deploy/fetch-data.sh does this).")
         .fix("Or remove `freshness.eop_file` to use the fixed `station.ut1_minus_utc_s` / `polar_motion_*` values.")

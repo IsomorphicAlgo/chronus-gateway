@@ -113,13 +113,19 @@ fn field(line: &str, from: usize, to: usize) -> Option<&str> {
     line.get(from..to.min(line.len())).map(str::trim)
 }
 
-/// Parses an IERS `finals2000A` file (the format of `finals.daily`, `finals2000A.daily`,
-/// `finals2000A.all`).
+/// Parses an IERS `finals2000A` file, in either of the two forms the IERS publishes:
 ///
-/// Columns used (1-based, from the IERS format description): 1–6 date (YYMMDD), 8–15 MJD,
-/// 19–27 pole x, 38–46 pole y (arcsec), 58 I/P flag and 59–68 UT1−UTC (s). Every row's date is
-/// cross-checked against its MJD, so a file in another layout is rejected rather than misread.
-/// Rows past the end of the predictions (blank values) are skipped.
+/// - **Fixed-width text** (`finals.daily`, `finals2000A.daily`, `finals2000A.all`). Columns used
+///   (1-based, from the IERS format description): 1–6 date (YYMMDD), 8–15 MJD, 19–27 pole x,
+///   38–46 pole y (arcsec), 58 I/P flag and 59–68 UT1−UTC (s).
+/// - **Semicolon-separated CSV** from the IERS data centre (`finals2000A.daily.csv`,
+///   `finals.daily.iau2000.csv`), recognised by its `MJD;Year;Month;Day;...` header. Columns are
+///   found by name (`MJD`, `Year`, `Month`, `Day`, `x_pole`, `y_pole`, `UT1-UTC`, and the `Type`
+///   just before `UT1-UTC`: `final` or `prediction`).
+///
+/// Either way, every row's calendar date is cross-checked against its MJD, so a file in another
+/// layout is rejected rather than misread. Rows past the end of the predictions (blank values) are
+/// skipped.
 ///
 /// # Errors
 ///
@@ -136,6 +142,16 @@ fn field(line: &str, from: usize, to: usize) -> Option<&str> {
 /// assert_eq!(t.len(), 1);
 /// ```
 pub fn parse_finals(text: &str) -> Result<EopTable, EopError> {
+    // Tolerate a UTF-8 byte-order mark (spreadsheet exports add one).
+    let text = text.trim_start_matches('\u{feff}');
+    if text
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .is_some_and(|l| l.starts_with("MJD;"))
+    {
+        return parse_finals_csv(text);
+    }
     let mut rows: Vec<EopRow> = Vec::new();
     for (i, line) in text.lines().enumerate() {
         let n = i + 1;
@@ -194,20 +210,112 @@ pub fn parse_finals(text: &str) -> Result<EopTable, EopError> {
             ut1_minus_utc_s: parse(dut1, "UT1-UTC (columns 59-68)")?,
             predicted: flag != "I",
         };
-        if row.x_arcsec.abs() > 1.0 || row.y_arcsec.abs() > 1.0 || row.ut1_minus_utc_s.abs() > 1.0 {
-            return Err(bad(
-                "values out of range (pole within 1 arcsec, |UT1-UTC| < 1 s)",
-            ));
-        }
-        if rows.last().is_some_and(|last| last.mjd >= mjd) {
-            return Err(bad("rows are not in date order"));
-        }
-        rows.push(row);
+        push_row(&mut rows, row, n)?;
     }
+    finish(rows)
+}
+
+/// Range and order checks shared by both forms.
+fn push_row(rows: &mut Vec<EopRow>, row: EopRow, line: usize) -> Result<(), EopError> {
+    let bad = |reason: &str| EopError::Format {
+        line,
+        reason: reason.to_string(),
+    };
+    if row.x_arcsec.abs() > 1.0 || row.y_arcsec.abs() > 1.0 || row.ut1_minus_utc_s.abs() > 1.0 {
+        return Err(bad(
+            "values out of range (pole within 1 arcsec, |UT1-UTC| < 1 s)",
+        ));
+    }
+    if rows.last().is_some_and(|last| last.mjd >= row.mjd) {
+        return Err(bad("rows are not in date order"));
+    }
+    rows.push(row);
+    Ok(())
+}
+
+fn finish(rows: Vec<EopRow>) -> Result<EopTable, EopError> {
     if rows.is_empty() {
         return Err(EopError::Empty);
     }
     Ok(EopTable { rows })
+}
+
+/// The IERS data centre's semicolon-separated form of `finals2000A`.
+fn parse_finals_csv(text: &str) -> Result<EopTable, EopError> {
+    let mut lines = text
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| !l.trim().is_empty());
+    let Some((header_idx, header)) = lines.next() else {
+        return Err(EopError::Empty);
+    };
+    let names: Vec<&str> = header.trim().split(';').map(str::trim).collect();
+    let col = |name: &str| {
+        names
+            .iter()
+            .position(|c| *c == name)
+            .ok_or_else(|| EopError::Format {
+                line: header_idx + 1,
+                reason: format!("CSV header has no `{name}` column"),
+            })
+    };
+    let (i_mjd, i_year, i_month, i_day) = (col("MJD")?, col("Year")?, col("Month")?, col("Day")?);
+    let (i_x, i_y, i_dut1) = (col("x_pole")?, col("y_pole")?, col("UT1-UTC")?);
+    // The UT1-UTC flag is the `Type` column immediately before `UT1-UTC`.
+    let i_flag = i_dut1
+        .checked_sub(1)
+        .filter(|&i| names[i] == "Type")
+        .ok_or_else(|| EopError::Format {
+            line: header_idx + 1,
+            reason: "CSV header has no `Type` column before `UT1-UTC`".into(),
+        })?;
+
+    let mut rows = Vec::new();
+    for (i, line) in lines {
+        let n = i + 1;
+        let bad = |reason: String| EopError::Format { line: n, reason };
+        let cells: Vec<&str> = line.trim().split(';').map(str::trim).collect();
+        let get = |i: usize| cells.get(i).copied().filter(|s| !s.is_empty());
+        let num = |i: usize, what: &str| -> Result<Option<f64>, EopError> {
+            get(i)
+                .map(|s| {
+                    s.parse::<f64>()
+                        .ok()
+                        .filter(|v| v.is_finite())
+                        .ok_or_else(|| bad(format!("{what} `{s}` is not a number")))
+                })
+                .transpose()
+        };
+        let (Some(mjd), Some(year), Some(month), Some(day)) = (
+            num(i_mjd, "MJD")?,
+            num(i_year, "Year")?,
+            num(i_month, "Month")?,
+            num(i_day, "Day")?,
+        ) else {
+            return Err(bad("row is missing its MJD or date".into()));
+        };
+        let date = NaiveDate::from_ymd_opt(year as i32, month as u32, day as u32)
+            .ok_or_else(|| bad("invalid date".into()))?;
+        if date_of_mjd(mjd) != Some(date) || mjd.fract() != 0.0 {
+            return Err(bad("the date does not match the MJD".into()));
+        }
+        let (Some(x), Some(y), Some(dut1)) = (
+            num(i_x, "x_pole")?,
+            num(i_y, "y_pole")?,
+            num(i_dut1, "UT1-UTC")?,
+        ) else {
+            continue; // past the prediction horizon
+        };
+        let row = EopRow {
+            mjd,
+            x_arcsec: x,
+            y_arcsec: y,
+            ut1_minus_utc_s: dut1,
+            predicted: get(i_flag) != Some("final"),
+        };
+        push_row(&mut rows, row, n)?;
+    }
+    finish(rows)
 }
 
 impl EopTable {
@@ -1178,5 +1286,101 @@ mod tests {
         fetch_due(&s, &status, true);
         assert_eq!(status.snapshot(Utc::now()).fetch_errors, 1);
         assert_eq!(std::fs::read_to_string(&eop).unwrap(), sample());
+    }
+
+    /// The real IERS data-centre CSV (`demo/fixtures/iers/finals2000A.daily.csv`, downloaded by the
+    /// owner on 2026-11-07). Spot values below are copied by hand from that file's rows.
+    fn real_csv() -> String {
+        std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../demo/fixtures/iers/finals2000A.daily.csv"
+        ))
+        .expect("IERS CSV fixture")
+    }
+
+    #[test]
+    fn real_iers_csv_parses_with_the_published_values() {
+        let t = parse_finals(&real_csv()).unwrap();
+        assert_eq!(t.len(), 181);
+        assert_eq!(t.span(), Some((d(2026, 8, 10), d(2027, 2, 6))));
+        assert_eq!(t.observed_until(), Some(d(2026, 11, 7)), "last `final` row");
+        // Row 61262 (2026-08-10): x 0.223254, y 0.358654, UT1-UTC 0.0114721, final.
+        let v = t
+            .at(Utc.with_ymd_and_hms(2026, 8, 10, 0, 0, 0).unwrap())
+            .unwrap();
+        assert_eq!(
+            (v.x_arcsec, v.y_arcsec, v.ut1_minus_utc_s),
+            (0.223254, 0.358654, 0.0114721)
+        );
+        assert!(!v.predicted);
+        // Midday between 61351 (final, -0.0622121) and 61352 (prediction, -0.0632884).
+        let v = t
+            .at(Utc.with_ymd_and_hms(2026, 11, 7, 12, 0, 0).unwrap())
+            .unwrap();
+        assert!((v.ut1_minus_utc_s - (-0.0622121 + -0.0632884) / 2.0).abs() < 1e-12);
+        assert!(
+            v.predicted,
+            "uses a prediction for the second half of the day"
+        );
+    }
+
+    #[test]
+    fn real_csv_and_fixed_width_forms_agree() {
+        // Re-express the real CSV rows in the fixed-width layout and parse both.
+        let csv = parse_finals(&real_csv()).unwrap();
+        let fixed: Vec<String> = csv
+            .rows
+            .iter()
+            .map(|r| {
+                finals_line(
+                    date_of_mjd(r.mjd).unwrap(),
+                    r.x_arcsec,
+                    r.y_arcsec,
+                    r.ut1_minus_utc_s,
+                    r.predicted,
+                )
+            })
+            .collect();
+        let fw = parse_finals(&fixed.join("\n")).unwrap();
+        assert_eq!(fw.rows, csv.rows);
+    }
+
+    #[test]
+    fn csv_header_and_rows_are_checked() {
+        let header = "MJD;Year;Month;Day;Type;x_pole;sigma_x_pole;y_pole;sigma_y_pole;Type;UT1-UTC";
+        let ok = format!(
+            "{header}\n61262;2026;08;10;final;0.2;0;0.3;0;final;0.01\n61263;2026;08;11;prediction;;;;;prediction;\n"
+        );
+        let t = parse_finals(&format!("\u{feff}{ok}")).unwrap();
+        assert_eq!(t.len(), 1, "blank prediction row skipped, BOM tolerated");
+        let mismatch = format!("{header}\n61263;2026;08;10;final;0.2;0;0.3;0;final;0.01\n");
+        assert!(
+            parse_finals(&mismatch)
+                .unwrap_err()
+                .to_string()
+                .contains("does not match")
+        );
+        let no_dut1 = "MJD;Year;Month;Day;x_pole;y_pole\n61262;2026;08;10;0.2;0.3\n";
+        assert!(
+            parse_finals(no_dut1)
+                .unwrap_err()
+                .to_string()
+                .contains("UT1-UTC")
+        );
+        let no_flag = "MJD;Year;Month;Day;x_pole;y_pole;UT1-UTC\n";
+        assert!(
+            parse_finals(no_flag)
+                .unwrap_err()
+                .to_string()
+                .contains("Type")
+        );
+        let text = format!("{header}\n61262;2026;08;10;final;abc;0;0.3;0;final;0.01\n");
+        assert!(
+            parse_finals(&text)
+                .unwrap_err()
+                .to_string()
+                .contains("x_pole")
+        );
+        assert!(matches!(parse_finals(header), Err(EopError::Empty)));
     }
 }

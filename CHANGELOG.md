@@ -35,9 +35,10 @@ Security and operations (Tranche 4 of the 1.0 plan, **D-051**, **D-052**, **D-05
 - **Reload while running.** `tle_file`, `oem_file` and the new `eop_file` are reloaded when they
   change. The propagator is swapped without dropping frames (`TrackingProvider::replace`), and a
   broken file keeps the old data and is reported.
-- **Earth orientation from the IERS.** `eop_file` is an IERS `finals2000A` file (for example
-  `finals.daily`). Today's UT1−UTC and polar motion are interpolated from it and re-applied every
-  UTC day.
+- **Earth orientation from the IERS.** `eop_file` is an IERS `finals2000A` file: fixed-width
+  (`finals.daily`) or the IERS data centre's CSV (`finals2000A.daily.csv`). Today's UT1−UTC and
+  polar motion are interpolated from it and re-applied every UTC day. It is checked against a real
+  IERS file (`demo/fixtures/iers/`).
 - **Optional fetching.** The `refresh` cargo feature (off by default; it pulls in an HTTPS stack)
   lets the gateway fetch `tle_url` / `eop_url` itself: at most every 2 h, no retries, downloads
   validated before they replace a file. Without it, `deploy/fetch-data.sh` and a systemd timer do
@@ -74,8 +75,8 @@ Security and operations (Tranche 4 of the 1.0 plan, **D-051**, **D-052**, **D-05
 
 **Docs:** new `docs/DEPLOYMENT.md` (the hardened-deployment page).
 
-**Tests:** 376 → 410 workspace tests (312 unit, 43 integration, 55 doctests); 352 for the gateway
-without `hil`, 354 with `refresh`. New dependency: `getrandom` (already in the tree via axum).
+**Tests:** 376 → 413 workspace tests (315 unit, 43 integration, 55 doctests); 355 for the gateway
+without `hil`, 357 with `refresh`. New dependency: `getrandom` (already in the tree via axum).
 
 ## 0.5.0 — 2026-10-24
 

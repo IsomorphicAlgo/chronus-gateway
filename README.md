@@ -147,11 +147,11 @@ The reasoning behind these and other choices is recorded in [`Methodology.md`](M
 
 ## Testing
 
-Testing is a first-class deliverable. Counts below are for the full workspace, which builds the gateway with its `hil` feature (the synthetic EPS/thermal/body-rate demo models). **410 tests, all passing**, in a layered suite: inline unit tests, integration tests over loopback UDP and in-process WebSockets, a NeXosim hardware-in-the-loop simulator, runnable doctests, and physics co-validation tests with explicitly documented tolerances.
+Testing is a first-class deliverable. Counts below are for the full workspace, which builds the gateway with its `hil` feature (the synthetic EPS/thermal/body-rate demo models). **413 tests, all passing**, in a layered suite: inline unit tests, integration tests over loopback UDP and in-process WebSockets, a NeXosim hardware-in-the-loop simulator, runnable doctests, and physics co-validation tests with explicitly documented tolerances.
 
 | Layer | Count | Where |
 |-------|------:|-------|
-| Unit tests | **312** | inline `#[cfg(test)]` modules across the workspace |
+| Unit tests | **315** | inline `#[cfg(test)]` modules across the workspace |
 | Integration tests | **43** | `crates/gateway/tests/`: UDP ingest, WebSocket distribution, public fixtures, JSON Schema validation of real output, a frame stream cross-checked against an independent encoder, and the **real binary** driven over UDP with receiver data and transfer frames, killed and restarted, attacked with missing tokens, foreign origins, too many clients and disallowed senders, and fed data files that change under it. `crates/chronus-hil-sim/tests/`: HIL soak and fault-injection runs against the real ingest and RF paths. `crates/chronus-demo-server/tests/`: real WebSocket clients |
 | Doctests | **55** | runnable examples in the public API docs |
 | Benchmarks | Criterion | [`parse_validate.rs`](crates/gateway/benches/parse_validate.rs): the parse and validate hot paths |
@@ -171,8 +171,8 @@ Testing is a first-class deliverable. Counts below are for the full workspace, w
 **CI gates** ([`ci.yml`](.github/workflows/ci.yml)) on every push and pull request: `cargo test` (the whole workspace, the gateway alone without the `hil` feature, and the optional `refresh` feature), `clippy -D warnings` in all three configurations, `shellcheck`, a build of the production container image, benchmark compilation, a Docker Compose spec check, the demo dashboard build, a `cargo-semver-checks` job that compares the public API against the last release, plus supply-chain checks with `cargo audit` and `cargo deny`.
 
 ```bash
-cargo test --workspace          # everything above (410 tests)
-cargo test -p chronus-gateway   # the production configuration, without the `hil` demo models (352 tests)
+cargo test --workspace          # everything above (413 tests)
+cargo test -p chronus-gateway   # the production configuration, without the `hil` demo models (355 tests)
 cargo bench -p chronus-gateway  # Criterion benchmarks
 ```
 

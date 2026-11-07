@@ -126,7 +126,7 @@ apply behind the proxy.
 |---|---|---|
 | TLE | 1–3 km/day along track | `station.tle_file` |
 | OEM | after its coverage window ends | `station.oem_file` |
-| Earth orientation (UT1−UTC, polar motion) | about 1 ms/day (~0.5 m of Earth rotation) | `freshness.eop_file` (an IERS `finals2000A` file such as `finals.daily`) |
+| Earth orientation (UT1−UTC, polar motion) | about 1 ms/day (~0.5 m of Earth rotation) | `freshness.eop_file` (an IERS `finals2000A` file: fixed-width `finals.daily` or the data centre's `finals2000A.daily.csv`) |
 
 Every `freshness.reload_interval_s` seconds (default 60), the gateway checks these files. When
 one has changed, it builds a new propagator and swaps it in without dropping a frame:
