@@ -192,7 +192,7 @@ Prometheus gets `chronus_data_tle_age_seconds`, `chronus_data_oem_remaining_seco
 |---|---|
 | `GET /health` | liveness probes (no token needed) |
 | `GET /api/v1/chronus/status` | humans: overall status, plain-English findings with fixes, data age |
-| `GET /metrics` | Prometheus text format: every counter, `chronus_health_status` (0 ok … 3 problem), data ages |
+| `GET /metrics` | Prometheus text format: every counter, `chronus_health_status` (0 ok … 3 problem), data ages, and (Linux) `process_resident_memory_bytes` |
 | `GET /api/v1/chronus/metrics` | the same counters as JSON |
 
 ```yaml

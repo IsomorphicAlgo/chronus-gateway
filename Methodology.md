@@ -5,18 +5,19 @@ trade-offs, and the reasoning behind them. Append new entries as decisions are m
 silently rewrite history (mark superseded entries). Required reading + maintenance per the
 contributor expectations in `README.md` (keep this file current when decisions change).
 
-> Status: **M1–M8** complete. **CV-0** charter is documented in
-> `docs/EXTENDED_COVALIDATION_PLAN.md` (now consolidated into the maintainer's local `PLANS.md`, not part of this repository) and **D-016**; **Gate CV-0** is approved.
-> **Gate CV-2** is approved; **CV-3** (synthetic HIL TM v1 payload + decoder + APID policy) is **implemented** — **Gate CV-3** approved.
-> **CV-4** (HIL subsystem vs toy Sun proxy) is **implemented** — **Gate CV-4** approved.
-> **CV-5** (HIL ADCS body-rate envelope) is **implemented** — **Gate CV-5** pending owner sign-off.
-> **Showcase track (S0–S4):** `docs/SHOWCASE_PLAN.md` (now in local `PLANS.md`) + [`docs/Demo_Test.md`](docs/Demo_Test.md); **Gate S-0** through **Gate S-4** approved (2026-06-19). **S3:** `chronus-replay`, scripted `chronus-hil-sim`, `demo/replay/`. **S4:** `demo/fixtures/` (ISS + AMSAT).
-> **Manual demo path (finalization A.5):** [`docs/DEMO.md`](docs/DEMO.md) ↔ [`docs/Demo_Test.md`](docs/Demo_Test.md) runbook alignment — **D-033**.
-> **Secondary testing** (optional pre-release depth): `TEST_PLAN.md` (now in local `PLANS.md`) + **D-029** (`cargo-mutants`, `cargo-hack` when features exist, Miri scope, Loom deferred).
-> **Release rehearsal** (`cargo package`): `TEST_PLAN.md` — **§ Release rehearsal**; **`chronus-replay`** full package verified; gateway/HIL gated on Ephemerust crates.io (**D-005** / **E.2**).
-> **Criterion / benches:** `TEST_PLAN.md` — **§ Performance regression guard**; optional **`bench`** workflow (**D-030**); PR CI stays **`cargo bench --no-run`** only.
-> **Cross-target smoke:** `TEST_PLAN.md` — **§ Cross-target smoke (Linux publish shape)**; reference **`x86_64-unknown-linux-gnu`** via **`ci.yml`** on `ubuntu-latest` (**D-031**).
-> **Finalization Tranche A:** secondary testing + release rehearsal + cross-target smoke + manual demo alignment — **complete** (**A.1–A.5**, **D-033**). **Tranche B.1** README narrative — **complete** (**D-034**). **Tranche B.2** acknowledgments audit — **complete** (**D-035**). **Tranche B.3** operator doc split — **complete** (**D-036**). Next: **B.4** (`PROJECT_FINALIZATION_PLAN.md`, now in local `PLANS.md`).
+> **Status (2026-11-07): 1.0.0-rc.1.** Milestones **M1–M8**, the showcase track **S0–S4** and
+> finalization **A** and **B.1–B.3** are complete. The 1.0 plan's Tranches 1–4 shipped as 0.3.0–0.6.0
+> (**D-046**–**D-053**); Tranche 5 (evidence and release candidate) is **D-054**–**D-058**.
+> Gates **CV-0** to **CV-5** are approved (CV-5, the HIL body-rate envelope, signed off by the
+> owner on 2026-11-07).
+> Open for 1.0.0: the fuzzing ledger reaching 24 h per target (`docs/FUZZING.md`), the 24 h soak on
+> the release host (`docs/SOAK.md`), the owner's real-RF pass (`docs/RF_VALIDATION.md`), and a week
+> of the rc on the public demo with no API change. Ephemerust **1.1** is published on crates.io and
+> locked at 1.1.0.
+> The tolerance register is now in the repository ([`docs/TRACEABILITY.md`](docs/TRACEABILITY.md),
+> **D-057**). The planning documents that older entries cite (`BUILD_PLAN`, `TEST_PLAN`,
+> `EXTENDED_COVALIDATION_PLAN`, `SHOWCASE_PLAN`, `PROJECT_FINALIZATION_PLAN`) are consolidated in
+> the maintainer's local `PLANS.md` and are not part of this repository.
 
 ---
 
@@ -990,6 +991,131 @@ stale by about a millisecond a day.
 - Open MCT through the Vite proxy (which now injects `CHRONUS_TOKEN`) against a token-protected
   gateway: 330 rows live, 330 after a reload.
 
+### D-054 — Coverage-guided fuzzing of every untrusted-input parser (Tranche 5.1; 1.0.0-rc.1)
+**Decision:** A `cargo-fuzz` crate at `fuzz/` (excluded from the workspace, so `cargo build` and
+`cargo test` never need nightly or libFuzzer) with one target per parser that sees bytes from
+outside:
+
+| Target | Input | Property checked besides "no panic, no hang, no leak" |
+|---|---|---|
+| `ccsds_packet` | one UDP datagram | payload within the datagram, 11-bit APID; CDS and CUC decoding keeps user data inside the payload |
+| `tm_deframer` | structured: framing options + up to 64 datagrams (`arbitrary`) | every recovered packet has VCID < 8 and exactly its declared length |
+| `packet_pipeline` | one datagram through `pipeline::handle_datagram` | the history ring never exceeds its capacity |
+| `hil_tm_v1` | packet data field | anything accepted re-encodes to the same 24 bytes |
+| `rf_datagram` | `chronus.rf.v1` datagram, and the bytes as a stream into `RfStore` | parse → encode → parse is stable; the store stays within capacity |
+| `oem_text` | OEM (KVN) text | coverage start ≤ stop; interpolation inside coverage succeeds or errors |
+| `eop_finals` | IERS finals (fixed width or CSV) | an accepted file is non-empty; interpolated UT1−UTC, x and y stay within ±1 (s, ″) |
+| `config_toml` | gateway TOML | every rejection carries a `CG-` explanation; accepted configs run the startup checks |
+
+`config::load_gateway_from_str` was added for the last one (the loader minus the file read). Seeds
+come from the repository's own fixtures (`fuzz/make_seeds.py`, regenerated, not committed).
+`.github/workflows/fuzz.yml` runs a 30 s smoke of each target on pull requests that touch
+`crates/gateway/src`, a nightly 30 min per target that resumes from the corpus cached by the last
+run, and manual runs of up to 21 000 s; crashes are uploaded as artifacts.
+**Why:** the 1.0 plan's exit "24 h clean each". `proptest` (D-030) already threw random bytes at
+two parsers inside `cargo test`; coverage guidance reaches states random bytes do not (a valid
+ASM, a matching CRC, a TOML table that parses), and the property assertions turn silent
+misbehaviour into a crash.
+**Validation:** a first local pass of 600 s per target (about 850 million executions in all).
+- **One real bug.** `rf_datagram` crashed after 3 million inputs: a 49-digit `rx_power_dbm`
+  parsed one ULP off, because the production build of `serde_json` lacked `float_roundtrip`.
+  Test builds had it through the `jsonschema` dev-dependency, which is why no unit test could
+  see it. The feature is now set on the workspace dependency; there is a regression test, and
+  the input is kept in `fuzz/regressions/` and seeded into every run.
+- **One harness gap.** `tm_deframer` had no seed directory, which would also have failed the CI
+  job; fixed.
+- After the fix both reran for 600 s clean; the other six were clean the first time.
+- The ledger is in `docs/FUZZING.md`.
+**Known limits:** 24 h per target is accumulated across runs, not continuous; the ledger in
+`docs/FUZZING.md` records each contribution. Fuzzing uses AddressSanitizer on x86_64 Linux only.
+
+### D-055 — Soak and load driver; process memory on `/metrics` (Tranche 5.2; 1.0.0-rc.1)
+**Decision:** A new unpublished crate `chronus-evidence` with the binary `chronus-soak`. It sends
+CCSDS probe packets at a fixed rate from a dedicated OS thread; each data field carries a
+sequence number and the send time in Unix nanoseconds. N WebSocket clients decode the probe from
+every `openmct.realtime.v1` message and record the end-to-end latency (UDP in → parse →
+co-validate → JSON → WebSocket out) in a log-linear histogram (64 sub-buckets per power of two,
+≤ 1.6 % bucket width, percentiles rounded up so they never under-report). The driver samples the
+gateway's memory and drop counters, and fits a least-squares memory slope over the second half of
+the run. Thresholds (`--max-p99-ms`, `--max-loss`, `--max-rss-slope-mib-per-h`) make it a gate.
+The gateway gains the standard `process_resident_memory_bytes` gauge (Linux, from
+`/proc/self/statm`) so memory can be watched remotely, including on the public demo.
+**Why:** the plan's exit "24 h at the design load with bounded RSS and p99 in the bench report".
+Criterion (D-030) measures the hot path in isolation; this measures the whole process under
+concurrent load, which is where a lagging client, an unbounded buffer or lock contention shows.
+**Validation:** 10 min at the design load (10 000 pkt/s, 50 clients, default configuration) on a
+2-vCPU VM shared by gateway, sender and clients:
+- 6 000 000 packets in and 300 000 000 messages out, with zero loss and zero lag;
+- latency p50 / p99 / p99.9 = 1.9 / 13.1 / 15.5 ms;
+- memory 23.6 → 24.3 MiB peak, flat after the history ring filled.
+
+At 1 000 pkt/s with 10 clients, p99 was 0.34 ms. Unit tests cover the histogram (contiguous
+buckets, ≤ 1/64 width, never-low percentiles) and the slope; an integration test runs a probe
+through the real `process_frame`. Results: `docs/SOAK.md`.
+**Known limits:** sender, clients and gateway share one host, so the figures include the
+driver's own CPU use; the 24 h run on the release host is recorded in `docs/SOAK.md` when done.
+
+### D-056 — Real-RF Doppler validation tooling (Tranche 5.3; 1.0.0-rc.1)
+**Decision:** Two tools and a procedure (`docs/RF_VALIDATION.md`):
+1. `tools/rf/iq_carrier.py` (NumPy): raw IQ (cu8 / cs8 / cs16 / cf32, SigMF or gqrx-named files)
+   → per-block Hann-windowed FFT peak with parabolic interpolation, a DC notch, an SNR gate and a
+   tracking window → `chronus.rf.v1` lines. The same format the gateway's RF side channel takes.
+2. `chronus-doppler`: predicts each sample with the gateway's own `propagator_from_station`,
+   `expected_carrier_hz` and `effective_doppler_tolerance_hz`. It removes a constant offset (and
+   optionally a linear drift) with a robust fit: medians first, then least squares on samples
+   within three bands of that guess. It then judges the residuals, and computes a **shape gain**:
+   the regression of the measured shift (offset removed) on the predicted shift.
+   Pass = ≥ 95 % inside the band, |gain − 1| ≤ 0.05, ≥ 30 samples above 5°.
+   `--predict-start` prints a predicted pass, for planning and for `tools/rf/synth_iq.py`, which
+   builds synthetic IQ with a chosen ppm offset, drift and SNR.
+
+**Why:** the receiver's oscillator (a few ppm, i.e. kHz at UHF) and the satellite's transmitter
+offset are hardware constants that would swamp a ±150 Hz band; the physics claim is about the
+*shape* and what remains after a constant. Reporting the fitted offset keeps that honest. The
+gain test catches a wrong TLE, station or clock that an offset fit could otherwise absorb.
+**Validation:** synthetic-IQ rehearsal (4.2 ppm receiver, 0.05 Hz/s drift, 0 dB SNR in a 32 kHz
+band, an 89.6° pass): fitted −1837.5 Hz / −4.20 ppm / +0.050 Hz/s (exactly the injected values),
+99.6 % of 1014 residuals inside ±150 Hz, p95 2.9 Hz, gain 1.0000; runs in CI. Unit tests cover
+an offset receiver, drift, outliers and a 20 % wrong S-curve (caught by the gain).
+**Open:** the owner's own capture (bonus step of the plan); results table in
+`docs/RF_VALIDATION.md`. Only public amateur-satellite beacons; IQ and the station file stay
+private.
+
+### D-057 — In-repository tolerance register and requirements traceability (Tranche 5.4; 1.0.0-rc.1)
+**Decision:** `docs/TRACEABILITY.md` replaces the tolerance register that lived in the
+maintainer's local `TEST_PLAN.md` (D-033 era). It has thirteen register rows: every
+`physics_flags` / `physics_flags_v2` bit, plus the model accuracies (T-RANGERATE, T-OEM, T-EOP)
+and the FECF check. Three IDs are new: T-HORIZON, T-SKEW and T-TIMECODE name checks that had no
+ID. Eighteen requirements map to 91 named tests, and an evidence-status table follows.
+`tools/check_traceability.py` (CI) fails when a named test or path disappears, a `FLAG_*`
+constant has no row, or code under `crates/` uses an undefined `T-` ID. Source comments that
+pointed at `TEST_PLAN.md` or `docs/EXTENDED_COVALIDATION_PLAN.md` now point here.
+**Why:** a tolerance that lives outside the repository cannot be reviewed with the code, and a
+register that is not checked drifts; the check makes "add an alarm bit" impossible without
+documenting it.
+
+### D-058 — API freeze for 1.0 and the 1.x stability policy (Tranche 5.5; 1.0.0-rc.1)
+**Decision:** Close D-046's open list:
+- **`#[non_exhaustive]`:** `IngestConfig`, `RawFrame`, `TelemetryFrame`,
+  `LinkBudgetStationParams`, `StationModel`, `OemSegment`, `Diagnosis`, `HealthReport`,
+  `HealthInputs`, `IngestStats` and `GatewayMetrics`.
+- **Constructors where callers build them:** `RawFrame::new`, `LinkBudgetStationParams::new`,
+  `HealthInputs::new` + `with_addrs`, `StationModel::with_earth_orientation` /
+  `with_refraction`. The others are built from `Default` or only by the gateway.
+- **Stay plain:** `TleErrorModel` (a linear error model is complete; another model would be
+  another type) and `DecodedHilTmV1` (mirrors the fixed v1 wire layout; v2 would be a new type).
+
+`cargo semver-checks --release-type minor` against 0.6.0 reports exactly these eleven structs and
+nothing else. The version becomes **1.0.0-rc.1**. `CHANGELOG.md` states the 1.x stability policy:
+- **Covered:** the library modules, the four wire formats and the flag bits, routes, config keys,
+  CLI and `CG-` codes.
+- **Not covered:** the `hil` feature, demo and evidence crates, log text, MSRV.
+
+`1.0.0` is this rc unchanged after a week on the public demo without an API change.
+**Why:** each of those structs was one added field away from a breaking 1.x release; 1.0 is the
+last moment to shield them for free.
+**Gate CV-5:** implemented since 0.3.0; approved by the owner on 2026-11-07.
+
 ## Open decisions (to resolve as milestones land)
 
 - **OD-E — Multi-node / rack-scale co-simulation.** Backlog beyond the M7 laptop scope.
@@ -1026,6 +1152,10 @@ docs when dependencies change (finalization **B.2**, **D-035**).
 | **CelesTrak** GP data | Optional TLE source, used per its published fetch guidance (**D-052**) | [celestrak.org](https://celestrak.org/) |
 | [Caddy](https://caddyserver.com/), [nginx](https://nginx.org/), systemd, distroless | Deployment references (**D-051**, **D-053**) — documentation and packaging only | Apache-2.0 / BSD-2-Clause / LGPL-2.1+ / Apache-2.0 |
 | [`cargo-audit`](https://crates.io/crates/cargo-audit), [`cargo-deny`](https://crates.io/crates/cargo-deny) | CI supply-chain gates | crates.io |
+| [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz), [`libfuzzer-sys`](https://crates.io/crates/libfuzzer-sys) (LLVM libFuzzer), [`arbitrary`](https://crates.io/crates/arbitrary) | Coverage-guided fuzzing, `fuzz/` only (**D-054**) | MIT/Apache-2.0 (libFuzzer: Apache-2.0 WITH LLVM-exception) |
+| [`tokio-tungstenite`](https://crates.io/crates/tokio-tungstenite) | WebSocket clients of `chronus-soak` (**D-055**; also a dev-dependency above) | crates.io, MIT |
+| [NumPy](https://numpy.org/) | `tools/rf/` FFT carrier tracking and synthetic IQ (**D-056**) — evidence tooling, not a dependency | BSD-3-Clause |
+| [SigMF](https://github.com/sigmf/SigMF), gqrx and `rtl_sdr` recording conventions; [SatNOGS DB](https://db.satnogs.org/) | Recording formats `iq_carrier.py` reads; where to find active beacons (**D-056**) — cited, not used as code | CC-BY-SA-4.0 (SigMF spec) / GPL (tools, not vendored) / AGPL (DB, linked) |
 | Vite | Demo dashboard bundler (Showcase **S2**) | [vitejs.dev](https://vitejs.dev/), MIT |
 | [`cargo-mutants`](https://mutants.rs/), [`cargo-hack`](https://github.com/taiki-e/cargo-hack) | Optional secondary testing (**D-029**) | MIT |
 | **CCSDS** Blue Books | Wire formats and protocols | [public.ccsds.org](https://public.ccsds.org/) |
@@ -1040,4 +1170,4 @@ docs when dependencies change (finalization **B.2**, **D-035**).
 
 ---
 
-*Last updated: 2026-10-24.*
+*Last updated: 2026-11-07.*

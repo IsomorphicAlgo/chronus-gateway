@@ -200,6 +200,7 @@ impl TrackingState {
 /// assert!((m.apparent_elevation_deg(90.0) - 90.0).abs() < 1e-6);
 /// ```
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct StationModel {
     /// Geodetic latitude, degrees north.
     pub latitude_deg: f64,
@@ -224,6 +225,20 @@ impl StationModel {
             earth_orientation: EarthOrientation::default(),
             refraction: None,
         }
+    }
+
+    /// The same station with these Earth orientation parameters.
+    #[must_use]
+    pub fn with_earth_orientation(mut self, eop: EarthOrientation) -> Self {
+        self.earth_orientation = eop;
+        self
+    }
+
+    /// The same station with refraction `(pressure_hpa, temperature_c)`, or `None` for geometric.
+    #[must_use]
+    pub fn with_refraction(mut self, refraction: Option<(f64, f64)>) -> Self {
+        self.refraction = refraction;
+        self
     }
 
     /// Station model from a validated [`StationConfig`].

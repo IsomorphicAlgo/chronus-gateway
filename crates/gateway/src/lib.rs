@@ -20,8 +20,8 @@
 //! Despite the TMTC name, the gateway is **downlink-only**: it never builds, forwards or transmits
 //! telecommands, and TC packets arriving on the telemetry port are rejected. Uplink is out of scope
 //! for 1.x (`docs/TELECOMMAND.md`, `Methodology.md` D-050).
-//! Post-M8 co-validation extensions are chartered in **`Methodology.md` D-016** and
-//! `docs/EXTENDED_COVALIDATION_PLAN.md` (**CV-0…CV-5**; **CV-1…CV-5** implemented — synthetic HIL TM in [`hil_tm`], subsystem checks in [`validate`] / [`propagator`]).
+//! Post-M8 co-validation extensions are chartered in **`Methodology.md` D-016**, with one
+//! tolerance-register row per check in `docs/TRACEABILITY.md` (**CV-0…CV-5**; **CV-1…CV-5** implemented — synthetic HIL TM in [`hil_tm`], subsystem checks in [`validate`] / [`propagator`]).
 //!
 //! ## Standards & compliance
 //!
@@ -68,7 +68,7 @@ pub use config::{
     ConfigError, ConfigLoadError, EphemerisSource, FramingConfig, FramingMode, FreshnessConfig,
     HilConfig, HistoryConfig, IngestConfig, IpNet, RfConfig, SecurityConfig, SiteConfig,
     StationConfig, TimeConfig, ToleranceConfig, TrackingConfig, load_effective_gateway_config,
-    load_gateway_from_path, resolve_config_path,
+    load_gateway_from_path, load_gateway_from_str, resolve_config_path,
 };
 pub use diagnose::{Diagnosis, Explain, HealthReport, Severity, assess_health};
 pub use frames::{FramingSnapshot, TmDeframer, TmFrameBuilder};

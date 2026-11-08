@@ -7,7 +7,8 @@
 pub mod file;
 
 pub use file::{
-    ConfigLoadError, load_effective_gateway_config, load_gateway_from_path, resolve_config_path,
+    ConfigLoadError, load_effective_gateway_config, load_gateway_from_path, load_gateway_from_str,
+    resolve_config_path,
 };
 
 use std::net::SocketAddr;
@@ -17,7 +18,10 @@ use crate::hil_tm::{CCSDS_APID_MAX, DEFAULT_HIL_TM_V1_APID_MAX, DEFAULT_HIL_TM_V
 use crate::time::TimeFormat;
 
 /// Configuration for the asynchronous UDP ingestion loop.
+///
+/// `#[non_exhaustive]` (D-058): start from [`IngestConfig::default`] and set fields.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct IngestConfig {
     /// Local address the UDP socket binds to.
     ///
@@ -74,7 +78,8 @@ impl IngestConfig {
     ///
     /// assert!(IngestConfig::default().validate().is_ok());
     ///
-    /// let bad = IngestConfig { channel_capacity: 0, ..IngestConfig::default() };
+    /// let mut bad = IngestConfig::default();
+    /// bad.channel_capacity = 0;
     /// assert!(matches!(bad.validate(), Err(ConfigError::InvalidChannelCapacity(0))));
     /// ```
     pub fn validate(&self) -> Result<(), ConfigError> {

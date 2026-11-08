@@ -136,6 +136,7 @@ pub enum OemError {
 
 /// One OEM segment: metadata plus its states (epochs converted to UTC).
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct OemSegment {
     /// `OBJECT_NAME`.
     pub object_name: String,

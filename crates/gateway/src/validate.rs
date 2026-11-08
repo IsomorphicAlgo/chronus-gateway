@@ -16,14 +16,14 @@
 //! here by `propagator::tests::range_rate_matches_numerical_derivative_of_range`), so the
 //! propagation math is negligible inside the **±150 Hz** band. That band is consumed by TLE age
 //! first (along-track error near closest approach, roughly 25 Hz per km on a high LEO pass at
-//! UHF), then ionosphere, receiver chain and oscillator drift (see `TEST_PLAN.md` T-DOPPLER and
+//! UHF), then ionosphere, receiver chain and oscillator drift (see `docs/TRACEABILITY.md` T-DOPPLER and
 //! `Methodology.md` D-012, D-041).
 //!
 //! ## Link budget (free-space, CV-1)
 //!
 //! When [`RfMetadata::measured_rx_power_dbm`] is `Some`, compare to the **free-space** prediction
 //! (Friis path loss in dB from slant range and carrier wavelength; no atmosphere or cable loss in
-//! v1 — see **T-RSSI** in `TEST_PLAN.md`). Station-side **synthetic** `P_tx`, `G_tx`, and `G_rx`
+//! v1 — see **T-RSSI** in `docs/TRACEABILITY.md`). Station-side **synthetic** `P_tx`, `G_tx`, and `G_rx`
 //! come from [`LinkBudgetStationParams`]. Anomaly sets bit 2 ([`FLAG_LINK_BUDGET_ANOMALY`]).
 //!
 //! ## HIL subsystem toy checks (**CV-4** / **CV-5**) — `hil` feature
@@ -41,8 +41,8 @@
 //! ## `physics_flags` bitfield (stable contract)
 //!
 //! Shipped (M4) and planned extended co-validation bits are **chartered** in `Methodology.md`
-//! **D-016** and [`docs/EXTENDED_COVALIDATION_PLAN.md`](../../../docs/EXTENDED_COVALIDATION_PLAN.md)
-//! (CV-0). Do not repurpose bits without updating those documents and `TEST_PLAN.md`.
+//! **D-016** (CV-0); the tolerance register in [`docs/TRACEABILITY.md`](../../../docs/TRACEABILITY.md)
+//! has one row per bit (CI checks it). Do not repurpose bits without updating both.
 //!
 //! | Bit | Mask | Meaning | Status |
 //! |-----|------|---------|--------|
@@ -68,7 +68,7 @@
 //!
 //! When **both** [`RfMetadata::measured_azimuth_deg`] and [`RfMetadata::measured_elevation_deg`] are
 //! `Some`, compare the measured look direction to the propagator’s azimuth/elevation using the
-//! great-circle angle (**T-POINT** in `TEST_PLAN.md`). Anomaly sets bit 3 ([`FLAG_POINTING_ANOMALY`]).
+//! great-circle angle (**T-POINT** in `docs/TRACEABILITY.md`). Anomaly sets bit 3 ([`FLAG_POINTING_ANOMALY`]).
 //! The computed elevation is the **apparent** one ([`TrackingState::pointing_elevation_deg`]) when
 //! the station models refraction (default; D-042): an antenna tracking a signal points ~0.5° above
 //! the geometric direction at the horizon, which would otherwise exceed the 0.25° tolerance. The
@@ -204,6 +204,7 @@ impl RfMetadata {
 
 /// Station-side **synthetic** parameters for the free-space link-budget prediction (CV-1).
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct LinkBudgetStationParams {
     /// Transmit power at the feed (dBm).
     pub tx_power_dbm: f64,
@@ -213,6 +214,19 @@ pub struct LinkBudgetStationParams {
     pub rx_gain_dbi: f64,
     /// Acceptable \|measured − predicted\| received power (dB); typically **T-RSSI** (3 dB).
     pub tolerance_db: f64,
+}
+
+impl LinkBudgetStationParams {
+    /// Transmitter power and gains, receive gain, and the **T-RSSI** tolerance.
+    #[must_use]
+    pub fn new(tx_power_dbm: f64, tx_gain_dbi: f64, rx_gain_dbi: f64, tolerance_db: f64) -> Self {
+        Self {
+            tx_power_dbm,
+            tx_gain_dbi,
+            rx_gain_dbi,
+            tolerance_db,
+        }
+    }
 }
 
 #[cfg(feature = "hil")]
@@ -696,7 +710,7 @@ mod tests {
     use chrono::Utc;
     use std::net::SocketAddr;
 
-    /// Default **T-POINT** for tests (`TEST_PLAN.md`).
+    /// Default **T-POINT** for tests (`docs/TRACEABILITY.md`).
     const T_POINT: f64 = 0.25;
 
     #[cfg(feature = "hil")]

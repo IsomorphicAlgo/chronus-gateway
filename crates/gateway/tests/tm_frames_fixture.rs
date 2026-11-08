@@ -117,11 +117,11 @@ fn fixture_decodes_end_to_end_with_onboard_time_and_physics() {
     );
     let mut d = TmDeframer::new(&g.station.framing, Arc::clone(&g.framing));
     for dg in datagrams() {
-        let raw = RawFrame {
-            bytes: Arc::from(dg.as_slice()),
-            received_at: chrono::Utc::now(),
-            source: "127.0.0.1:9".parse().unwrap(),
-        };
+        let raw = RawFrame::new(
+            dg.as_slice(),
+            chrono::Utc::now(),
+            "127.0.0.1:9".parse().unwrap(),
+        );
         chronus_gateway::pipeline::handle_datagram(&g, Some(&mut d), &raw);
     }
     let page = g.history.query(&HistoryQuery::new());

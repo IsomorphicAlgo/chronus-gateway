@@ -33,6 +33,7 @@ const WSAEMSGSIZE: i32 = 10040;
 ///
 /// `bytes` is reference-counted so cloning a frame for each broadcast subscriber is cheap.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct RawFrame {
     /// The datagram payload (`<= max_datagram_size` bytes).
     pub bytes: Arc<[u8]>,
@@ -42,8 +43,33 @@ pub struct RawFrame {
     pub source: SocketAddr,
 }
 
+impl RawFrame {
+    /// A frame received from `source` at `received_at`.
+    ///
+    /// ```
+    /// use chronus_gateway::ingest::RawFrame;
+    /// let f = RawFrame::new(vec![0x08, 0x01], chrono::Utc::now(), "127.0.0.1:5000".parse().unwrap());
+    /// assert_eq!(f.bytes.len(), 2);
+    /// ```
+    #[must_use]
+    pub fn new(
+        bytes: impl Into<Arc<[u8]>>,
+        received_at: DateTime<Utc>,
+        source: SocketAddr,
+    ) -> Self {
+        Self {
+            bytes: bytes.into(),
+            received_at,
+            source,
+        }
+    }
+}
+
 /// Cumulative ingestion counters, shareable across tasks for observability and tests.
+///
+/// Build with [`IngestStats::default`]; counters may be added in 1.x.
 #[derive(Debug, Default)]
+#[non_exhaustive]
 pub struct IngestStats {
     /// Valid datagrams received and forwarded.
     pub frames_received: AtomicU64,

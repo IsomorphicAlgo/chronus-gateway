@@ -1,12 +1,94 @@
 # Changelog
 
-ChronusGateway-RS follows [Semantic Versioning](https://semver.org/). During `0.x`, the **minor**
-version marks breaking changes and the **patch** version marks compatible ones (same policy as
-the Ephemerust backend); a `1.0.0` release is reserved for a deliberately committed-stable API.
-Versions cover all three workspace crates (`chronus-gateway`, `chronus-hil-sim`,
-`chronus-replay`), which share one version via `[workspace.package]`.
+ChronusGateway-RS follows [Semantic Versioning](https://semver.org/). Versions cover the
+published workspace crates (`chronus-gateway`, `chronus-hil-sim`, `chronus-replay`), which share
+one version via `[workspace.package]`.
+
+## Stability policy for 1.x
+
+From `1.0.0` on, a **major** version is required to break any of the following; everything else
+can change in a minor or patch release.
+
+| Covered by the 1.x promise | How it is kept |
+|---|---|
+| **Library API** of `chronus-gateway`: the `ccsds`, `config`, `diagnose`, `freshness`, `frames`, `history`, `http`, `ingest`, `metrics`, `oem`, `openmct`, `pipeline`, `propagator`, `rf`, `security`, `state`, `time` and `validate` modules and the crate-root re-exports | `cargo-semver-checks` in CI against the last release tag; types that will grow are `#[non_exhaustive]` with constructors (`Methodology.md` D-046, D-058) |
+| **Wire formats:** `openmct.realtime.v1`, `chronus.rf.v1`, `chronus.history.v1`, `chronus.openmct.dictionary.v1` (published JSON Schemas) and the `physics_flags` / `physics_flags_v2` bit assignments | New fields are additive; a field is never removed or repurposed; a reserved bit is assigned only with a schema update and a tolerance-register row (`docs/TRACEABILITY.md`) |
+| **HTTP routes** under `/api/v1/`, `/telemetry/openmct`, `/metrics` and `/health` | New routes and fields only; `/api/v2/` if a route must change |
+| **Configuration file** keys and their meaning, and the CLI flags | New keys get defaults that keep today's behaviour; a renamed key keeps its old name as an alias for all of 1.x |
+| **Diagnostic codes** (`CG-1xx` startup, `CG-5xx` runtime) | A code keeps its meaning; new codes are added |
+
+**Not covered:** anything behind the `hil` feature (lab models), `chronus-hil-sim` internals, the
+demo crates (`chronus-demo-server`, `chronus-evidence`, never published), log message text, the
+exact wording of diagnostics, Prometheus metric names other than those listed in
+`docs/DEPLOYMENT.md`, and the minimum supported Rust version (raised only in a minor release, with
+a CHANGELOG note). Default tolerances may be tuned in a minor release when evidence justifies it,
+with the change and the evidence stated here.
+
+During `0.x` (up to 0.6.0) the **minor** version marked breaking changes.
 
 ## Unreleased
+
+## 1.0.0-rc.1 — 2026-11-07
+
+Evidence and release candidate (Tranche 5 of the 1.0 plan, **D-054** to **D-058**). The API is
+frozen from here: if the rc runs a week on the public demo without an API change, it becomes
+`1.0.0` unchanged.
+
+**Compatibility**
+- **Library API: one deliberate break**, the last before 1.0 (D-058). The structs D-046 left
+  open are now `#[non_exhaustive]`: `IngestConfig`, `RawFrame`, `TelemetryFrame`,
+  `LinkBudgetStationParams`, `StationModel`, `OemSegment`, `Diagnosis`, `HealthReport`,
+  `HealthInputs`, `IngestStats` and `GatewayMetrics`. Build them with the new constructors
+  (`RawFrame::new`, `LinkBudgetStationParams::new`, `HealthInputs::new` + `with_addrs`,
+  `StationModel::with_earth_orientation` / `with_refraction`) or from `Default` and assign
+  fields. `TleErrorModel` and `DecodedHilTmV1` stay plain: they are complete by definition (a
+  linear model; a fixed v1 wire layout).
+- **Everything else is additive:** `config::load_gateway_from_str`;
+  `prometheus::resident_memory_bytes` and the `process_resident_memory_bytes` gauge on `/metrics`
+  (Linux).
+- Wire formats, routes, configuration and CLI are unchanged.
+
+**Gate CV-5** (HIL body-rate envelope, `physics_flags` bit 6) is approved: every co-validation
+gate, CV-0 to CV-5, is now signed off.
+
+**Fixed**
+- `chronus.rf.v1` numbers with long decimal mantissas were parsed up to one ULP off, so a sample
+  re-encoded by a relay could differ from the one received. Found by the new `rf_datagram` fuzz
+  target: `serde_json` now has `float_roundtrip` enabled for every build. It was previously on
+  only in test builds, through a dev-dependency.
+
+**Fuzzing** (`fuzz/`, D-054)
+- Eight `cargo-fuzz` targets cover every parser of untrusted input: the CCSDS packet parser and
+  time codes, the TM frame deframer, the whole packet pipeline, `chronus.hil.tm.v1`,
+  `chronus.rf.v1` and its store, OEM text, IERS finals and the TOML loader. Each asserts
+  properties, not just "no panic" (round trips, bounds, declared lengths).
+- Seeds are generated from the repository's fixtures (`fuzz/make_seeds.py`).
+- `.github/workflows/fuzz.yml`: a 30 s smoke run of each target on pull requests that touch the
+  parsers, a nightly run per target that resumes from a cached corpus, and manual runs of up to
+  5.8 h. The ledger toward 24 h per target is in `docs/FUZZING.md`.
+
+**Soak and load** (`chronus-evidence` crate, `chronus-soak`, D-055)
+- A load driver: UDP probe packets at a fixed rate, N WebSocket clients, end-to-end latency
+  percentiles from a log-linear histogram, loss, and the memory trend with a least-squares
+  growth rate. Pass/fail thresholds for CI or the release host.
+- At the design load (10 000 pkt/s, 50 clients) for 10 minutes on a 2-vCPU VM: 300 million
+  messages with zero loss; p99 13 ms end to end; memory flat at 24 MiB. The 24 h run on the
+  release host is pending. Results: `docs/SOAK.md`.
+
+**Real-RF Doppler validation** (`chronus-doppler`, `tools/rf/`, D-056)
+- `tools/rf/iq_carrier.py` turns an SDR recording (raw IQ, SigMF or gqrx files) into a
+  `chronus.rf.v1` carrier track. `chronus-doppler` predicts each sample with the gateway's own
+  propagator and judges the residuals against T-DOPPLER. First it removes the receiver's
+  oscillator offset and drift, which it reports in ppm, and it checks a shape gain that no offset
+  can fake.
+- A synthetic-IQ rehearsal of the whole chain runs in CI. The procedure for a real pass is in
+  `docs/RF_VALIDATION.md`; the owner's own capture is pending.
+
+**Traceability** (D-057)
+- `docs/TRACEABILITY.md` is the in-repository tolerance register (13 rows: every alarm bit, the
+  time checks, the model accuracies) and maps 18 requirements to 91 named tests.
+  `tools/check_traceability.py` fails CI when a referenced test disappears, an alarm bit has no row,
+  or the code uses an undefined tolerance ID.
 
 ## 0.6.0 — 2026-10-24
 

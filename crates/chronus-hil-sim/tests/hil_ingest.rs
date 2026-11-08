@@ -18,12 +18,10 @@ use chronus_hil_sim::{
 };
 
 async fn bind_loopback(max_datagram_size: usize) -> (UdpSocket, IngestConfig, SocketAddr) {
-    let config = IngestConfig {
-        bind_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
-        channel_capacity: 4096,
-        max_datagram_size,
-        ..Default::default()
-    };
+    let mut config = IngestConfig::default();
+    config.bind_addr = SocketAddr::from(([127, 0, 0, 1], 0));
+    config.channel_capacity = 4096;
+    config.max_datagram_size = max_datagram_size;
     let socket = ingest::bind(&config).await.expect("bind loopback");
     let local = socket.local_addr().expect("local");
     (socket, config, local)

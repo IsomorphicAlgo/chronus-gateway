@@ -513,7 +513,28 @@ pub fn load_gateway_from_path(
         path: path.display().to_string(),
         source,
     })?;
-    let doc: GatewayToml = toml::from_str(&text)?;
+    load_gateway_from_str(&text)
+}
+
+/// [`load_gateway_from_path`] for TOML text already in memory (tests, embedders, fuzzing).
+/// Relative paths inside the text (`tle_file`, `oem_file`, ...) are resolved from the current
+/// directory, exactly as when the text comes from a file.
+///
+/// # Errors
+///
+/// Same as [`load_gateway_from_path`], minus the file read.
+///
+/// # Examples
+///
+/// ```
+/// use chronus_gateway::config::load_gateway_from_str;
+///
+/// let (ingest, _station) = load_gateway_from_str("[history]\ncapacity = 5\n").unwrap();
+/// assert_eq!(ingest.http_bind.port(), 8080);
+/// assert!(load_gateway_from_str("[station]\nlatitude_deg = 123.0\n").is_err());
+/// ```
+pub fn load_gateway_from_str(text: &str) -> Result<(IngestConfig, StationConfig), ConfigLoadError> {
+    let doc: GatewayToml = toml::from_str(text)?;
     let ingest = match doc.ingest {
         Some(t) => IngestConfig::try_from(t)?,
         None => IngestConfig::default(),

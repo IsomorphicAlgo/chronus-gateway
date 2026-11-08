@@ -64,6 +64,7 @@ pub enum CcsdsError {
 /// Field accessors expose the decoded primary-header values; [`TelemetryFrame::payload`] returns
 /// the packet data field as a zero-copy borrow of the original datagram.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct TelemetryFrame {
     /// The full original datagram (header + data field), reference-counted.
     pub(crate) raw: Arc<[u8]>,
@@ -121,15 +122,11 @@ impl TelemetryFrame {
 /// # Examples
 ///
 /// ```
-/// use std::sync::Arc;
 /// use chronus_gateway::ccsds::{CcsdsError, encode_synthetic_tm, parse_telemetry};
 /// use chronus_gateway::ingest::RawFrame;
 ///
-/// let frame = |bytes: Vec<u8>| RawFrame {
-///     bytes: Arc::from(bytes.as_slice()),
-///     received_at: chrono::Utc::now(),
-///     source: "127.0.0.1:5000".parse().unwrap(),
-/// };
+/// let frame =
+///     |bytes: Vec<u8>| RawFrame::new(bytes, chrono::Utc::now(), "127.0.0.1:5000".parse().unwrap());
 ///
 /// let tm = parse_telemetry(&frame(encode_synthetic_tm(0x42, 9, b"payload"))).unwrap();
 /// assert_eq!((tm.apid, tm.seq_count), (0x42, 9));
@@ -213,12 +210,7 @@ pub fn encode_synthetic_tm(apid: u16, seq_count: u16, payload: &[u8]) -> Vec<u8>
 ///
 /// let t = chrono::Utc::now();
 /// let pkt = encode_synthetic_tm_with_time(0x42, 1, &encode_cds(t).unwrap(), b"data");
-/// let tm = parse_telemetry(&RawFrame {
-///     bytes: pkt.as_slice().into(),
-///     received_at: t,
-///     source: "127.0.0.1:1".parse().unwrap(),
-/// })
-/// .unwrap();
+/// let tm = parse_telemetry(&RawFrame::new(pkt, t, "127.0.0.1:1".parse().unwrap())).unwrap();
 /// assert!(tm.has_secondary_header);
 /// assert_eq!(tm.payload().len(), 6 + 4);
 /// ```

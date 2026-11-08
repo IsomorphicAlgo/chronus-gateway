@@ -16,12 +16,10 @@ use tokio::task::JoinHandle;
 
 /// Binds the ingestion socket on loopback:0 and returns it plus the resolved local address.
 async fn bind_loopback(max_datagram_size: usize) -> (UdpSocket, IngestConfig, SocketAddr) {
-    let config = IngestConfig {
-        bind_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
-        channel_capacity: 1024,
-        max_datagram_size,
-        ..Default::default()
-    };
+    let mut config = IngestConfig::default();
+    config.bind_addr = SocketAddr::from(([127, 0, 0, 1], 0));
+    config.channel_capacity = 1024;
+    config.max_datagram_size = max_datagram_size;
     let socket = ingest::bind(&config).await.expect("bind loopback socket");
     let local = socket.local_addr().expect("local addr");
     (socket, config, local)
