@@ -70,11 +70,7 @@ fn gateway(tracking: bool, configure: impl FnOnce(&mut StationConfig)) -> Arc<Sh
 }
 
 fn raw(bytes: &[u8]) -> RawFrame {
-    RawFrame {
-        bytes: Arc::from(bytes),
-        received_at: Utc::now(),
-        source: SocketAddr::from(([127, 0, 0, 1], 5)),
-    }
+    RawFrame::new(bytes, Utc::now(), SocketAddr::from(([127, 0, 0, 1], 5)))
 }
 
 #[test]

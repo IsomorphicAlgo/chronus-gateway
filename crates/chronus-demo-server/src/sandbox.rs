@@ -353,11 +353,11 @@ impl SessionSim {
             sample.body_rate_deg_s,
         );
         let packet = encode_synthetic_tm(SANDBOX_APID, (seq & 0x3FFF) as u16, &payload);
-        let raw = RawFrame {
-            bytes: Arc::from(packet.as_slice()),
-            received_at: self.sim_time,
-            source: SocketAddr::from(([127, 0, 0, 1], 0)),
-        };
+        let raw = RawFrame::new(
+            packet.as_slice(),
+            self.sim_time,
+            SocketAddr::from(([127, 0, 0, 1], 0)),
+        );
         let mut rf = RfMetadata::new()
             .with_carrier_hz(carrier)
             .with_pointing_deg(az, el);

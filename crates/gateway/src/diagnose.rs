@@ -100,6 +100,7 @@ impl Severity {
 
 /// A plain-English explanation of a problem: what happened, why, and how to fix it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct Diagnosis {
     /// Stable identifier, e.g. `CG-201`. Searchable in the user guide.
     pub code: &'static str,
@@ -1312,6 +1313,7 @@ pub enum OverallStatus {
 
 /// Plain-English health summary served at `GET /api/v1/chronus/status`.
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct HealthReport {
     /// One word for dashboards and scripts.
     pub status: OverallStatus,
@@ -1323,6 +1325,7 @@ pub struct HealthReport {
 
 /// Inputs to [`assess_health`]: a snapshot of counters plus context.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct HealthInputs<'a> {
     /// UDP ingest counters.
     pub ingest: &'a IngestSnapshot,
@@ -1336,6 +1339,36 @@ pub struct HealthInputs<'a> {
     pub http_addr: Option<SocketAddr>,
 }
 
+impl<'a> HealthInputs<'a> {
+    /// Counters and whether tracking is configured; listen addresses unknown.
+    #[must_use]
+    pub fn new(
+        ingest: &'a IngestSnapshot,
+        gateway: &'a GatewayMetricsSnapshot,
+        tracking_enabled: bool,
+    ) -> Self {
+        Self {
+            ingest,
+            gateway,
+            tracking_enabled,
+            udp_addr: None,
+            http_addr: None,
+        }
+    }
+
+    /// The UDP and HTTP addresses the gateway listens on, for the explanations.
+    #[must_use]
+    pub fn with_addrs(
+        mut self,
+        udp_addr: Option<SocketAddr>,
+        http_addr: Option<SocketAddr>,
+    ) -> Self {
+        self.udp_addr = udp_addr;
+        self.http_addr = http_addr;
+        self
+    }
+}
+
 /// Turns live counters into a plain-English [`HealthReport`].
 ///
 /// Pure function (no I/O), so every rule is unit-tested.
@@ -1347,13 +1380,7 @@ pub struct HealthInputs<'a> {
 ///
 /// let ingest = IngestStats::default().snapshot_struct();
 /// let gateway = GatewayMetrics::default().snapshot();
-/// let report = assess_health(&HealthInputs {
-///     ingest: &ingest,
-///     gateway: &gateway,
-///     tracking_enabled: true,
-///     udp_addr: None,
-///     http_addr: None,
-/// });
+/// let report = assess_health(&HealthInputs::new(&ingest, &gateway, true));
 /// assert_eq!(report.status, OverallStatus::Waiting);
 /// ```
 #[must_use]

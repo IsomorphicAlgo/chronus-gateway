@@ -80,6 +80,9 @@ It can be put on a network without a hand-built proxy setup ([`docs/DEPLOYMENT.m
 - **A real command line:** `--check-config` and `--generate-token`.
 - **Packaging.** A distroless non-root container image, a sandboxed systemd unit, and release
   binaries for Linux, Windows and macOS.
+- **A stable 1.x contract.** From 1.0 the library API, wire formats, routes, config keys and
+  diagnostic codes only change in a major release; the
+  [stability policy](CHANGELOG.md#stability-policy-for-1x) lists exactly what is covered.
 
 **The shadow check.** A packet claims "full solar power" while the propagator says the spacecraft is in Earth's shadow. The frame is flagged.
 
@@ -147,32 +150,36 @@ The reasoning behind these and other choices is recorded in [`Methodology.md`](M
 
 ## Testing
 
-Testing is a first-class deliverable. Counts below are for the full workspace, which builds the gateway with its `hil` feature (the synthetic EPS/thermal/body-rate demo models). **413 tests, all passing**, in a layered suite: inline unit tests, integration tests over loopback UDP and in-process WebSockets, a NeXosim hardware-in-the-loop simulator, runnable doctests, and physics co-validation tests with explicitly documented tolerances.
+Testing is a first-class deliverable. Counts below are for the full workspace, which builds the gateway with its `hil` feature (the synthetic EPS/thermal/body-rate demo models). **428 tests, all passing**, in a layered suite: inline unit tests, integration tests over loopback UDP and in-process WebSockets, a NeXosim hardware-in-the-loop simulator, runnable doctests, and physics co-validation tests with explicitly documented tolerances.
 
 | Layer | Count | Where |
 |-------|------:|-------|
-| Unit tests | **315** | inline `#[cfg(test)]` modules across the workspace |
-| Integration tests | **43** | `crates/gateway/tests/`: UDP ingest, WebSocket distribution, public fixtures, JSON Schema validation of real output, a frame stream cross-checked against an independent encoder, and the **real binary** driven over UDP with receiver data and transfer frames, killed and restarted, attacked with missing tokens, foreign origins, too many clients and disallowed senders, and fed data files that change under it. `crates/chronus-hil-sim/tests/`: HIL soak and fault-injection runs against the real ingest and RF paths. `crates/chronus-demo-server/tests/`: real WebSocket clients |
-| Doctests | **55** | runnable examples in the public API docs |
+| Unit tests | **326** | inline `#[cfg(test)]` modules across the workspace |
+| Integration tests | **44** | `crates/gateway/tests/`: UDP ingest, WebSocket distribution, public fixtures, JSON Schema validation of real output, a frame stream cross-checked against an independent encoder, and the **real binary** driven over UDP with receiver data and transfer frames, killed and restarted, attacked with missing tokens, foreign origins, too many clients and disallowed senders, and fed data files that change under it. `crates/chronus-hil-sim/tests/`: HIL soak and fault-injection runs against the real ingest and RF paths. `crates/chronus-demo-server/tests/`: real WebSocket clients. `crates/chronus-evidence/tests/`: the soak probe through the real processing path |
+| Doctests | **58** | runnable examples in the public API docs |
 | Benchmarks | Criterion | [`parse_validate.rs`](crates/gateway/benches/parse_validate.rs): the parse and validate hot paths |
+| Fuzzing | 8 targets | [`fuzz/`](fuzz/): coverage-guided, property-asserting; ledger in [`docs/FUZZING.md`](docs/FUZZING.md) |
+| Soak / load | `chronus-soak` | 10 000 pkt/s to 50 WebSocket clients: zero loss, p99 13 ms, flat memory ([`docs/SOAK.md`](docs/SOAK.md)) |
 
 **What the tests assert, not just that they pass:**
 
 - **Physics tolerances are explicit.** Doppler, link budget, pointing, and subsystem checks each have documented tolerances, with tests on both sides of the boundary.
 - **Errors are tested for what they tell the operator.** Each `CG-*` diagnostic has tests for its cause and suggested fix. A latitude of -122.3 is recognised as a swapped latitude/longitude, and a port conflict suggests the next free port and the `netstat`/`lsof` command to find the culprit.
 - **The sandbox is checked end to end.** Nominal telemetry raises no alarm over a full orbit; every fault scenario raises exactly its documented `physics_flags` bit; one visitor's fault never reaches another's session; the per-IP cap, `Origin` allow-list and session time limit are enforced over real WebSockets.
-- **Parsers are fuzzed.** Property tests (`proptest`) throw arbitrary bytes at the CCSDS parser, and thousands of random datagrams at the frame deframer.
+- **Every untrusted-input parser is fuzzed.** Eight coverage-guided `cargo-fuzz` targets (packets, time codes, transfer frames, the whole pipeline, receiver data, HIL payloads, OEM, IERS files, the TOML loader) assert round trips and bounds, not just "no panic". They run nightly in CI and accumulate toward 24 hours each ([`docs/FUZZING.md`](docs/FUZZING.md)); `proptest` covers the same parsers inside `cargo test`.
+- **Every tolerance and alarm is traceable.** [`docs/TRACEABILITY.md`](docs/TRACEABILITY.md) is the tolerance register (one row per alarm bit and model accuracy) and maps each requirement to named tests; CI fails if a referenced test disappears or an alarm bit has no row.
+- **Load, memory and real radio are measured, not assumed.** `chronus-soak` drives the gateway at a fixed packet rate with dozens of WebSocket clients and reports p99 latency and the memory trend ([`docs/SOAK.md`](docs/SOAK.md)). `chronus-doppler` judges a real satellite pass recorded on an SDR against the Doppler tolerance ([`docs/RF_VALIDATION.md`](docs/RF_VALIDATION.md)); a synthetic-IQ rehearsal of that chain runs in CI.
 - **Frame decoding is cross-checked.** A lab CADU stream written by an independent Python encoder must decode, byte for byte, to the packets that encoder says it sent, including the one a deliberately corrupted frame destroys.
 - **Security is tested from the outside.** The end-to-end suite starts the shipped binary and
   checks the 401s, 403s and 503s, and the dropped UDP senders. `--check-config` must refuse an
   unauthenticated network bind and a weak token.
 - **Formats are pinned by schema.** Real gateway output is validated against the published JSON Schemas, and malformed documents must fail.
 
-**CI gates** ([`ci.yml`](.github/workflows/ci.yml)) on every push and pull request: `cargo test` (the whole workspace, the gateway alone without the `hil` feature, and the optional `refresh` feature), `clippy -D warnings` in all three configurations, `shellcheck`, a build of the production container image, benchmark compilation, a Docker Compose spec check, the demo dashboard build, a `cargo-semver-checks` job that compares the public API against the last release, plus supply-chain checks with `cargo audit` and `cargo deny`.
+**CI gates** ([`ci.yml`](.github/workflows/ci.yml)) on every push and pull request: `cargo test` (the whole workspace, the gateway alone without the `hil` feature, and the optional `refresh` feature), `clippy -D warnings` in all three configurations, `shellcheck`, a build of the production container image, benchmark compilation, a Docker Compose spec check, the demo dashboard build, a `cargo-semver-checks` job that compares the public API against the last release, the traceability check, the RF-validation rehearsal, plus supply-chain checks with `cargo audit` and `cargo deny`. [`fuzz.yml`](.github/workflows/fuzz.yml) smoke-fuzzes parser changes on pull requests and fuzzes every target nightly.
 
 ```bash
-cargo test --workspace          # everything above (413 tests)
-cargo test -p chronus-gateway   # the production configuration, without the `hil` demo models (355 tests)
+cargo test --workspace          # everything above (428 tests)
+cargo test -p chronus-gateway   # the production configuration, without the `hil` demo models (358 tests)
 cargo bench -p chronus-gateway  # Criterion benchmarks
 ```
 
@@ -195,7 +202,11 @@ chronus-gateway/
 │   ├── chronus-hil-sim/    NeXosim synthetic spacecraft → UDP, with scripted faults
 │   │                       and a simulated receiver (chronus.rf.v1)
 │   ├── chronus-replay/     Replay hex/JSONL CCSDS datagrams (and receiver data) into the gateway
-│   └── chronus-demo-server/ Per-visitor sandbox server (not published to crates.io)
+│   ├── chronus-demo-server/ Per-visitor sandbox server (not published to crates.io)
+│   └── chronus-evidence/   1.0 evidence tools: chronus-soak (load/soak), chronus-doppler
+│                           (real-RF Doppler residuals); not published
+├── fuzz/                   cargo-fuzz targets for every untrusted-input parser + seed builder
+├── tools/                  check_traceability.py; rf/: SDR recording → carrier track, synthetic IQ
 ├── demo/
 │   ├── sandbox/            The visitor page served by the hosted sandbox
 │   ├── dashboard/          Vite + TypeScript live view of a running gateway
@@ -205,7 +216,7 @@ chronus-gateway/
 │   └── Dockerfile.public   Image for the public sandbox
 ├── site/                   Landing page (GitHub Pages → chronusgateway.com)
 ├── docs/                   USER_GUIDE, DEPLOYMENT, RF_SIDE_CHANNEL, TM_TRANSFER_FRAMES, OPENMCT, TELECOMMAND,
-│                           DEMO, PUBLIC_DEMO, HIL, Demo_Test, screenshots
+│                           TRACEABILITY, FUZZING, SOAK, RF_VALIDATION, DEMO, PUBLIC_DEMO, HIL, Demo_Test
 └── Methodology.md          Decision log: the reasoning behind major choices
 ```
 
@@ -260,6 +271,10 @@ Connect any WebSocket client to `ws://127.0.0.1:8080/telemetry/openmct`, or open
 | CCSDS TM Transfer Frames / CADUs | [`docs/TM_TRANSFER_FRAMES.md`](docs/TM_TRANSFER_FRAMES.md) |
 | Open MCT: dictionary, history, JSON Schemas | [`docs/OPENMCT.md`](docs/OPENMCT.md) |
 | Why there is no telecommand (uplink) | [`docs/TELECOMMAND.md`](docs/TELECOMMAND.md) |
+| **Tolerance register** and requirements → tests | [`docs/TRACEABILITY.md`](docs/TRACEABILITY.md) |
+| Fuzzing: targets, how to run, the 24 h ledger | [`docs/FUZZING.md`](docs/FUZZING.md) |
+| Soak / load results (latency, memory) | [`docs/SOAK.md`](docs/SOAK.md) |
+| Checking the Doppler alarm against a real satellite pass | [`docs/RF_VALIDATION.md`](docs/RF_VALIDATION.md) |
 | Demo runbook: native, Docker, dashboard, replay | [`docs/DEMO.md`](docs/DEMO.md) |
 | Hosting the public sandbox (Fly.io + custom domain) | [`docs/PUBLIC_DEMO.md`](docs/PUBLIC_DEMO.md) |
 | HIL profiling | [`docs/HIL.md`](docs/HIL.md) |
@@ -289,6 +304,8 @@ Full dependency rationale lives in [`Methodology.md`](Methodology.md) § Attribu
 | [`anyhow`](https://crates.io/crates/anyhow), [`thiserror`](https://crates.io/crates/thiserror), [`clap`](https://crates.io/crates/clap) | Errors and CLIs |
 | [`criterion`](https://crates.io/crates/criterion), [`proptest`](https://crates.io/crates/proptest), [`tokio-tungstenite`](https://crates.io/crates/tokio-tungstenite), [`jsonschema`](https://crates.io/crates/jsonschema) | Benchmarks, parser fuzzing, WebSocket tests, schema validation |
 | [`cargo-audit`](https://crates.io/crates/cargo-audit), [`cargo-deny`](https://crates.io/crates/cargo-deny) | Supply-chain CI |
+| [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz), [`libfuzzer-sys`](https://crates.io/crates/libfuzzer-sys) (LLVM libFuzzer), [`arbitrary`](https://crates.io/crates/arbitrary) | Coverage-guided fuzzing (`fuzz/`) |
+| [NumPy](https://numpy.org/) | SDR recording → carrier track (`tools/rf/`, evidence tooling only) |
 | [Vite](https://vitejs.dev/), [NASA Open MCT](https://github.com/nasa/openmct) 4.3.1 | Demo dashboard bundler; the Open MCT demo (Apache-2.0, unmodified from npm) |
 
 ---

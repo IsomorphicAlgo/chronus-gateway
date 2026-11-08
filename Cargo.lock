@@ -422,7 +422,7 @@ dependencies = [
 
 [[package]]
 name = "chronus-demo-server"
-version = "0.6.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -440,8 +440,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "chronus-evidence"
+version = "1.0.0-rc.1"
+dependencies = [
+ "anyhow",
+ "base64 0.23.1",
+ "chrono",
+ "chronus-gateway",
+ "clap",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+]
+
+[[package]]
 name = "chronus-gateway"
-version = "0.6.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -471,7 +487,7 @@ dependencies = [
 
 [[package]]
 name = "chronus-hil-sim"
-version = "0.6.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -488,7 +504,7 @@ dependencies = [
 
 [[package]]
 name = "chronus-replay"
-version = "0.6.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "anyhow",
  "chrono",

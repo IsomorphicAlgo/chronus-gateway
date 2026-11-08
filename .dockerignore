@@ -12,3 +12,8 @@ demo/dashboard/node_modules
 demo/dashboard/dist
 demo/openmct/node_modules
 demo/openmct/dist
+# cargo-fuzz build output and corpora (Tranche 5; never needed in images)
+fuzz/target
+fuzz/corpus
+fuzz/artifacts
+fuzz/seeds

@@ -541,6 +541,24 @@ mod tests {
     }
 
     #[test]
+    fn long_decimals_parse_to_the_nearest_double_and_round_trip() {
+        // Found by the `rf_datagram` fuzz target (D-054): without serde_json's `float_roundtrip`
+        // feature this 49-digit number parsed one ULP away from the nearest double, so a sample
+        // re-encoded by `chronus-replay` or a relay came back different from what was received.
+        // Test builds always had the feature (via the `jsonschema` dev-dependency), so this test
+        // pins the behaviour; the fuzz target, built without dev-dependencies, is what caught it.
+        let j = br#"{"chronus_schema":"chronus.rf.v1","t":"2020-07-13T05:08:30Z",
+            "rx_power_dbm":-11333333333333333333333330000006679140173563221205.81}"#;
+        let s = RfSampleV1::parse(j).unwrap();
+        let expected: f64 = "-11333333333333333333333330000006679140173563221205.81"
+            .parse()
+            .unwrap();
+        assert_eq!(s.rx_power_dbm.unwrap().to_bits(), expected.to_bits());
+        let again = RfSampleV1::parse(&s.to_datagram()).unwrap();
+        assert_eq!(again.to_datagram(), s.to_datagram());
+    }
+
+    #[test]
     fn datagram_round_trips_and_omits_non_finite() {
         let s = RfSampleV1::new()
             .with_time(t0())

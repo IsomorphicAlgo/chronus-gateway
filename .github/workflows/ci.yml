@@ -74,6 +74,25 @@ jobs:
         working-directory: chronus-gateway
         run: cargo clippy -p chronus-gateway --features refresh --all-targets -- -D warnings
 
+      # Tranche 5.4: every test, alarm bit and tolerance ID in docs/TRACEABILITY.md still exists.
+      - name: Requirements traceability
+        working-directory: chronus-gateway
+        run: python3 tools/check_traceability.py
+
+      # Tranche 5.3: the real-RF Doppler chain, rehearsed on synthetic IQ (predicted pass ->
+      # IQ with a 4.2 ppm receiver and drift -> carrier track -> residuals against T-DOPPLER).
+      - name: RF validation rehearsal (synthetic IQ)
+        working-directory: chronus-gateway
+        run: |
+          # The runner's system Python is externally managed (PEP 668); a user install is fine here.
+          python3 -c 'import numpy' 2>/dev/null || python3 -m pip install --quiet --user --break-system-packages numpy
+          cargo build -q -p chronus-evidence
+          d=target/debug/chronus-doppler
+          $d -c tools/rf/rehearsal.toml --predict-start 2020-07-13T05:04:00Z --predict-seconds 660 > "$RUNNER_TEMP/pred.jsonl"
+          cmd=$(python3 tools/rf/synth_iq.py "$RUNNER_TEMP/pred.jsonl" "$RUNNER_TEMP/pass.cs8" --rate 32000 --ppm 4.2 --drift-hz-s 0.05 --snr-db 0 --min-el 5)
+          $cmd > "$RUNNER_TEMP/pass.rf.jsonl"
+          $d -c tools/rf/rehearsal.toml --rf "$RUNNER_TEMP/pass.rf.jsonl" --fit offset-drift >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check the deploy/ shell script and systemd units
         working-directory: chronus-gateway
         run: |

@@ -2,7 +2,6 @@
 
 use std::hint::black_box;
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use chrono::Utc;
 use chronus_gateway::ccsds::{self, CCSDS_PRIMARY_HEADER_LEN};
@@ -31,11 +30,11 @@ fn tm_bytes(apid: u16, seq: u16, payload: &[u8]) -> Vec<u8> {
 }
 
 fn sample_frame() -> RawFrame {
-    RawFrame {
-        bytes: Arc::from(tm_bytes(0x2A, 7, b"benchmark-payload").into_boxed_slice()),
-        received_at: Utc::now(),
-        source: SocketAddr::from(([127, 0, 0, 1], 7301)),
-    }
+    RawFrame::new(
+        tm_bytes(0x2A, 7, b"benchmark-payload"),
+        Utc::now(),
+        SocketAddr::from(([127, 0, 0, 1], 7301)),
+    )
 }
 
 fn bench_parse_telemetry(c: &mut Criterion) {
@@ -51,12 +50,7 @@ fn bench_apply_physics_validation(c: &mut Criterion) {
     let state = TrackingState::new(180.0, 45.0, 450.0, -7.2);
     let ctx = ValidationContext::new(437_500_000.0)
         .with_pointing_tolerance_deg(0.25)
-        .with_link_budget(LinkBudgetStationParams {
-            tx_power_dbm: 30.0,
-            tx_gain_dbi: 2.0,
-            rx_gain_dbi: 5.0,
-            tolerance_db: 3.0,
-        });
+        .with_link_budget(LinkBudgetStationParams::new(30.0, 2.0, 5.0, 3.0));
     c.bench_function("apply_physics_validation", |b| {
         b.iter(|| {
             let mut t = tm.clone();

@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Counters updated by the HTTP / WebSocket distribution path and telemetry processing.
 #[derive(Debug, Default)]
+#[non_exhaustive]
 pub struct GatewayMetrics {
     /// Successfully parsed TM frames emitted on WebSocket (one JSON message per frame).
     pub telemetry_frames_emitted: AtomicU64,

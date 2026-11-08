@@ -1,0 +1,151 @@
+# Coverage-guided fuzzing of every untrusted-input parser (Tranche 5.1, Methodology D-054).
+#
+# - Pull requests that touch the parsers: a 30 s smoke run of each target (one job).
+# - Nightly: each target fuzzes for `FUZZ_SECONDS` in its own job, resuming from the corpus the
+#   previous run left in the Actions cache, so time accumulates night after night.
+# - Manual dispatch: choose the targets and the time (up to 21000 s, inside the 6 h job limit).
+#   Five dispatches at 18000 s give one target 25 h; docs/FUZZING.md keeps the ledger.
+#
+# A crash fails the job and uploads the reproducer (`fuzz/artifacts/<target>/crash-*`). Reproduce
+# with `cargo fuzz run <target> <file>` and keep the file as a regression seed after the fix.
+name: Fuzz
+
+on:
+  pull_request:
+    paths:
+      - "crates/gateway/src/**"
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Space-separated targets (empty = all)"
+        required: false
+        default: ""
+      seconds:
+        description: "Seconds per target (max 21000)"
+        required: false
+        default: "3600"
+
+permissions:
+  contents: read
+
+env:
+  FUZZ_SECONDS: "1800"
+
+jobs:
+  smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+      - name: Seeds
+        run: python3 fuzz/make_seeds.py
+      - name: Build
+        working-directory: fuzz
+        run: cargo fuzz build -O
+      - name: 30 s per target
+        working-directory: fuzz
+        run: |
+          for t in $(cargo fuzz list); do
+            mkdir -p "corpus/$t"
+            echo "::group::$t"
+            cargo fuzz run -O "$t" "corpus/$t" "seeds/$t" -- -max_total_time=30 -timeout=10 -rss_limit_mb=2048
+            echo "::endgroup::"
+          done
+      - name: Upload crash reproducers
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-smoke-crashes-${{ github.run_id }}
+          path: fuzz/artifacts
+          if-no-files-found: ignore
+
+  plan:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.t.outputs.targets }}
+      seconds: ${{ steps.t.outputs.seconds }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: t
+        env:
+          WANT: ${{ inputs.targets }}
+          SECS: ${{ inputs.seconds }}
+        run: |
+          all=$(sed -n 's/^name = "\(.*\)"$/\1/p' fuzz/Cargo.toml | grep -v '^chronus-gateway-fuzz$')
+          pick=${WANT:-$all}
+          for t in $pick; do
+            echo "$all" | grep -qx "$t" || { echo "::error::unknown target $t"; exit 1; }
+          done
+          # shellcheck disable=SC2086 # word splitting is the point: one target per word
+          echo "targets=$(printf '%s\n' $pick | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+          secs=${SECS:-$FUZZ_SECONDS}
+          [ "$secs" -le 21000 ] || secs=21000
+          echo "seconds=$secs" >> "$GITHUB_OUTPUT"
+
+  fuzz:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.plan.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version 0.13.2 --locked
+      - name: Restore corpus
+        uses: actions/cache/restore@v4
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+      - name: Seeds
+        run: python3 fuzz/make_seeds.py
+      - name: Fuzz
+        working-directory: fuzz
+        env:
+          T: ${{ matrix.target }}
+          SECS: ${{ needs.plan.outputs.seconds }}
+        run: |
+          mkdir -p "corpus/$T"
+          before=$(find "corpus/$T" -type f | wc -l)
+          cargo fuzz run -O "$T" "corpus/$T" "seeds/$T" -- \
+            -max_total_time="$SECS" -timeout=10 -rss_limit_mb=2048 -print_final_stats=1 2>&1 | tee run.log
+          {
+            echo "### $T"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| seconds | $SECS |"
+            echo "| executions | $(sed -n 's/^stat::number_of_executed_units: *//p' run.log) |"
+            echo "| peak RSS (MB) | $(sed -n 's/^stat::peak_rss_mb: *//p' run.log) |"
+            echo "| corpus | $before → $(find "corpus/$T" -type f | wc -l) |"
+            echo "| commit | ${GITHUB_SHA::12} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Minimise corpus
+        if: success()
+        working-directory: fuzz
+        run: cargo fuzz cmin -O "${{ matrix.target }}" "corpus/${{ matrix.target }}"
+      - name: Save corpus
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+      - name: Upload crash reproducers
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes-${{ matrix.target }}-${{ github.run_id }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore

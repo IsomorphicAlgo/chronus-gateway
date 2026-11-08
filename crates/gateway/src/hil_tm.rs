@@ -2,7 +2,7 @@
 //!
 //! Versioned, fixed-width binary layout in the CCSDS Space Packet **data field** (no PUS secondary
 //! header in v1). Used by `chronus-hil-sim` and tests so subsystem co-validation (**CV-4**, **CV-5**) does not
-//! depend on ambiguous raw blobs. See **`docs/EXTENDED_COVALIDATION_PLAN.md`** and `docs/HIL.md`.
+//! depend on ambiguous raw blobs. See `docs/HIL.md` and the tolerance register in `docs/TRACEABILITY.md`.
 //!
 //! ## Layout (`chronus.hil.tm.v1`)
 //!

@@ -235,7 +235,7 @@ trusted as-is. Full details, the `chronus.rf.v1` message format, and ready-to-ru
 ### Where the numbers come from
 
 The **`T-*`** names (**T-DOPPLER**, **T-RSSI**, **T-POINT**, **T-EPS**, **T-THERMAL**,
-**T-BODYRATE**) are the **tolerance register** in `TEST_PLAN.md` (now in local `PLANS.md`). When you tune
+**T-BODYRATE**) are the **tolerance register** in [`TRACEABILITY.md`](TRACEABILITY.md). When you tune
 a station or argue about pass/fail in test or ops, that table is the shared vocabulary.
 
 ---

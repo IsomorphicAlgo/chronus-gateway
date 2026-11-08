@@ -4,7 +4,6 @@
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use chrono::Utc;
 use chronus_gateway::ccsds::{CCSDS_PRIMARY_HEADER_LEN, CcsdsError, parse_telemetry};
@@ -39,11 +38,7 @@ fn load_hex_fixture(rel: &str) -> Vec<Vec<u8>> {
 }
 
 fn frame_from(bytes: Vec<u8>) -> RawFrame {
-    RawFrame {
-        bytes: Arc::from(bytes.into_boxed_slice()),
-        received_at: Utc::now(),
-        source: SocketAddr::from(([127, 0, 0, 1], 7301)),
-    }
+    RawFrame::new(bytes, Utc::now(), SocketAddr::from(([127, 0, 0, 1], 7301)))
 }
 
 #[test]

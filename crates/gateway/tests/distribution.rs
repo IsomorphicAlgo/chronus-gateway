@@ -92,11 +92,7 @@ async fn websocket_receives_openmct_json() {
 
     let fixed = Utc.with_ymd_and_hms(2020, 7, 12, 12, 0, 0).unwrap();
     let bytes = build_tm(0x2A, 7, b"hello");
-    let frame = RawFrame {
-        bytes: Arc::from(bytes.into_boxed_slice()),
-        received_at: fixed,
-        source: "127.0.0.1:5000".parse().expect("addr"),
-    };
+    let frame = RawFrame::new(bytes, fixed, "127.0.0.1:5000".parse().expect("addr"));
     state.frame_tx.send(frame).expect("broadcast send");
 
     let msg = tokio::time::timeout(Duration::from_secs(2), ws.next())
@@ -148,11 +144,7 @@ async fn second_client_still_receives_after_first_disconnects() {
     let t = Utc.with_ymd_and_hms(2020, 7, 12, 12, 0, 0).unwrap();
     let send_frame = |apid: u16, payload: &[u8]| {
         let bytes = build_tm(apid, 1, payload);
-        RawFrame {
-            bytes: Arc::from(bytes.into_boxed_slice()),
-            received_at: t,
-            source: "127.0.0.1:5001".parse().unwrap(),
-        }
+        RawFrame::new(bytes, t, "127.0.0.1:5001".parse().unwrap())
     };
 
     state.frame_tx.send(send_frame(0x10, b"a")).expect("send1");

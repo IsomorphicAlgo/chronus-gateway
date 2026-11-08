@@ -1,0 +1,83 @@
+# Fuzz targets for every parser that sees untrusted input (Tranche 5.1, Methodology D-054).
+# Not a workspace member: built only by cargo-fuzz, which needs a nightly toolchain:
+#
+#   cargo install cargo-fuzz
+#   cargo +nightly fuzz run ccsds_packet -- -max_total_time=600
+#
+# See fuzz/README.md for every target, the seed corpora and the CI schedule.
+[package]
+name = "chronus-gateway-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "MIT"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+chronus-gateway = { path = "../crates/gateway", features = ["hil"] }
+tokio = { version = "1", features = ["sync"] }
+ephemerust = { version = "1.1", default-features = false }
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "ccsds_packet"
+path = "fuzz_targets/ccsds_packet.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hil_tm_v1"
+path = "fuzz_targets/hil_tm_v1.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "oem_text"
+path = "fuzz_targets/oem_text.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "config_toml"
+path = "fuzz_targets/config_toml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rf_datagram"
+path = "fuzz_targets/rf_datagram.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tm_deframer"
+path = "fuzz_targets/tm_deframer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "eop_finals"
+path = "fuzz_targets/eop_finals.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "packet_pipeline"
+path = "fuzz_targets/packet_pipeline.rs"
+test = false
+doc = false
+bench = false

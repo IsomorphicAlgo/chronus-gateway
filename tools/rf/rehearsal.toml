@@ -1,0 +1,23 @@
+# Rehearsal of the real-RF Doppler check on synthetic IQ (docs/RF_VALIDATION.md).
+# The public reference ISS element set and the default lab station; nothing here is a real
+# capture. For a real pass, copy this file, put in your station, a TLE from the day of the pass
+# and the satellite's published downlink frequency.
+[ingest]
+bind_addr = "127.0.0.1:7301"
+channel_capacity = 1024
+max_datagram_size = 65542
+http_bind = "127.0.0.1:8080"
+
+[station]
+latitude_deg = 35.0
+longitude_deg = -116.0
+altitude_m = 1000.0
+nominal_carrier_hz = 437500000.0
+min_recompute_interval_ms = 0
+doppler_tolerance_hz = 150.0
+minimum_elevation_deg = 0.0
+tle_inline = """
+ISS (ZARYA)
+1 25544U 98067A   20194.88612269 -.00002218  00000-0 -31515-4 0  9992
+2 25544  51.6461 221.2784 0001413  89.1723 280.4612 15.49507896236008
+"""

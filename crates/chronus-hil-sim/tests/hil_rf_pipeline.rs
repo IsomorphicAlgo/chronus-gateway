@@ -54,10 +54,8 @@ async fn run_case(
         Some(tracking),
     ));
 
-    let ingest_cfg = IngestConfig {
-        bind_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
-        ..Default::default()
-    };
+    let mut ingest_cfg = IngestConfig::default();
+    ingest_cfg.bind_addr = SocketAddr::from(([127, 0, 0, 1], 0));
     let udp = ingest::bind(&ingest_cfg).await.unwrap();
     let udp_addr = udp.local_addr().unwrap();
     let rf_sock = UdpSocket::bind("127.0.0.1:0").await.unwrap();

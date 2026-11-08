@@ -81,10 +81,8 @@ fn every_frame_and_time_system_reproduces_astropy_itrf() {
 
 #[test]
 fn oem_backend_tracks_the_same_orbit_as_the_tle_backend() {
-    let station = StationModel {
-        earth_orientation: fixture_eop(),
-        ..StationModel::geometric(47.9088, -122.2503, 0.0)
-    };
+    let station =
+        StationModel::geometric(47.9088, -122.2503, 0.0).with_earth_orientation(fixture_eop());
     let oem = OemPropagator::new(
         OemEphemeris::from_file(&data("iss_gcrf_utc.oem")).unwrap(),
         station,

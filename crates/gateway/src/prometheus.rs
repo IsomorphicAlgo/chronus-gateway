@@ -6,6 +6,10 @@
 //! appears here without further work. The data-age gauges are in seconds, as Prometheus
 //! recommends.
 //!
+//! On Linux the standard `process_resident_memory_bytes` gauge is included (read from
+//! `/proc/self/statm`), so memory can be watched without access to the host;
+//! the soak tool (`chronus-soak`, 1.0.0-rc) uses them.
+//!
 //! `/metrics` sits behind the same API token as everything else; configure the scraper with
 //! `authorization: { credentials: <token> }`.
 
@@ -168,7 +172,27 @@ pub fn render(state: &SharedGateway) -> String {
         "Failed data fetches.",
         d.fetch_errors as f64,
     );
+    if let Some(rss) = resident_memory_bytes() {
+        emit(
+            &mut out,
+            "process_resident_memory_bytes",
+            "gauge",
+            "Resident memory size in bytes.",
+            rss as f64,
+        );
+    }
     out
+}
+
+/// Resident set size of this process (Linux `/proc/self/statm`; `None` elsewhere).
+#[must_use]
+pub fn resident_memory_bytes() -> Option<u64> {
+    let statm = std::fs::read_to_string("/proc/self/statm").ok()?;
+    let pages: u64 = statm.split_whitespace().nth(1)?.parse().ok()?;
+    // The page size is 4 KiB on every Linux target the gateway ships for (x86_64, aarch64 with
+    // 4 KiB pages); reading it would need libc. A 16/64 KiB-page kernel under-reports by that
+    // factor (docs/SOAK.md).
+    Some(pages * 4096)
 }
 
 #[cfg(test)]
@@ -198,6 +222,10 @@ mod tests {
         assert!(text.contains("chronus_history_capacity 10000"));
         assert!(text.contains("chronus_security_auth_enabled 0"));
         assert!(text.contains("chronus_build_info{version="));
+        if cfg!(target_os = "linux") {
+            assert!(resident_memory_bytes().unwrap() > 1_000_000);
+            assert!(text.contains("# TYPE process_resident_memory_bytes gauge"));
+        }
         let mut names = std::collections::HashSet::new();
         for line in text.lines() {
             if let Some(rest) = line.strip_prefix("# TYPE ") {
