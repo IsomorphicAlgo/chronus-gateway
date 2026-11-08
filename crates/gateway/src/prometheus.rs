@@ -6,9 +6,9 @@
 //! appears here without further work. The data-age gauges are in seconds, as Prometheus
 //! recommends.
 //!
-//! On Linux the standard `process_resident_memory_bytes` gauge is included (read from
-//! `/proc/self/statm`), so memory can be watched without access to the host;
-//! the soak tool (`chronus-soak`, 1.0.0-rc) uses them.
+//! The standard `process_resident_memory_bytes` gauge is included on Linux, Windows and macOS,
+//! so memory can be watched without access to the host; the soak tool (`chronus-soak`,
+//! 1.0.0-rc) uses it.
 //!
 //! `/metrics` sits behind the same API token as everything else; configure the scraper with
 //! `authorization: { credentials: <token> }`.
@@ -184,15 +184,12 @@ pub fn render(state: &SharedGateway) -> String {
     out
 }
 
-/// Resident set size of this process (Linux `/proc/self/statm`; `None` elsewhere).
+/// Resident memory of this process in bytes (Linux, Windows, macOS; `None` elsewhere).
+///
+/// Linux reads `/proc/self/statm` with the real page size; Windows reports the working set.
 #[must_use]
 pub fn resident_memory_bytes() -> Option<u64> {
-    let statm = std::fs::read_to_string("/proc/self/statm").ok()?;
-    let pages: u64 = statm.split_whitespace().nth(1)?.parse().ok()?;
-    // The page size is 4 KiB on every Linux target the gateway ships for (x86_64, aarch64 with
-    // 4 KiB pages); reading it would need libc. A 16/64 KiB-page kernel under-reports by that
-    // factor (docs/SOAK.md).
-    Some(pages * 4096)
+    memory_stats::memory_stats().map(|m| m.physical_mem as u64)
 }
 
 #[cfg(test)]
@@ -222,7 +219,11 @@ mod tests {
         assert!(text.contains("chronus_history_capacity 10000"));
         assert!(text.contains("chronus_security_auth_enabled 0"));
         assert!(text.contains("chronus_build_info{version="));
-        if cfg!(target_os = "linux") {
+        if cfg!(any(
+            target_os = "linux",
+            target_os = "windows",
+            target_os = "macos"
+        )) {
             assert!(resident_memory_bytes().unwrap() > 1_000_000);
             assert!(text.contains("# TYPE process_resident_memory_bytes gauge"));
         }

@@ -1038,8 +1038,11 @@ co-validate → JSON → WebSocket out) in a log-linear histogram (64 sub-bucket
 ≤ 1.6 % bucket width, percentiles rounded up so they never under-report). The driver samples the
 gateway's memory and drop counters, and fits a least-squares memory slope over the second half of
 the run. Thresholds (`--max-p99-ms`, `--max-loss`, `--max-rss-slope-mib-per-h`) make it a gate.
-The gateway gains the standard `process_resident_memory_bytes` gauge (Linux, from
-`/proc/self/statm`) so memory can be watched remotely, including on the public demo.
+The gateway gains the standard `process_resident_memory_bytes` gauge (Linux, Windows, macOS,
+through the `memory-stats` crate) so memory can be watched remotely, including on the public demo.
+The pipeline's lag warning is summed over 10 s (`LAG_WARN_INTERVAL`). The owner's first 24 h run
+on Windows showed one warning per lag event: the synchronous console write slowed the pipeline,
+which lagged more, which logged more. The cloud runs logged to a file and hid it.
 **Why:** the plan's exit "24 h at the design load with bounded RSS and p99 in the bench report".
 Criterion (D-030) measures the hot path in isolation; this measures the whole process under
 concurrent load, which is where a lagging client, an unbounded buffer or lock contention shows.
@@ -1153,6 +1156,7 @@ docs when dependencies change (finalization **B.2**, **D-035**).
 | [Caddy](https://caddyserver.com/), [nginx](https://nginx.org/), systemd, distroless | Deployment references (**D-051**, **D-053**) — documentation and packaging only | Apache-2.0 / BSD-2-Clause / LGPL-2.1+ / Apache-2.0 |
 | [`cargo-audit`](https://crates.io/crates/cargo-audit), [`cargo-deny`](https://crates.io/crates/cargo-deny) | CI supply-chain gates | crates.io |
 | [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz), [`libfuzzer-sys`](https://crates.io/crates/libfuzzer-sys) (LLVM libFuzzer), [`arbitrary`](https://crates.io/crates/arbitrary) | Coverage-guided fuzzing, `fuzz/` only (**D-054**) | MIT/Apache-2.0 (libFuzzer: Apache-2.0 WITH LLVM-exception) |
+| [`memory-stats`](https://crates.io/crates/memory-stats) | `process_resident_memory_bytes` on Linux, Windows and macOS (**D-055**) | crates.io, MIT/Apache-2.0 |
 | [`tokio-tungstenite`](https://crates.io/crates/tokio-tungstenite) | WebSocket clients of `chronus-soak` (**D-055**; also a dev-dependency above) | crates.io, MIT |
 | [NumPy](https://numpy.org/) | `tools/rf/` FFT carrier tracking and synthetic IQ (**D-056**) — evidence tooling, not a dependency | BSD-3-Clause |
 | [SigMF](https://github.com/sigmf/SigMF), gqrx and `rtl_sdr` recording conventions; [SatNOGS DB](https://db.satnogs.org/) | Recording formats `iq_carrier.py` reads; where to find active beacons (**D-056**) — cited, not used as code | CC-BY-SA-4.0 (SigMF spec) / GPL (tools, not vendored) / AGPL (DB, linked) |

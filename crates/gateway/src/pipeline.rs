@@ -17,6 +17,7 @@
 use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::RecvError;
@@ -28,6 +29,33 @@ use crate::state::SharedGateway;
 
 /// Capacity of the processed-telemetry broadcast channel feeding WebSocket clients.
 pub const TELEMETRY_CHANNEL_CAPACITY: usize = 4_096;
+
+/// Lag warnings are summed over at most this long. A warning per lag event made a lagging
+/// pipeline slower still: the synchronous console write ran on the pipeline task, which on a
+/// Windows terminal cost more than processing the datagrams (found in the 24 h soak, D-055).
+pub const LAG_WARN_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Sums skipped datagrams between warnings, so a lagging pipeline logs at most once per
+/// [`LAG_WARN_INTERVAL`]. The exact total is always on `chronus_pipeline_datagrams_lagged_total`.
+#[derive(Debug, Default)]
+struct LagReport {
+    pending: u64,
+    last: Option<Instant>,
+}
+
+impl LagReport {
+    /// Adds `n` skipped datagrams; returns the total to report if a warning is due now.
+    fn add(&mut self, n: u64, now: Instant) -> Option<u64> {
+        self.pending += n;
+        let due = self
+            .last
+            .is_none_or(|l| now.saturating_duration_since(l) >= LAG_WARN_INTERVAL);
+        due.then(|| {
+            self.last = Some(now);
+            std::mem::take(&mut self.pending)
+        })
+    }
+}
 
 /// Pipeline counters (exposed as `pipeline` in `GET /api/v1/chronus/metrics`).
 #[derive(Debug, Default)]
@@ -83,6 +111,7 @@ pub async fn run(
 ) {
     let mut deframer = (state.station.framing.mode == FramingMode::TmFrames)
         .then(|| TmDeframer::new(&state.station.framing, Arc::clone(&state.framing)));
+    let mut lag = LagReport::default();
     tokio::pin!(shutdown);
     loop {
         tokio::select! {
@@ -92,7 +121,13 @@ pub async fn run(
                 Ok(raw) => handle_datagram(&state, deframer.as_mut(), &raw),
                 Err(RecvError::Lagged(n)) => {
                     state.pipeline.datagrams_lagged.fetch_add(n, Ordering::Relaxed);
-                    tracing::warn!(missed = n, "telemetry pipeline fell behind; datagrams skipped");
+                    if let Some(missed) = lag.add(n, Instant::now()) {
+                        tracing::warn!(
+                            missed,
+                            "telemetry pipeline fell behind; datagrams skipped (summed over up to \
+                             10 s; total on chronus_pipeline_datagrams_lagged_total)"
+                        );
+                    }
                     // A gap in the byte stream invalidates partial frames and packets.
                     if let Some(d) = deframer.as_mut() {
                         d.reset();
@@ -146,6 +181,24 @@ mod tests {
     use crate::metrics::GatewayMetrics;
     use crate::{encode_synthetic_tm, history::HistoryQuery};
     use std::time::Duration;
+
+    #[test]
+    fn lag_warnings_are_summed_and_rate_limited() {
+        let mut r = LagReport::default();
+        let t0 = Instant::now();
+        // The first lag is reported at once.
+        assert_eq!(r.add(7, t0), Some(7));
+        // A burst inside the interval is summed, not logged line by line.
+        for i in 1..=100u64 {
+            assert_eq!(r.add(3, t0 + Duration::from_millis(i)), None);
+        }
+        // The next lag after the interval carries everything since the last warning.
+        assert_eq!(r.add(1, t0 + LAG_WARN_INTERVAL), Some(301));
+        assert_eq!(
+            r.add(2, t0 + LAG_WARN_INTERVAL + Duration::from_secs(1)),
+            None
+        );
+    }
 
     fn gateway(configure: impl FnOnce(&mut StationConfig)) -> Arc<SharedGateway> {
         let mut station = StationConfig::default();
