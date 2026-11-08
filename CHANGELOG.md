@@ -48,6 +48,9 @@ frozen from here: if the rc runs a week on the public demo without an API change
   (Linux).
 - Wire formats, routes, configuration and CLI are unchanged.
 
+**Gate CV-5** (HIL body-rate envelope, `physics_flags` bit 6) is approved: every co-validation
+gate, CV-0 to CV-5, is now signed off.
+
 **Fixed**
 - `chronus.rf.v1` numbers with long decimal mantissas were parsed up to one ULP off, so a sample
   re-encoded by a relay could differ from the one received. Found by the new `rf_datagram` fuzz

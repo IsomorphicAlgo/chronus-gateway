@@ -8,8 +8,8 @@ contributor expectations in `README.md` (keep this file current when decisions c
 > **Status (2026-11-07): 1.0.0-rc.1.** Milestones **M1–M8**, the showcase track **S0–S4** and
 > finalization **A** and **B.1–B.3** are complete. The 1.0 plan's Tranches 1–4 shipped as 0.3.0–0.6.0
 > (**D-046**–**D-053**); Tranche 5 (evidence and release candidate) is **D-054**–**D-058**.
-> Gates **CV-0** to **CV-4** are approved; **CV-5** (HIL body-rate envelope) is implemented and
-> **pending owner sign-off**.
+> Gates **CV-0** to **CV-5** are approved (CV-5, the HIL body-rate envelope, signed off by the
+> owner on 2026-11-07).
 > Open for 1.0.0: the fuzzing ledger reaching 24 h per target (`docs/FUZZING.md`), the 24 h soak on
 > the release host (`docs/SOAK.md`), the owner's real-RF pass (`docs/RF_VALIDATION.md`), and a week
 > of the rc on the public demo with no API change. Ephemerust **1.1** is published on crates.io and
@@ -1114,7 +1114,7 @@ nothing else. The version becomes **1.0.0-rc.1**. `CHANGELOG.md` states the 1.x 
 `1.0.0` is this rc unchanged after a week on the public demo without an API change.
 **Why:** each of those structs was one added field away from a breaking 1.x release; 1.0 is the
 last moment to shield them for free.
-**Gate CV-5:** implemented since 0.3.0; owner sign-off still pending (status header).
+**Gate CV-5:** implemented since 0.3.0; approved by the owner on 2026-11-07.
 
 ## Open decisions (to resolve as milestones land)
 
