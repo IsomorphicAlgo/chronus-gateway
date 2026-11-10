@@ -45,13 +45,17 @@ frozen from here: if the rc runs a week on the public demo without an API change
   linear model; a fixed v1 wire layout).
 - **Everything else is additive:** `config::load_gateway_from_str`;
   `prometheus::resident_memory_bytes` and the `process_resident_memory_bytes` gauge on `/metrics`
-  (Linux).
+  (Linux, Windows, macOS; new dependency `memory-stats`).
 - Wire formats, routes, configuration and CLI are unchanged.
 
 **Gate CV-5** (HIL body-rate envelope, `physics_flags` bit 6) is approved: every co-validation
 gate, CV-0 to CV-5, is now signed off.
 
 **Fixed**
+- A lagging pipeline logged one warning per lag event, synchronously, on the task that processes
+  packets. On a Windows terminal the logging cost more than the packets, so the lag fed itself
+  (found running the 24 h soak). Warnings are now summed over 10 s; the exact count stays on
+  `chronus_pipeline_datagrams_lagged_total`.
 - `chronus.rf.v1` numbers with long decimal mantissas were parsed up to one ULP off, so a sample
   re-encoded by a relay could differ from the one received. Found by the new `rf_datagram` fuzz
   target: `serde_json` now has `float_roundtrip` enabled for every build. It was previously on

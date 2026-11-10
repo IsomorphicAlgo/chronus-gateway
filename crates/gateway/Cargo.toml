@@ -52,6 +52,9 @@ base64.workspace = true
 getrandom.workspace = true
 # The binary's command line (`--help`, `--check-config`, `--generate-token`; Tranche 4).
 clap.workspace = true
+# Resident memory for `process_resident_memory_bytes` on Linux, Windows and macOS (statm on
+# Linux with the real page size; GetProcessMemoryInfo on Windows). D-055.
+memory-stats = { version = "1.2", features = ["always_use_statm"] }
 
 [dev-dependencies]
 tempfile = "3"

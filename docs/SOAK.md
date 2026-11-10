@@ -29,9 +29,13 @@ target/release/chronus-soak --rate 10000 --clients 50 --duration 24h \
     --max-p99-ms 50 --max-rss-slope-mib-per-h 1 --max-loss 0.001   # optional gates (exit 1)
 ```
 
-`--pid <gateway pid>` reads memory from `/proc` instead of `/metrics`. On a 16 or 64 KiB-page
-kernel, `process_resident_memory_bytes` under-reports, because the gateway assumes 4 KiB pages
-(D-055); use `--pid` there.
+Memory comes from the gateway's `process_resident_memory_bytes` (Linux, Windows and macOS).
+On Linux, `--pid <gateway pid>` reads `/proc` instead.
+
+**Build both in release mode** (`--release`): a debug build is many times slower and will lag at
+the design load. Sender, clients and gateway on one machine share its CPUs, so the result
+describes that machine. The 10 000 pkt/s × 50 clients load is 500 000 WebSocket messages a
+second, and the soak's own clients decode every one.
 
 ## Results
 

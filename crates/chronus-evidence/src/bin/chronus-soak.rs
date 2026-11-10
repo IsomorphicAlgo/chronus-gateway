@@ -53,7 +53,7 @@ struct Args {
     /// Memory / counter sampling interval.
     #[arg(long, default_value = "10s", value_parser = parse_duration)]
     sample_every: Duration,
-    /// Read memory from `/proc/<pid>/status` instead of the gateway's `/metrics`.
+    /// Linux only: read memory from `/proc/<pid>/status` instead of the gateway's `/metrics`.
     #[arg(long)]
     pid: Option<u32>,
     /// APID of the probe packets.
